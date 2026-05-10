@@ -21,6 +21,7 @@ Each ADR follows the structure:
 | [ADR-003](ADR-003-frontend-stack.md) | Frontend stack | Accepted |
 | [ADR-004](ADR-004-cross-platform-portability.md) | Cross-platform portability approach | Accepted |
 | [ADR-005](ADR-005-ontology-loading-strategy.md) | Ontology loading strategy and named graph separation | Accepted |
+| [ADR-006](ADR-006-instance-iri-naming-strategy.md) | Instance IRI naming strategy | Accepted |
 
 ## Guiding Principles
 
