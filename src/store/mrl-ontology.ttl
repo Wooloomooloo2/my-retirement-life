@@ -1,0 +1,517 @@
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix mrl:   <https://myretirementlife.app/ontology#> .
+@prefix mrlx:  <https://myretirementlife.app/ontology/ext#> .
+
+
+# ===========================================================================
+# ONTOLOGY DECLARATION
+# ===========================================================================
+
+mrl:Ontology a owl:Ontology ;
+    rdfs:label "My Retirement Life Ontology" ;
+    rdfs:comment "Core ontology for the My Retirement Life retirement planning application." ;
+    owl:versionInfo "0.2.0" .
+
+
+# ===========================================================================
+# CONTROLLED VOCABULARIES  (mrlx: prefix)
+# Named individuals representing enumeration values and taxonomic categories.
+# Pattern: mrlx:ClassName_Value
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Employment Status
+# ---------------------------------------------------------------------------
+
+mrlx:EmploymentStatus a owl:Class ;
+    rdfs:label "Employment Status" ;
+    rdfs:comment "Controlled vocabulary for a person's employment status." .
+
+mrlx:EmploymentStatus_Employed a mrlx:EmploymentStatus ;
+    rdfs:label "Employed" .
+
+mrlx:EmploymentStatus_SelfEmployed a mrlx:EmploymentStatus ;
+    rdfs:label "Self-employed" .
+
+mrlx:EmploymentStatus_NotWorking a mrlx:EmploymentStatus ;
+    rdfs:label "Not working" .
+
+mrlx:EmploymentStatus_Retired a mrlx:EmploymentStatus ;
+    rdfs:label "Retired" .
+
+
+# ---------------------------------------------------------------------------
+# Budget Line Type
+# ---------------------------------------------------------------------------
+
+mrlx:BudgetLineType a owl:Class ;
+    rdfs:label "Budget Line Type" ;
+    rdfs:comment "Controlled vocabulary for classifying budget line items." .
+
+mrlx:BudgetLineType_Mandatory a mrlx:BudgetLineType ;
+    rdfs:label "Mandatory" ;
+    rdfs:comment "Essential outgoings that cannot easily be reduced, e.g. housing, utilities, food." .
+
+mrlx:BudgetLineType_Discretionary a mrlx:BudgetLineType ;
+    rdfs:label "Discretionary" ;
+    rdfs:comment "Lifestyle spending that could be reduced if necessary, e.g. holidays, dining, hobbies." .
+
+mrlx:BudgetLineType_Loan a mrlx:BudgetLineType ;
+    rdfs:label "Loan" ;
+    rdfs:comment "Loan or debt repayment with a defined end date." .
+
+
+# ---------------------------------------------------------------------------
+# Life Event Type
+# ---------------------------------------------------------------------------
+
+mrlx:LifeEventType a owl:Class ;
+    rdfs:label "Life Event Type" ;
+    rdfs:comment "Controlled vocabulary for categorising life events." .
+
+mrlx:LifeEventType_LargeExpenditure a mrlx:LifeEventType ;
+    rdfs:label "Large expenditure" ;
+    rdfs:comment "A one-off significant cost, e.g. new car, home renovation." .
+
+mrlx:LifeEventType_Windfall a mrlx:LifeEventType ;
+    rdfs:label "Windfall" ;
+    rdfs:comment "An unexpected or planned receipt of funds, e.g. inheritance, bonus, asset sale." .
+
+mrlx:LifeEventType_PropertyTransaction a mrlx:LifeEventType ;
+    rdfs:label "Property transaction" ;
+    rdfs:comment "Purchase or sale of a property. Post-MVP." .
+
+mrlx:LifeEventType_RelocationAbroad a mrlx:LifeEventType ;
+    rdfs:label "Relocation abroad" ;
+    rdfs:comment "Moving to a different country. Post-MVP." .
+
+mrlx:LifeEventType_CaringResponsibility a mrlx:LifeEventType ;
+    rdfs:label "Caring responsibility" ;
+    rdfs:comment "Taking on care of a family member. Post-MVP." .
+
+
+# ===========================================================================
+# REFERENCE INDIVIDUALS  (mrl: prefix)
+# Stable named individuals for shared reference data.
+# Pattern: mrl:ClassName_Code
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Currency
+# ---------------------------------------------------------------------------
+
+mrl:Currency a owl:Class ;
+    rdfs:label "Currency" ;
+    rdfs:comment "An independent currency entity. Named individuals allow exchange rates and display properties to be attached once and shared across all references. Never stored as a string literal on accounts." .
+
+mrl:currencyCode a owl:DatatypeProperty ;
+    rdfs:domain mrl:Currency ;
+    rdfs:range xsd:string ;
+    rdfs:label "currency code" ;
+    rdfs:comment "ISO 4217 currency code." .
+
+mrl:currencySymbol a owl:DatatypeProperty ;
+    rdfs:domain mrl:Currency ;
+    rdfs:range xsd:string ;
+    rdfs:label "currency symbol" .
+
+mrl:currencyName a owl:DatatypeProperty ;
+    rdfs:domain mrl:Currency ;
+    rdfs:range xsd:string ;
+    rdfs:label "currency name" .
+
+mrl:Currency_GBP a mrl:Currency ;
+    mrl:currencyCode "GBP" ;
+    mrl:currencySymbol "£" ;
+    mrl:currencyName "Pound Sterling" .
+
+mrl:Currency_USD a mrl:Currency ;
+    mrl:currencyCode "USD" ;
+    mrl:currencySymbol "$" ;
+    mrl:currencyName "US Dollar" .
+
+mrl:Currency_EUR a mrl:Currency ;
+    mrl:currencyCode "EUR" ;
+    mrl:currencySymbol "€" ;
+    mrl:currencyName "Euro" .
+
+mrl:Currency_AUD a mrl:Currency ;
+    mrl:currencyCode "AUD" ;
+    mrl:currencySymbol "A$" ;
+    mrl:currencyName "Australian Dollar" .
+
+mrl:Currency_CAD a mrl:Currency ;
+    mrl:currencyCode "CAD" ;
+    mrl:currencySymbol "C$" ;
+    mrl:currencyName "Canadian Dollar" .
+
+mrl:Currency_CHF a mrl:Currency ;
+    mrl:currencyCode "CHF" ;
+    mrl:currencySymbol "Fr" ;
+    mrl:currencyName "Swiss Franc" .
+
+mrl:Currency_JPY a mrl:Currency ;
+    mrl:currencyCode "JPY" ;
+    mrl:currencySymbol "¥" ;
+    mrl:currencyName "Japanese Yen" .
+
+mrl:Currency_NZD a mrl:Currency ;
+    mrl:currencyCode "NZD" ;
+    mrl:currencySymbol "NZ$" ;
+    mrl:currencyName "New Zealand Dollar" .
+
+mrl:Currency_SEK a mrl:Currency ;
+    mrl:currencyCode "SEK" ;
+    mrl:currencySymbol "kr" ;
+    mrl:currencyName "Swedish Krona" .
+
+mrl:Currency_NOK a mrl:Currency ;
+    mrl:currencyCode "NOK" ;
+    mrl:currencySymbol "kr" ;
+    mrl:currencyName "Norwegian Krone" .
+
+mrl:Currency_DKK a mrl:Currency ;
+    mrl:currencyCode "DKK" ;
+    mrl:currencySymbol "kr" ;
+    mrl:currencyName "Danish Krone" .
+
+mrl:Currency_SGD a mrl:Currency ;
+    mrl:currencyCode "SGD" ;
+    mrl:currencySymbol "S$" ;
+    mrl:currencyName "Singapore Dollar" .
+
+mrl:Currency_HKD a mrl:Currency ;
+    mrl:currencyCode "HKD" ;
+    mrl:currencySymbol "HK$" ;
+    mrl:currencyName "Hong Kong Dollar" .
+
+mrl:Currency_ZAR a mrl:Currency ;
+    mrl:currencyCode "ZAR" ;
+    mrl:currencySymbol "R" ;
+    mrl:currencyName "South African Rand" .
+
+
+# ---------------------------------------------------------------------------
+# Jurisdiction
+# ---------------------------------------------------------------------------
+
+mrl:Jurisdiction a owl:Class ;
+    rdfs:label "Jurisdiction" ;
+    rdfs:comment "A legal or tax jurisdiction. Independent entity so jurisdiction-specific rules can be attached and shared." .
+
+mrl:jurisdictionCode a owl:DatatypeProperty ;
+    rdfs:domain mrl:Jurisdiction ;
+    rdfs:range xsd:string ;
+    rdfs:label "jurisdiction code" ;
+    rdfs:comment "ISO 3166-1 alpha-2 country code." .
+
+mrl:jurisdictionName a owl:DatatypeProperty ;
+    rdfs:domain mrl:Jurisdiction ;
+    rdfs:range xsd:string ;
+    rdfs:label "jurisdiction name" .
+
+mrl:defaultCurrency a owl:ObjectProperty ;
+    rdfs:domain mrl:Jurisdiction ;
+    rdfs:range mrl:Currency ;
+    rdfs:label "default currency" .
+
+mrl:Jurisdiction_GB a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "GB" ;
+    mrl:jurisdictionName "United Kingdom" ;
+    mrl:defaultCurrency mrl:Currency_GBP .
+
+mrl:Jurisdiction_US a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "US" ;
+    mrl:jurisdictionName "United States" ;
+    mrl:defaultCurrency mrl:Currency_USD .
+
+mrl:Jurisdiction_EU a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "EU" ;
+    mrl:jurisdictionName "European Union" ;
+    mrl:defaultCurrency mrl:Currency_EUR .
+
+mrl:Jurisdiction_AU a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "AU" ;
+    mrl:jurisdictionName "Australia" ;
+    mrl:defaultCurrency mrl:Currency_AUD .
+
+mrl:Jurisdiction_CA a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "CA" ;
+    mrl:jurisdictionName "Canada" ;
+    mrl:defaultCurrency mrl:Currency_CAD .
+
+mrl:Jurisdiction_NZ a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "NZ" ;
+    mrl:jurisdictionName "New Zealand" ;
+    mrl:defaultCurrency mrl:Currency_NZD .
+
+mrl:Jurisdiction_CH a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "CH" ;
+    mrl:jurisdictionName "Switzerland" ;
+    mrl:defaultCurrency mrl:Currency_CHF .
+
+mrl:Jurisdiction_SG a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "SG" ;
+    mrl:jurisdictionName "Singapore" ;
+    mrl:defaultCurrency mrl:Currency_SGD .
+
+mrl:Jurisdiction_ZA a mrl:Jurisdiction ;
+    mrl:jurisdictionCode "ZA" ;
+    mrl:jurisdictionName "South Africa" ;
+    mrl:defaultCurrency mrl:Currency_ZAR .
+
+
+# ===========================================================================
+# PERSON
+# Instance pattern: mrl:Person_<uuid>
+# ===========================================================================
+
+mrl:Person a owl:Class ;
+    rdfs:label "Person" ;
+    rdfs:comment "The individual whose retirement is being planned." .
+
+mrl:dateOfBirth a owl:DatatypeProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:date ;
+    rdfs:label "date of birth" .
+
+mrl:employmentStatus a owl:ObjectProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range mrlx:EmploymentStatus ;
+    rdfs:label "employment status" ;
+    rdfs:comment "Points to a mrlx:EmploymentStatus individual." .
+
+mrl:annualNetIncome a owl:DatatypeProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "annual net income" ;
+    rdfs:comment "Current annual take-home income after tax, in base currency." .
+
+mrl:targetRetirementAge a owl:DatatypeProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:integer ;
+    rdfs:label "target retirement age" .
+
+mrl:lifeExpectancy a owl:DatatypeProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:integer ;
+    rdfs:label "life expectancy" ;
+    rdfs:comment "Planning horizon in years of age." .
+
+mrl:incomeGrowthRate a owl:DatatypeProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "income growth rate" ;
+    rdfs:comment "Expected annual percentage change in income. Positive = growth, negative = reduction." .
+
+mrl:baseCurrency a owl:ObjectProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range mrl:Currency ;
+    rdfs:label "base currency" ;
+    rdfs:comment "Points to a mrl:Currency individual. Never a literal." .
+
+mrl:residesIn a owl:ObjectProperty ;
+    rdfs:domain mrl:Person ;
+    rdfs:range mrl:Jurisdiction ;
+    rdfs:label "resides in" ;
+    rdfs:comment "Points to a mrl:Jurisdiction individual." .
+
+
+# ===========================================================================
+# ACCOUNT HIERARCHY
+# Instance pattern: mrl:Account_<uuid>  (subclass IRIs follow same pattern)
+# ===========================================================================
+
+mrl:Account a owl:Class ;
+    rdfs:label "Account" ;
+    rdfs:comment "Superclass for all financial accounts and asset holdings." .
+
+mrl:accountName a owl:DatatypeProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:string ;
+    rdfs:label "account name" .
+
+mrl:accountBalance a owl:DatatypeProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "account balance" ;
+    rdfs:comment "Current balance in the account's own currency." .
+
+mrl:accountCurrency a owl:ObjectProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range mrl:Currency ;
+    rdfs:label "account currency" ;
+    rdfs:comment "Points to a mrl:Currency individual. Never a string literal." .
+
+mrl:accountJurisdiction a owl:ObjectProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range mrl:Jurisdiction ;
+    rdfs:label "account jurisdiction" ;
+    rdfs:comment "Points to a mrl:Jurisdiction individual." .
+
+mrl:accountNotes a owl:DatatypeProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:string ;
+    rdfs:label "account notes" .
+
+mrl:ownedBy a owl:ObjectProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range mrl:Person ;
+    rdfs:label "owned by" .
+
+# ---------------------------------------------------------------------------
+# CashAccount  (MVP)
+# ---------------------------------------------------------------------------
+
+mrl:CashAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Cash Account" ;
+    rdfs:comment "A cash deposit account: current account, savings account, cash ISA, or similar." .
+
+mrl:annualInterestRate a owl:DatatypeProperty ;
+    rdfs:domain mrl:CashAccount ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "annual interest rate" ;
+    rdfs:comment "Annual interest rate as a percentage, e.g. 4.5 for 4.5%." .
+
+mrl:isSpendingAccount a owl:DatatypeProperty ;
+    rdfs:domain mrl:CashAccount ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is spending account" ;
+    rdfs:comment "True if retirement spending is drawn from this account." .
+
+# ---------------------------------------------------------------------------
+# Post-MVP subclasses
+# ---------------------------------------------------------------------------
+
+mrl:InvestmentAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Investment Account" ;
+    rdfs:comment "Stocks, funds, bonds, or other investment holdings. Post-MVP." .
+
+mrl:PensionAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Pension Account" ;
+    rdfs:comment "Defined contribution or defined benefit pension. Post-MVP." .
+
+mrl:PropertyAsset a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Property Asset" ;
+    rdfs:comment "Real estate holdings. Post-MVP." .
+
+mrl:OtherAsset a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Other Asset" ;
+    rdfs:comment "Other saleable assets: vehicles, business interests, art etc. Post-MVP." .
+
+
+# ===========================================================================
+# BUDGET LINE
+# Instance pattern: mrl:BudgetLine_<uuid>
+# ===========================================================================
+
+mrl:BudgetLine a owl:Class ;
+    rdfs:label "Budget Line" ;
+    rdfs:comment "A single line item in the user's budget." .
+
+mrl:budgetLineName a owl:DatatypeProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:string ;
+    rdfs:label "budget line name" .
+
+mrl:budgetLineAmount a owl:DatatypeProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "budget line amount" ;
+    rdfs:comment "Annual amount in base currency." .
+
+mrl:budgetLineType a owl:ObjectProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range mrlx:BudgetLineType ;
+    rdfs:label "budget line type" ;
+    rdfs:comment "Points to a mrlx:BudgetLineType individual." .
+
+mrl:annualChangeRate a owl:DatatypeProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "annual change rate" ;
+    rdfs:comment "Annual percentage increase or decrease, e.g. 2.5 for 2.5% inflation." .
+
+mrl:loanEndYear a owl:DatatypeProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:integer ;
+    rdfs:label "loan end year" ;
+    rdfs:comment "For mrlx:BudgetLineType_Loan: the year repayments cease." .
+
+mrl:budgetOwner a owl:ObjectProperty ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range mrl:Person ;
+    rdfs:label "budget owner" .
+
+
+# ===========================================================================
+# LIFE EVENT
+# Instance pattern: mrl:LifeEvent_<uuid>
+# ===========================================================================
+
+mrl:LifeEvent a owl:Class ;
+    rdfs:label "Life Event" ;
+    rdfs:comment "A significant future event with a financial impact." .
+
+mrl:lifeEventName a owl:DatatypeProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "life event name" .
+
+mrl:lifeEventYear a owl:DatatypeProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range xsd:integer ;
+    rdfs:label "life event year" ;
+    rdfs:comment "The calendar year in which the event occurs." .
+
+mrl:lifeEventAmount a owl:DatatypeProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "life event amount" ;
+    rdfs:comment "Financial impact in base currency. Positive = expenditure, negative = receipt (windfall)." .
+
+mrl:lifeEventNotes a owl:DatatypeProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range xsd:string ;
+    rdfs:label "life event notes" .
+
+mrl:lifeEventType a owl:ObjectProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range mrlx:LifeEventType ;
+    rdfs:label "life event type" ;
+    rdfs:comment "Points to a mrlx:LifeEventType individual." .
+
+mrl:lifeEventOwner a owl:ObjectProperty ;
+    rdfs:domain mrl:LifeEvent ;
+    rdfs:range mrl:Person ;
+    rdfs:label "life event owner" .
+
+
+# ===========================================================================
+# PROJECTION SETTINGS
+# Instance pattern: mrl:ProjectionSettings_<uuid>
+# ===========================================================================
+
+mrl:ProjectionSettings a owl:Class ;
+    rdfs:label "Projection Settings" ;
+    rdfs:comment "Global assumptions used when calculating the retirement projection." .
+
+mrl:inflationRate a owl:DatatypeProperty ;
+    rdfs:domain mrl:ProjectionSettings ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "inflation rate" ;
+    rdfs:comment "Annual inflation rate as a percentage applied to spending." .
+
+mrl:projectionOwner a owl:ObjectProperty ;
+    rdfs:domain mrl:ProjectionSettings ;
+    rdfs:range mrl:Person ;
+    rdfs:label "projection owner" .

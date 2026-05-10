@@ -20,6 +20,7 @@ Each ADR follows the structure:
 | [ADR-002](ADR-002-packaging-strategy.md) | Packaging strategy | Accepted |
 | [ADR-003](ADR-003-frontend-stack.md) | Frontend stack | Accepted |
 | [ADR-004](ADR-004-cross-platform-portability.md) | Cross-platform portability approach | Accepted |
+| [ADR-005](ADR-005-ontology-loading-strategy.md) | Ontology loading strategy and named graph separation | Accepted |
 
 ## Guiding Principles
 
