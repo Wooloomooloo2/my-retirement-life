@@ -14,7 +14,10 @@ The user enters basic information about themselves:
 
 - Date of birth / current age
 - Employment status (employed, self-employed, not working, retired)
-- Annual net income (take-home pay after tax)
+- Income source (MVP: single Employment income source only)
+- Annual net income amount (take-home pay after tax)
+- Annual income growth rate (% change per year)
+- Income is net of tax flag
 - Target retirement age or year
 - Life expectancy (used as the planning horizon)
 - Base currency (single currency for MVP)
@@ -38,7 +41,7 @@ The user can add one or more cash accounts:
 
 The user enters a high-level annual or monthly budget:
 
-- **Income adjustments** — ability to increase or decrease annual income by a percentage per year (e.g. expected pay rises, or reduction to part-time before retirement)
+- **Income source** — a single Employment income source is captured in the MVP via the profile setup screen. Annual amount, growth rate, and net/gross flag are stored on the mrl:IncomeSource instance. The income source automatically ends at the target retirement year.
 - **Mandatory spending** — essential outgoings (housing costs, utilities, food, transport, insurance, loan repayments)
 - **Discretionary spending** — lifestyle spending (holidays, dining, hobbies, subscriptions)
 - Each budget line can optionally have an annual percentage increase or decrease applied (for modelling inflation or lifestyle changes)
@@ -89,6 +92,11 @@ The score is deliberately simple for MVP — a straightforward calculation, not 
 
 ## Out of Scope for MVP
 
+### Income model constraint
+
+The MVP supports a **single Employment income source only**. The data model (`mrl:IncomeSource`) is designed from the outset to support multiple income sources of different types — this is an application constraint, not a data model constraint. Additional income types are unlocked in post-MVP releases per the roadmap below.
+
+
 The following are explicitly deferred to later releases:
 
 - Multi-currency support
@@ -123,8 +131,9 @@ The MVP is considered complete when a user can:
 
 | Release | Focus |
 |---------|-------|
-| v0.2 | Add pension income (state and private) |
-| v0.3 | Add investments and other assets |
+| v0.2 | Add Retirement income sources (state pension, workplace pension, private pension) |
+| v0.3 | Add Investment income sources (dividends, bonds, annuities) |
+| v0.4 | Add investment and pension account asset types |
 | v0.4 | Multi-currency support |
 | v0.5 | Property assets and equity release |
 | v0.6 | International asset types (401k, Social Security etc.) |

@@ -14,15 +14,14 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.3.0" .
+    owl:versionInfo "0.4.0" .
 
 
 # ===========================================================================
 # CONTROLLED VOCABULARIES  (mrlx: prefix)
-# These are concepts in a controlled vocabulary — skos:prefLabel and
-# skos:definition are used here in place of rdfs:label and rdfs:comment.
 # Pattern: mrlx:ClassName_Value
-# Additional language tags added as translations become available.
+# mrlx: individuals use skos:prefLabel, skos:definition, skos:scopeNote
+# mrlx: classes use rdfs:label, rdfs:comment
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -31,23 +30,27 @@ mrl:Ontology a owl:Ontology ;
 
 mrlx:EmploymentStatus a owl:Class ;
     rdfs:label "Employment Status"@en ;
-    rdfs:comment "Controlled vocabulary for a person's employment status."@en .
+    rdfs:comment "Controlled vocabulary for a person's current employment status."@en .
 
 mrlx:EmploymentStatus_Employed a mrlx:EmploymentStatus ;
     skos:prefLabel "Employed"@en ;
-    skos:definition "In paid employment with an employer."@en .
+    skos:definition "In paid employment with an employer."@en ;
+    skos:notation "EMPLOYED" .
 
 mrlx:EmploymentStatus_SelfEmployed a mrlx:EmploymentStatus ;
     skos:prefLabel "Self-employed"@en ;
-    skos:definition "Working for oneself rather than an employer."@en .
+    skos:definition "Working for oneself rather than an employer."@en ;
+    skos:notation "SELF_EMPLOYED" .
 
 mrlx:EmploymentStatus_NotWorking a mrlx:EmploymentStatus ;
     skos:prefLabel "Not working"@en ;
-    skos:definition "Not currently in employment, self-employment, or retirement."@en .
+    skos:definition "Not currently in employment, self-employment, or retirement."@en ;
+    skos:notation "NOT_WORKING" .
 
 mrlx:EmploymentStatus_Retired a mrlx:EmploymentStatus ;
     skos:prefLabel "Retired"@en ;
-    skos:definition "Permanently withdrawn from the workforce."@en .
+    skos:definition "Permanently withdrawn from the workforce."@en ;
+    skos:notation "RETIRED" .
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +63,18 @@ mrlx:BudgetLineType a owl:Class ;
 
 mrlx:BudgetLineType_Mandatory a mrlx:BudgetLineType ;
     skos:prefLabel "Mandatory"@en ;
-    skos:definition "Essential outgoings that cannot easily be reduced, e.g. housing, utilities, food."@en .
+    skos:definition "Essential outgoings that cannot easily be reduced, e.g. housing, utilities, food."@en ;
+    skos:notation "MANDATORY" .
 
 mrlx:BudgetLineType_Discretionary a mrlx:BudgetLineType ;
     skos:prefLabel "Discretionary"@en ;
-    skos:definition "Lifestyle spending that could be reduced if necessary, e.g. holidays, dining, hobbies."@en .
+    skos:definition "Lifestyle spending that could be reduced if necessary, e.g. holidays, dining, hobbies."@en ;
+    skos:notation "DISCRETIONARY" .
 
 mrlx:BudgetLineType_Loan a mrlx:BudgetLineType ;
     skos:prefLabel "Loan"@en ;
-    skos:definition "A loan or debt repayment with a defined end date, after which the line is removed from the budget."@en .
+    skos:definition "A loan or debt repayment with a defined end date, after which the line is removed from the budget."@en ;
+    skos:notation "LOAN" .
 
 
 # ---------------------------------------------------------------------------
@@ -81,30 +87,228 @@ mrlx:LifeEventType a owl:Class ;
 
 mrlx:LifeEventType_LargeExpenditure a mrlx:LifeEventType ;
     skos:prefLabel "Large expenditure"@en ;
-    skos:definition "A one-off significant cost occurring in a specific year, e.g. new car, home renovation."@en .
+    skos:definition "A one-off significant cost occurring in a specific year, e.g. new car, home renovation."@en ;
+    skos:notation "LARGE_EXP" .
 
 mrlx:LifeEventType_Windfall a mrlx:LifeEventType ;
     skos:prefLabel "Windfall"@en ;
-    skos:definition "An expected or unexpected receipt of funds in a specific year, e.g. inheritance, bonus, asset sale."@en .
+    skos:definition "An expected or unexpected receipt of funds in a specific year, e.g. inheritance, bonus, asset sale."@en ;
+    skos:notation "WINDFALL" .
 
 mrlx:LifeEventType_PropertyTransaction a mrlx:LifeEventType ;
     skos:prefLabel "Property transaction"@en ;
-    skos:definition "The purchase or sale of a property, with associated financial impact. Post-MVP."@en .
+    skos:definition "The purchase or sale of a property, with associated financial impact. Post-MVP."@en ;
+    skos:notation "PROP_TX" .
 
 mrlx:LifeEventType_RelocationAbroad a mrlx:LifeEventType ;
     skos:prefLabel "Relocation abroad"@en ;
-    skos:definition "Moving to a different country, affecting currency exposure and cost of living. Post-MVP."@en .
+    skos:definition "Moving to a different country, affecting currency exposure and cost of living. Post-MVP."@en ;
+    skos:notation "RELOC" .
 
 mrlx:LifeEventType_CaringResponsibility a mrlx:LifeEventType ;
     skos:prefLabel "Caring responsibility"@en ;
-    skos:definition "Taking on financial responsibility for the care of a family member. Post-MVP."@en .
+    skos:definition "Taking on financial responsibility for the care of a family member. Post-MVP."@en ;
+    skos:notation "CARING" .
+
+
+# ===========================================================================
+# INCOME SOURCE TYPE — SKOS CONCEPT SCHEME
+#
+# A formal SKOS concept scheme for classifying income sources.
+# Uses skos:broader / skos:narrower to express the hierarchy.
+# Top-level concepts use skos:topConceptOf / skos:hasTopConcept.
+# skos:notation provides a stable short code for UI and data exchange.
+# skos:scopeNote clarifies scope for future contributors.
+#
+# Hierarchy:
+#   Employment
+#   BusinessIncome
+#   InterestIncome
+#   Property
+#   Retirement
+#     └── StatePension
+#     └── StateIncome
+#     └── WorkplacePension
+#     └── PrivatePension
+#     └── FourOOneK
+#     └── Other
+#   Investment
+#     └── Annuity
+#     └── Dividends
+#     └── BondIncome
+#     └── FundIncome
+#     └── Other
+#   Other
+# ===========================================================================
+
+mrlx:IncomeSourceTypeScheme a skos:ConceptScheme ;
+    rdfs:label "Income Source Type Scheme"@en ;
+    skos:prefLabel "Income Source Type Scheme"@en ;
+    skos:definition "A controlled vocabulary of income source types used to classify mrl:IncomeSource individuals."@en ;
+    skos:hasTopConcept
+        mrlx:IncomeSourceType_Employment ,
+        mrlx:IncomeSourceType_BusinessIncome ,
+        mrlx:IncomeSourceType_InterestIncome ,
+        mrlx:IncomeSourceType_Property ,
+        mrlx:IncomeSourceType_Retirement ,
+        mrlx:IncomeSourceType_Investment ,
+        mrlx:IncomeSourceType_Other .
+
+
+# --- Top-level concepts ---
+
+mrlx:IncomeSourceType_Employment a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Employment"@en ;
+    skos:definition "Income received as an employee in exchange for work performed for an employer."@en ;
+    skos:notation "EMPLOY" ;
+    skos:scopeNote "Covers salary, wages, and PAYE income. Does not include self-employment or business ownership income."@en .
+
+mrlx:IncomeSourceType_BusinessIncome a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Business income"@en ;
+    skos:definition "Income derived from owning or operating a business, including self-employment and sole trader income."@en ;
+    skos:notation "BUSINESS" ;
+    skos:scopeNote "Includes sole traders, partnerships, and company directors drawing income from their own business. Does not include employment income from a third-party employer."@en .
+
+mrlx:IncomeSourceType_InterestIncome a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Interest income"@en ;
+    skos:definition "Income earned from interest on cash deposits and savings accounts."@en ;
+    skos:notation "INTEREST" ;
+    skos:scopeNote "Covers cash savings interest only. Bond coupon income is classified under Investment > Bond income."@en .
+
+mrlx:IncomeSourceType_Property a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Property"@en ;
+    skos:definition "Rental income received from real estate holdings."@en ;
+    skos:notation "PROPERTY" ;
+    skos:scopeNote "Covers residential and commercial rental income. Property capital gains on sale are modelled as a life event, not an income source."@en .
+
+mrlx:IncomeSourceType_Retirement a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Retirement"@en ;
+    skos:definition "Income from sources consciously set aside or accrued specifically for retirement."@en ;
+    skos:notation "RETIRE" ;
+    skos:scopeNote "The parent concept for all retirement-specific income types. Includes state, workplace, and private pension income. Does not include general investment income drawn in retirement — that is classified under Investment."@en .
+
+mrlx:IncomeSourceType_Investment a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Investment"@en ;
+    skos:definition "Income derived from capital invested in financial instruments, whether short-term or long-term."@en ;
+    skos:notation "INVEST" ;
+    skos:scopeNote "The parent concept for all investment income types. Includes dividends, bond coupons, annuities, and fund distributions. DC pension drawdown in retirement is also classified here."@en .
+
+mrlx:IncomeSourceType_Other a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+    skos:prefLabel "Other"@en ;
+    skos:definition "Income that does not fit any other top-level category."@en ;
+    skos:notation "OTHER" .
+
+
+# --- Retirement subtypes ---
+
+mrlx:IncomeSourceType_Retirement_StatePension a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "State pension"@en ;
+    skos:definition "A regular government payment made to individuals who have reached state pension age, based on National Insurance or equivalent contributions."@en ;
+    skos:notation "RETIRE_STATE_PEN" ;
+    skos:scopeNote "Covers UK new state pension and basic state pension, Australian Age Pension, and equivalent contributory state pension schemes. For non-contributory government income support see StateIncome."@en .
+
+mrlx:IncomeSourceType_Retirement_StateIncome a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "State income"@en ;
+    skos:definition "Government-provided income in retirement that is not a contributory state pension, including means-tested benefits and non-contributory support."@en ;
+    skos:notation "RETIRE_STATE_INC" ;
+    skos:scopeNote "Covers US Social Security (which has both contributory and non-contributory elements), Pension Credit, and similar government retirement support programmes."@en .
+
+mrlx:IncomeSourceType_Retirement_WorkplacePension a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "Workplace pension"@en ;
+    skos:definition "A pension scheme arranged by an employer, to which the employer and/or employee contribute."@en ;
+    skos:notation "RETIRE_WORKPLACE" ;
+    skos:scopeNote "Covers both defined benefit (DB) and defined contribution (DC) workplace schemes, including auto-enrolment pensions. For DC schemes, the pot itself is modelled as a PensionAccount; the income drawn from it uses this type."@en .
+
+mrlx:IncomeSourceType_Retirement_PrivatePension a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "Private pension"@en ;
+    skos:definition "A pension arrangement set up and contributed to by the individual independently of any employer."@en ;
+    skos:notation "RETIRE_PRIVATE" ;
+    skos:scopeNote "Covers UK SIPPs (Self-Invested Personal Pensions), personal pensions, and equivalent self-directed retirement savings vehicles in other jurisdictions."@en .
+
+mrlx:IncomeSourceType_Retirement_FourOOneK a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "401(k)"@en ;
+    skos:definition "A US employer-sponsored defined contribution retirement savings plan under section 401(k) of the US Internal Revenue Code."@en ;
+    skos:notation "RETIRE_401K" ;
+    skos:scopeNote "US-specific. Includes traditional and Roth 401(k) variants. Also used as a proxy for similar employer-sponsored DC plans in other jurisdictions (e.g. Canadian RRSP, Australian Superannuation)."@en .
+
+mrlx:IncomeSourceType_Retirement_Other a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Retirement ;
+    skos:prefLabel "Other retirement income"@en ;
+    skos:definition "Retirement income that does not fit any other retirement subtype."@en ;
+    skos:notation "RETIRE_OTHER" .
+
+
+# --- Investment subtypes ---
+
+mrlx:IncomeSourceType_Investment_Annuity a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Investment ;
+    skos:prefLabel "Annuity"@en ;
+    skos:definition "A financial product providing a guaranteed fixed income stream for a defined period or for life, typically purchased with a lump sum."@en ;
+    skos:notation "INVEST_ANNUITY" ;
+    skos:scopeNote "Covers purchased lifetime annuities and fixed-term annuities. Defined benefit pension income is modelled under Retirement > Workplace pension rather than here, as it is employer-originating rather than purchased."@en .
+
+mrlx:IncomeSourceType_Investment_Dividends a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Investment ;
+    skos:prefLabel "Dividends"@en ;
+    skos:definition "Income received as distributions from equity holdings, including shares and equity funds."@en ;
+    skos:notation "INVEST_DIV" ;
+    skos:scopeNote "Covers dividends from individual shares, equity ETFs, and equity funds. For bond fund distributions see Fund income."@en .
+
+mrlx:IncomeSourceType_Investment_BondIncome a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Investment ;
+    skos:prefLabel "Bond income"@en ;
+    skos:definition "Coupon payments or interest received from bond holdings, including government and corporate bonds."@en ;
+    skos:notation "INVEST_BOND" ;
+    skos:scopeNote "Covers individual bond coupon payments. Cash deposit interest is classified under the top-level Interest income type, not here."@en .
+
+mrlx:IncomeSourceType_Investment_FundIncome a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Investment ;
+    skos:prefLabel "Fund income"@en ;
+    skos:definition "Distributions received from investment funds, ETFs, or unit trusts that do not consist purely of equity dividends."@en ;
+    skos:notation "INVEST_FUND" ;
+    skos:scopeNote "Covers mixed-asset fund distributions and bond fund income. Pure equity fund dividends may alternatively be classified under Dividends."@en .
+
+mrlx:IncomeSourceType_Investment_Other a skos:Concept ;
+    skos:inScheme mrlx:IncomeSourceTypeScheme ;
+    skos:broader mrlx:IncomeSourceType_Investment ;
+    skos:prefLabel "Other investment income"@en ;
+    skos:definition "Investment income that does not fit any other investment subtype."@en ;
+    skos:notation "INVEST_OTHER" .
 
 
 # ===========================================================================
 # REFERENCE INDIVIDUALS  (mrl: prefix)
-# Named individuals for stable shared reference data.
-# rdfs:label used here — these are named entities, not taxonomy concepts.
 # Pattern: mrl:ClassName_Code
+# rdfs:label and rdfs:comment used here — named entities, not taxonomy concepts
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -301,11 +505,23 @@ mrl:Jurisdiction_ZA a mrl:Jurisdiction ;
 # ===========================================================================
 # PERSON
 # Instance pattern: mrl:Person_<uuid>
+# Note: mrl:annualNetIncome removed from Person — income is now modelled
+# via mrl:IncomeSource instances linked to the person.
 # ===========================================================================
 
 mrl:Person a owl:Class ;
     rdfs:label "Person"@en ;
     rdfs:comment "The individual whose retirement is being planned."@en .
+
+mrl:firstName a owl:DatatypeProperty ;
+    rdfs:label "first name"@en ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:string .
+
+mrl:lastName a owl:DatatypeProperty ;
+    rdfs:label "last name"@en ;
+    rdfs:domain mrl:Person ;
+    rdfs:range xsd:string .
 
 mrl:dateOfBirth a owl:DatatypeProperty ;
     rdfs:label "date of birth"@en ;
@@ -318,12 +534,6 @@ mrl:employmentStatus a owl:ObjectProperty ;
     rdfs:domain mrl:Person ;
     rdfs:range mrlx:EmploymentStatus .
 
-mrl:annualNetIncome a owl:DatatypeProperty ;
-    rdfs:label "annual net income"@en ;
-    rdfs:comment "Current annual take-home income after tax, in base currency."@en ;
-    rdfs:domain mrl:Person ;
-    rdfs:range xsd:decimal .
-
 mrl:targetRetirementAge a owl:DatatypeProperty ;
     rdfs:label "target retirement age"@en ;
     rdfs:domain mrl:Person ;
@@ -334,12 +544,6 @@ mrl:lifeExpectancy a owl:DatatypeProperty ;
     rdfs:comment "Planning horizon in years of age."@en ;
     rdfs:domain mrl:Person ;
     rdfs:range xsd:integer .
-
-mrl:incomeGrowthRate a owl:DatatypeProperty ;
-    rdfs:label "income growth rate"@en ;
-    rdfs:comment "Expected annual percentage change in income. Positive = growth, negative = reduction."@en ;
-    rdfs:domain mrl:Person ;
-    rdfs:range xsd:decimal .
 
 mrl:baseCurrency a owl:ObjectProperty ;
     rdfs:label "base currency"@en ;
@@ -355,8 +559,77 @@ mrl:residesIn a owl:ObjectProperty ;
 
 
 # ===========================================================================
+# INCOME SOURCE
+# Instance pattern: mrl:IncomeSource_<uuid>
+#
+# Replaces the flat mrl:annualNetIncome property on mrl:Person.
+# A person may have multiple IncomeSource instances (one per income stream).
+# For MVP only a single Employment income source is captured, but the model
+# supports multiple sources from the outset.
+# ===========================================================================
+
+mrl:IncomeSource a owl:Class ;
+    rdfs:label "Income source"@en ;
+    rdfs:comment "A single source of income for a person. A person may have multiple income sources of different types."@en .
+
+mrl:incomeSourceName a owl:DatatypeProperty ;
+    rdfs:label "income source name"@en ;
+    rdfs:comment "Human-readable label for this income source, e.g. 'Main salary', 'Rental property - Manchester'."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:string .
+
+mrl:incomeSourceType a owl:ObjectProperty ;
+    rdfs:label "income source type"@en ;
+    rdfs:comment "Points to a skos:Concept in mrlx:IncomeSourceTypeScheme."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range skos:Concept .
+
+mrl:incomeAnnualAmount a owl:DatatypeProperty ;
+    rdfs:label "income annual amount"@en ;
+    rdfs:comment "Annual gross or net amount of this income source in the account's currency."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:decimal .
+
+mrl:incomeIsNetOfTax a owl:DatatypeProperty ;
+    rdfs:label "income is net of tax"@en ;
+    rdfs:comment "True if the amount represents take-home pay after tax. False if gross."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:boolean .
+
+mrl:incomeGrowthRate a owl:DatatypeProperty ;
+    rdfs:label "income growth rate"@en ;
+    rdfs:comment "Expected annual percentage change in this income source. Positive = growth, negative = reduction."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:decimal .
+
+mrl:incomeStartYear a owl:DatatypeProperty ;
+    rdfs:label "income start year"@en ;
+    rdfs:comment "The calendar year this income source begins. Null implies it is already active."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:integer .
+
+mrl:incomeEndYear a owl:DatatypeProperty ;
+    rdfs:label "income end year"@en ;
+    rdfs:comment "The calendar year this income source ends, e.g. retirement year for employment income. Null implies it continues indefinitely."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:integer .
+
+mrl:incomeCurrency a owl:ObjectProperty ;
+    rdfs:label "income currency"@en ;
+    rdfs:comment "The currency in which this income is received. Points to a mrl:Currency individual."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range mrl:Currency .
+
+mrl:incomeOwner a owl:ObjectProperty ;
+    rdfs:label "income owner"@en ;
+    rdfs:comment "The person who receives this income."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range mrl:Person .
+
+
+# ===========================================================================
 # ACCOUNT HIERARCHY
-# Instance pattern: mrl:Account_<uuid>  (and subclass instances)
+# Instance pattern: mrl:Account_<uuid>
 # ===========================================================================
 
 mrl:Account a owl:Class ;
@@ -396,13 +669,9 @@ mrl:ownedBy a owl:ObjectProperty ;
     rdfs:domain mrl:Account ;
     rdfs:range mrl:Person .
 
-# ---------------------------------------------------------------------------
-# CashAccount  (MVP)
-# ---------------------------------------------------------------------------
-
 mrl:CashAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Cash Account"@en ;
+    rdfs:label "Cash account"@en ;
     rdfs:comment "A cash deposit account: current account, savings account, cash ISA, or similar."@en .
 
 mrl:annualInterestRate a owl:DatatypeProperty ;
@@ -417,28 +686,24 @@ mrl:isSpendingAccount a owl:DatatypeProperty ;
     rdfs:domain mrl:CashAccount ;
     rdfs:range xsd:boolean .
 
-# ---------------------------------------------------------------------------
-# Post-MVP subclasses
-# ---------------------------------------------------------------------------
-
 mrl:InvestmentAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Investment Account"@en ;
+    rdfs:label "Investment account"@en ;
     rdfs:comment "Stocks, funds, bonds, or other investment holdings. Post-MVP."@en .
 
 mrl:PensionAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Pension Account"@en ;
+    rdfs:label "Pension account"@en ;
     rdfs:comment "Defined contribution or defined benefit pension. Post-MVP."@en .
 
 mrl:PropertyAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Property Asset"@en ;
+    rdfs:label "Property asset"@en ;
     rdfs:comment "Real estate holdings. Post-MVP."@en .
 
 mrl:OtherAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Other Asset"@en ;
+    rdfs:label "Other asset"@en ;
     rdfs:comment "Other saleable assets: vehicles, business interests, art etc. Post-MVP."@en .
 
 
@@ -448,7 +713,7 @@ mrl:OtherAsset a owl:Class ;
 # ===========================================================================
 
 mrl:BudgetLine a owl:Class ;
-    rdfs:label "Budget Line"@en ;
+    rdfs:label "Budget line"@en ;
     rdfs:comment "A single line item in the user's budget."@en .
 
 mrl:budgetLineName a owl:DatatypeProperty ;
@@ -492,7 +757,7 @@ mrl:budgetOwner a owl:ObjectProperty ;
 # ===========================================================================
 
 mrl:LifeEvent a owl:Class ;
-    rdfs:label "Life Event"@en ;
+    rdfs:label "Life event"@en ;
     rdfs:comment "A significant future event with a financial impact."@en .
 
 mrl:lifeEventName a owl:DatatypeProperty ;
@@ -535,7 +800,7 @@ mrl:lifeEventOwner a owl:ObjectProperty ;
 # ===========================================================================
 
 mrl:ProjectionSettings a owl:Class ;
-    rdfs:label "Projection Settings"@en ;
+    rdfs:label "Projection settings"@en ;
     rdfs:comment "Global assumptions used when calculating the retirement projection."@en .
 
 mrl:inflationRate a owl:DatatypeProperty ;

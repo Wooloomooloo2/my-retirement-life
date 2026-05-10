@@ -25,7 +25,7 @@ class Settings:
         custom = os.getenv("DATA_DIR", "").strip()
         if custom:
             return Path(custom)
-        return Path(user_data_dir("MyRetirementLife"))
+        return Path(user_data_dir("MyRetirementLife", appauthor=False))
 
     @property
     def store_path(self) -> Path:
