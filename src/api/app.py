@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 from src.config import settings
-from src.api.routes import profile
+from src.api.routes import profile, accounts
 
 app = FastAPI(title=settings.app_name)
 
@@ -19,6 +19,7 @@ templates = Jinja2Templates(directory=settings.templates_dir)
 
 # Register routers
 app.include_router(profile.router)
+app.include_router(accounts.router)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -33,13 +34,11 @@ async def dashboard(request: Request):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
     return {"status": "ok", "app": settings.app_name}
 
 
 @app.get("/ontology/status")
 async def ontology_status():
-    """Show how many triples are in each named graph."""
     from src.store.graph import store
     from src.store.ontology_loader import ONTOLOGY_GRAPH, ontology_triple_count
     ontology_count = ontology_triple_count(store.store)
@@ -49,9 +48,10 @@ async def ontology_status():
         "ontology_triples": ontology_count,
         "total_triples": total_count
     }
+
+
 @app.get("/debug/data")
 async def debug_data():
-    """Show all triples in the user data graph."""
     from src.store.graph import store, DATA_GRAPH
     quads = list(store.store.quads_for_pattern(None, None, None, DATA_GRAPH))
     triples = [

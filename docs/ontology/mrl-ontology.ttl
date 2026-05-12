@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.4.0" .
+    owl:versionInfo "0.6.0" .
 
 
 # ===========================================================================
@@ -109,6 +109,83 @@ mrlx:LifeEventType_CaringResponsibility a mrlx:LifeEventType ;
     skos:prefLabel "Caring responsibility"@en ;
     skos:definition "Taking on financial responsibility for the care of a family member. Post-MVP."@en ;
     skos:notation "CARING" .
+
+
+# ===========================================================================
+# ACCOUNT TYPE — SKOS CONCEPT SCHEME
+#
+# A formal SKOS concept scheme for classifying account types.
+# CashAccountType is the first top concept; InvestmentAccountType,
+# PensionAccountType etc. will be added as sibling top concepts in
+# future releases as those asset classes are introduced.
+#
+# Hierarchy:
+#   CashAccountType (top concept)
+#     └── Current
+#     └── Savings
+#     └── FixedTerm
+#     └── TaxAdvantaged
+#     └── Other
+# ===========================================================================
+
+mrlx:AccountTypeScheme a skos:ConceptScheme ;
+    rdfs:label "Account Type Scheme"@en ;
+    skos:prefLabel "Account Type Scheme"@en ;
+    skos:definition "A controlled vocabulary of account types used to classify mrl:Account individuals."@en ;
+    skos:hasTopConcept mrlx:CashAccountType .
+
+
+# --- CashAccountType top concept ---
+
+mrlx:CashAccountType a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:topConceptOf mrlx:AccountTypeScheme ;
+    skos:prefLabel "Cash account"@en ;
+    skos:definition "The parent concept for all cash deposit account types."@en ;
+    skos:notation "CASH" ;
+    skos:scopeNote "Covers all accounts holding cash deposits. Does not include investment, pension, or property accounts — those will be added as sibling top concepts in future releases."@en .
+
+
+# --- CashAccountType subtypes ---
+
+mrlx:CashAccountType_Current a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CashAccountType ;
+    skos:prefLabel "Current account"@en ;
+    skos:definition "An everyday transaction account used for regular income and spending."@en ;
+    skos:notation "CASH_CURRENT" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK current accounts, US checking accounts, and equivalent everyday transaction accounts in other jurisdictions."@en .
+
+mrlx:CashAccountType_Savings a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CashAccountType ;
+    skos:prefLabel "Savings account"@en ;
+    skos:definition "An easy or instant access savings account earning interest."@en ;
+    skos:notation "CASH_SAVINGS" ;
+    skos:scopeNote "Covers easy access and instant access savings accounts. For fixed term or notice accounts see Fixed term deposit."@en .
+
+mrlx:CashAccountType_FixedTerm a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CashAccountType ;
+    skos:prefLabel "Fixed term deposit"@en ;
+    skos:definition "A cash account where funds are locked for a fixed term in exchange for a higher interest rate."@en ;
+    skos:notation "CASH_FIXED" ;
+    skos:scopeNote "Covers fixed term deposits, notice accounts, and cash bonds. The interest rate stored on the account represents the rate at the time of recording. Rate history will be modelled in a future release."@en .
+
+mrlx:CashAccountType_TaxAdvantaged a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CashAccountType ;
+    skos:prefLabel "Tax-advantaged account"@en ;
+    skos:definition "A cash account held within a tax-sheltered wrapper, providing tax-free or tax-deferred growth."@en ;
+    skos:notation "CASH_TAX_ADV" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK Cash ISAs, Canadian TFSAs, US Roth IRA cash holdings, and equivalent tax-advantaged cash vehicles in other jurisdictions."@en .
+
+mrlx:CashAccountType_Other a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CashAccountType ;
+    skos:prefLabel "Other cash account"@en ;
+    skos:definition "A cash account that does not fit any other cash account subtype."@en ;
+    skos:notation "CASH_OTHER" .
 
 
 # ===========================================================================
@@ -626,6 +703,12 @@ mrl:incomeOwner a owl:ObjectProperty ;
     rdfs:domain mrl:IncomeSource ;
     rdfs:range mrl:Person .
 
+mrl:creditedToAccount a owl:ObjectProperty ;
+    rdfs:label "credited to account"@en ;
+    rdfs:comment "The account to which this income stream is credited. For example, interest income credited to a specific savings account, or dividends credited to an investment account. MVP does not use this — income is applied to total pot. Post-MVP uses it to credit income to specific accounts and model account-level growth."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range mrl:Account .
+
 
 # ===========================================================================
 # ACCOUNT HIERARCHY
@@ -659,10 +742,28 @@ mrl:accountJurisdiction a owl:ObjectProperty ;
     rdfs:domain mrl:Account ;
     rdfs:range mrl:Jurisdiction .
 
+mrl:accountType a owl:ObjectProperty ;
+    rdfs:label "account type"@en ;
+    rdfs:comment "Points to a skos:Concept in mrlx:AccountTypeScheme classifying the type of account."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range skos:Concept .
+
 mrl:accountNotes a owl:DatatypeProperty ;
     rdfs:label "account notes"@en ;
     rdfs:domain mrl:Account ;
     rdfs:range xsd:string .
+
+mrl:balanceDate a owl:DatatypeProperty ;
+    rdfs:label "balance date"@en ;
+    rdfs:comment "The date on which the account balance was recorded. Defaults to today but should be set explicitly so projections calculate from a known point in time."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:date .
+
+mrl:drawdownPriority a owl:DatatypeProperty ;
+    rdfs:label "drawdown priority"@en ;
+    rdfs:comment "Integer controlling the order in which accounts are drawn down in retirement. Lower number = drawn first. MVP draws all accounts proportionally and ignores this value. Post-MVP uses it to support user-defined drawdown ordering."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:integer .
 
 mrl:ownedBy a owl:ObjectProperty ;
     rdfs:label "owned by"@en ;
@@ -676,15 +777,9 @@ mrl:CashAccount a owl:Class ;
 
 mrl:annualInterestRate a owl:DatatypeProperty ;
     rdfs:label "annual interest rate"@en ;
-    rdfs:comment "Annual interest rate as a percentage, e.g. 4.5 for 4.5%."@en ;
+    rdfs:comment "Annual interest rate as a percentage, e.g. 4.5 for 4.5%. Represents the current rate only — rate history is a future feature. Users should update this value when their rate changes."@en ;
     rdfs:domain mrl:CashAccount ;
     rdfs:range xsd:decimal .
-
-mrl:isSpendingAccount a owl:DatatypeProperty ;
-    rdfs:label "is spending account"@en ;
-    rdfs:comment "True if retirement spending is drawn from this account."@en ;
-    rdfs:domain mrl:CashAccount ;
-    rdfs:range xsd:boolean .
 
 mrl:InvestmentAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;

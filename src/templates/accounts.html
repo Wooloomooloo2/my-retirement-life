@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Accounts — {{ app_name }}{% endblock %}
+{% block page_title %}Cash accounts{% endblock %}
+{% block page_subtitle %}Your savings and current accounts{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Account saved successfully.</span>
+</div>
+{% endif %}
+
+{% if deleted %}
+<div class="alert alert-info mb-4">
+    <i class="ti ti-trash"></i>
+    <span>Account deleted.</span>
+</div>
+{% endif %}
+
+<!-- Existing accounts list -->
+{% if accounts %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-wallet text-base-content/40" aria-hidden="true"></i>
+            Your accounts
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr class="text-xs uppercase tracking-wide text-base-content/40">
+                        <th>Account name</th>
+                        <th>Type</th>
+                        <th>Balance</th>
+                        <th>Balance date</th>
+                        <th>Interest rate</th>
+                        <th>Currency</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts %}
+                    <tr class="hover {% if edit_account and edit_account.n == account.n %}bg-base-200{% endif %}">
+                        <td class="font-medium">{{ account.name }}</td>
+                        <td><span class="badge badge-ghost badge-sm">{{ account.accountType.replace("CashAccountType_", "") if account.accountType else "—" }}</span></td>
+                        <td>{{ account.currencySymbol }}{{ "{:,.2f}".format(account.balance | float) }}</td>
+                        <td class="text-base-content/60 text-xs">{{ account.balanceDate }}</td>
+                        <td>{{ account.interestRate }}%</td>
+                        <td>
+                            <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
+                        </td>
+                        <td class="text-right">
+                            <div class="flex gap-1 justify-end">
+                                <a href="/accounts/{{ account.n }}/edit"
+                                   class="btn btn-ghost btn-xs gap-1">
+                                    <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
+                                </a>
+                                <form method="post" action="/accounts/{{ account.n }}/delete"
+                                      onsubmit="return confirm('Delete {{ account.name }}?')">
+                                    <button type="submit" class="btn btn-ghost btn-xs text-error gap-1">
+                                        <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="font-medium border-t border-base-200">
+                        <td>Total</td>
+                        <td colspan="5" class="text-base-content/60 text-xs">
+                            {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
+                            all contribute equally to retirement drawdown
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add / Edit form -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
+            {% if edit_account %}Edit account — {{ edit_account.name }}{% else %}Add a cash account{% endif %}
+        </h3>
+
+        <form method="post"
+              action="{% if edit_account %}/accounts/{{ edit_account.n }}/edit{% else %}/accounts{% endif %}">
+
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account name</span>
+                    </label>
+                    <input type="text" name="accountName" required
+                        value="{{ edit_account.name if edit_account else '' }}"
+                        placeholder="e.g. Barclays ISA, HSBC Current Account"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
+                    </label>
+                    <select name="accountType" class="select select-bordered select-sm w-full">
+                        <option value="CashAccountType_Current" {% if edit_account and edit_account.accountType == "CashAccountType_Current" %}selected{% elif not edit_account %}selected{% endif %}>Current account</option>
+                        <option value="CashAccountType_Savings" {% if edit_account and edit_account.accountType == "CashAccountType_Savings" %}selected{% endif %}>Savings account</option>
+                        <option value="CashAccountType_FixedTerm" {% if edit_account and edit_account.accountType == "CashAccountType_FixedTerm" %}selected{% endif %}>Fixed term deposit</option>
+                        <option value="CashAccountType_TaxAdvantaged" {% if edit_account and edit_account.accountType == "CashAccountType_TaxAdvantaged" %}selected{% endif %}>Tax-advantaged account</option>
+                        <option value="CashAccountType_Other" {% if edit_account and edit_account.accountType == "CashAccountType_Other" %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Current balance</span>
+                    </label>
+                    <input type="number" name="accountBalance" required min="0" step="0.01"
+                        value="{{ edit_account.balance if edit_account else '' }}"
+                        placeholder="e.g. 25000"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Balance date</span>
+                    </label>
+                    <input type="date" name="balanceDate" required
+                        value="{{ edit_account.balanceDate if edit_account else today }}"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">When this balance was recorded</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Currency</span>
+                    </label>
+                    <select name="accountCurrency" class="select select-bordered select-sm w-full">
+                        <option value="">Select currency...</option>
+                        {% for c in currencies %}
+                        <option value="{{ c.local }}"
+                            {% if edit_account and edit_account.currency == c.local %}selected
+                            {% elif not edit_account and c.code == 'GBP' %}selected{% endif %}>
+                            {{ c.code }} — {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual interest rate %</span>
+                    </label>
+                    <input type="number" name="annualInterestRate" step="0.01" min="0" max="30"
+                        value="{{ edit_account.interestRate if edit_account else '0' }}"
+                        placeholder="e.g. 4.5"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Leave 0 if no interest</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Country / jurisdiction</span>
+                    </label>
+                    <select name="accountJurisdiction" class="select select-bordered select-sm w-full">
+                        <option value="">Select country...</option>
+                        {% for j in jurisdictions %}
+                        <option value="{{ j.local }}"
+                            {% if edit_account and edit_account.jurisdiction == j.local %}selected
+                            {% elif not edit_account and j.code == 'GB' %}selected{% endif %}>
+                            {{ j.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Notes <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="text" name="accountNotes"
+                        value="{{ edit_account.notes if edit_account else '' }}"
+                        placeholder="e.g. Instant access, linked to main current account"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+            </div>
+
+            <div class="flex justify-between items-center">
+                {% if edit_account %}
+                <a href="/accounts" class="btn btn-ghost btn-sm">Cancel</a>
+                {% else %}
+                <span></span>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    {% if edit_account %}Save changes{% else %}Add account{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}
