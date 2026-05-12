@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Profile — {{ app_name }}{% endblock %}
+{% block page_title %}Your profile{% endblock %}
+{% block page_subtitle %}{% if is_new %}Set up your profile to get started{% else %}Edit your personal details{% endif %}{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Profile saved successfully.</span>
+</div>
+{% endif %}
+
+<!-- Setup progress steps -->
+<div class="flex gap-2 mb-6">
+    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-[#EEEDFE] text-[#534AB7] border border-[#AFA9EC]">
+        <i class="ti ti-user text-sm" aria-hidden="true"></i> Profile
+    </div>
+    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
+        <i class="ti ti-wallet text-sm" aria-hidden="true"></i> Accounts
+    </div>
+    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
+        <i class="ti ti-chart-bar text-sm" aria-hidden="true"></i> Budget
+    </div>
+    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
+        <i class="ti ti-heart text-sm" aria-hidden="true"></i> Life events
+    </div>
+</div>
+
+<form method="post" action="/profile">
+
+    <!-- Personal details -->
+    <div class="card bg-base-100 shadow-sm mb-4">
+        <div class="card-body p-4">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-user text-base-content/40" aria-hidden="true"></i>
+                Personal details
+            </h3>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">First name</span>
+                    </label>
+                    <input type="text" name="firstName" required
+                        value="{{ profile.firstName if profile else '' }}"
+                        placeholder="e.g. Mark"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Last name</span>
+                    </label>
+                    <input type="text" name="lastName" required
+                        value="{{ profile.lastName if profile else '' }}"
+                        placeholder="e.g. Hall"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Date of birth</span>
+                    </label>
+                    <input type="date" name="dateOfBirth" required
+                        value="{{ profile.dateOfBirth if profile else '' }}"
+                        class="input input-bordered input-sm w-full"
+                        id="dob" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40" id="age-display"></span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Employment status</span>
+                    </label>
+                    <select name="employmentStatus" class="select select-bordered select-sm w-full">
+                        <option value="EmploymentStatus_Employed"
+                            {% if profile and profile.employmentStatus == 'EmploymentStatus_Employed' %}selected{% endif %}>
+                            Employed
+                        </option>
+                        <option value="EmploymentStatus_SelfEmployed"
+                            {% if profile and profile.employmentStatus == 'EmploymentStatus_SelfEmployed' %}selected{% endif %}>
+                            Self-employed
+                        </option>
+                        <option value="EmploymentStatus_NotWorking"
+                            {% if profile and profile.employmentStatus == 'EmploymentStatus_NotWorking' %}selected{% endif %}>
+                            Not working
+                        </option>
+                        <option value="EmploymentStatus_Retired"
+                            {% if profile and profile.employmentStatus == 'EmploymentStatus_Retired' %}selected{% endif %}>
+                            Retired
+                        </option>
+                    </select>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Retirement goals -->
+    <div class="card bg-base-100 shadow-sm mb-4">
+        <div class="card-body p-4">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-target text-base-content/40" aria-hidden="true"></i>
+                Retirement goals
+            </h3>
+            <div class="grid grid-cols-3 gap-x-4 gap-y-3">
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Target retirement age</span>
+                    </label>
+                    <input type="number" name="targetRetirementAge" required min="40" max="90"
+                        value="{{ profile.targetRetirementAge if profile else '' }}"
+                        placeholder="e.g. 67"
+                        class="input input-bordered input-sm w-full"
+                        id="retirement-age" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40" id="years-to-retirement"></span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Life expectancy</span>
+                    </label>
+                    <input type="number" name="lifeExpectancy" required min="50" max="110"
+                        value="{{ profile.lifeExpectancy if profile else '' }}"
+                        placeholder="e.g. 85"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Planning horizon</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Income growth rate %</span>
+                    </label>
+                    <input type="number" name="incomeGrowthRate" step="0.1" min="-10" max="20"
+                        value="{{ income.growthRate if income else '0' }}"
+                        placeholder="e.g. 2.5"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Annual % change</span>
+                    </label>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Income & currency -->
+    <div class="card bg-base-100 shadow-sm mb-4">
+        <div class="card-body p-4">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-wallet text-base-content/40" aria-hidden="true"></i>
+                Income &amp; currency
+            </h3>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual net income</span>
+                    </label>
+                    <input type="number" name="annualIncome" required min="0" step="1"
+                        value="{{ income.annualAmount if income else '' }}"
+                        placeholder="e.g. 45000"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Take-home pay after tax</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Base currency</span>
+                    </label>
+                    <select name="baseCurrency" class="select select-bordered select-sm w-full">
+                        <option value="">Select currency...</option>
+                        {% for c in currencies %}
+                        <option value="{{ c.local }}"
+                            {% if profile and profile.baseCurrency == c.local %}selected{% endif %}>
+                            {{ c.code }} — {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Projections shown in this currency</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Country / jurisdiction</span>
+                    </label>
+                    <select name="jurisdiction" class="select select-bordered select-sm w-full">
+                        <option value="">Select country...</option>
+                        {% for j in jurisdictions %}
+                        <option value="{{ j.local }}"
+                            {% if profile and profile.jurisdiction == j.local %}selected{% endif %}>
+                            {{ j.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Tax and pension rules</span>
+                    </label>
+                </div>
+
+                <div class="form-control justify-end">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Income is net of tax</span>
+                    </label>
+                    <div class="flex items-center gap-3 h-8">
+                        <input type="checkbox" name="incomeIsNetOfTax" value="true"
+                            {% if not income or income.isNetOfTax == 'true' %}checked{% endif %}
+                            class="checkbox checkbox-sm checkbox-primary" />
+                        <span class="text-xs text-base-content/60">Take-home pay (after tax)</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex justify-end gap-2">
+        <button type="submit" class="btn btn-primary btn-sm gap-1">
+            <i class="ti ti-device-floppy" aria-hidden="true"></i>
+            Save profile
+        </button>
+    </div>
+
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function updateAgeDisplay() {
+        const dob = document.getElementById('dob').value;
+        const retAge = parseInt(document.getElementById('retirement-age').value);
+        if (!dob) return;
+        const today = new Date();
+        const birth = new Date(dob);
+        const age = Math.floor((today - birth) / (365.25 * 24 * 60 * 60 * 1000));
+        document.getElementById('age-display').textContent = `Current age: ${age}`;
+        if (retAge && age) {
+            const years = retAge - age;
+            document.getElementById('years-to-retirement').textContent =
+                years > 0 ? `${years} years to retirement` : years === 0 ? 'Retirement year' : 'Already retired';
+        }
+    }
+    document.getElementById('dob').addEventListener('change', updateAgeDisplay);
+    document.getElementById('retirement-age').addEventListener('input', updateAgeDisplay);
+    updateAgeDisplay();
+</script>
+{% endblock %}

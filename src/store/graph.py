@@ -9,7 +9,7 @@ Named graphs:
 import pyoxigraph as og
 from src.config import settings
 
-# Named graph for user data — kept separate from the ontology graph
+MRL = "https://myretirementlife.app/ontology#"
 DATA_GRAPH = og.NamedNode("https://myretirementlife.app/data/graph")
 
 
@@ -28,7 +28,7 @@ class RetirementStore:
         """Direct access to the underlying Oxigraph store (for the loader)."""
         return self._store
 
-    def query(self, sparql: str) -> og.QuerySolutions:
+    def query(self, sparql: str):
         """Execute a SPARQL SELECT query."""
         return self._store.query(sparql)
 
@@ -36,19 +36,58 @@ class RetirementStore:
         """Execute a SPARQL UPDATE query."""
         self._store.update(sparql)
 
-    def add(self, subject: str, predicate: str, obj: str,
+    def add(self, subject: str, predicate: str, obj,
             graph: og.NamedNode = None) -> None:
         """
         Add a single triple to the store.
         Defaults to the user data graph.
-        Object is treated as a NamedNode if it starts with http/https,
-        otherwise as a plain literal.
+        obj can be a pre-built Oxigraph term, or a string (auto-detected
+        as NamedNode if starts with http/https, otherwise Literal).
         """
         s = og.NamedNode(subject)
         p = og.NamedNode(predicate)
-        o = og.NamedNode(obj) if obj.startswith(("http://", "https://")) else og.Literal(obj)
+        if isinstance(obj, (og.NamedNode, og.Literal, og.BlankNode)):
+            o = obj
+        elif isinstance(obj, str) and obj.startswith(("http://", "https://")):
+            o = og.NamedNode(obj)
+        else:
+            o = og.Literal(str(obj))
         g = graph or DATA_GRAPH
         self._store.add(og.Quad(s, p, o, g))
+
+    def next_iri(self, class_name: str) -> str:
+        """
+        Generate the next IRI for a given class following the
+        mrl:ClassName_N pattern (ADR-006).
+
+        Queries the data graph for the highest existing N for the class
+        and returns N+1. Returns mrl:ClassName_1 if no instances exist.
+
+        Args:
+            class_name: The local class name, e.g. 'Person', 'CashAccount'
+
+        Returns:
+            Full IRI string, e.g. 'https://myretirementlife.app/ontology#Person_1'
+        """
+        sparql = f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+            SELECT (MAX(?n) AS ?maxN)
+            WHERE {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    ?s a mrl:{class_name} .
+                    BIND(xsd:integer(STRAFTER(STR(?s), "{class_name}_")) AS ?n)
+                }}
+            }}
+        """
+        results = list(self._store.query(sparql))
+        max_n = 0
+        if results:
+            val = results[0].get("maxN")
+            if val is not None and str(val.value).isdigit():
+                max_n = int(val.value)
+        return f"{MRL}{class_name}_{max_n + 1}"
 
     def __len__(self) -> int:
         """Return the total number of triples across all graphs."""
