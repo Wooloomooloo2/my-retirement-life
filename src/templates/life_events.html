@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Life events — {{ app_name }}{% endblock %}
+{% block page_title %}Life events{% endblock %}
+{% block page_subtitle %}Significant future events that affect your finances{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Life event saved.</span>
+</div>
+{% endif %}
+
+{% if deleted %}
+<div class="alert alert-info mb-4">
+    <i class="ti ti-trash"></i>
+    <span>Life event deleted.</span>
+</div>
+{% endif %}
+
+<!-- Events timeline table -->
+{% if events %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-calendar-event text-base-content/40" aria-hidden="true"></i>
+            Planned life events
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr class="text-xs uppercase tracking-wide text-base-content/40">
+                        <th>Year</th>
+                        <th>Event</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for event in events %}
+                    <tr class="hover {% if edit_event and edit_event.n == event.n %}bg-base-200{% endif %}">
+                        <td class="font-medium text-base-content/60">{{ event.year }}</td>
+                        <td class="font-medium">{{ event.name }}</td>
+                        <td>
+                            {% if event.eventType == 'LifeEventType_Windfall' %}
+                                <span class="badge badge-success badge-sm badge-outline">{{ event.eventTypeLabel }}</span>
+                            {% else %}
+                                <span class="badge badge-ghost badge-sm">{{ event.eventTypeLabel }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="{% if event.amount | float < 0 %}text-success{% else %}text-error{% endif %} font-medium">
+                            {% if event.amount | float < 0 %}
+                                +£{{ "{:,.0f}".format(event.amount | float | abs) }}
+                            {% else %}
+                                −£{{ "{:,.0f}".format(event.amount | float) }}
+                            {% endif %}
+                        </td>
+                        <td class="text-xs text-base-content/50">{{ event.notes if event.notes else '—' }}</td>
+                        <td class="text-right">
+                            <div class="flex gap-1 justify-end">
+                                <a href="/life-events/{{ event.n }}/edit"
+                                   class="btn btn-ghost btn-xs gap-1">
+                                    <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
+                                </a>
+                                <form method="post" action="/life-events/{{ event.n }}/delete"
+                                      onsubmit="return confirm('Delete {{ event.name }}?')">
+                                    <button type="submit" class="btn btn-ghost btn-xs text-error gap-1">
+                                        <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-xs text-base-content/40 mt-3">
+            Positive amounts are costs (reduce your balance). Negative amounts are receipts such as windfalls (increase your balance).
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add / Edit form -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
+            {% if edit_event %}Edit — {{ edit_event.name }}{% else %}Add a life event{% endif %}
+        </h3>
+
+        <form method="post"
+              action="{% if edit_event %}/life-events/{{ edit_event.n }}/edit{% else %}/life-events{% endif %}">
+
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Event name</span>
+                    </label>
+                    <input type="text" name="lifeEventName" required
+                        value="{{ edit_event.name if edit_event else '' }}"
+                        placeholder="e.g. New car, Help child with deposit"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
+                    </label>
+                    <select name="lifeEventType" class="select select-bordered select-sm w-full">
+                        {% for key, label in event_type_options.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_event and edit_event.eventType == key %}selected
+                            {% elif not edit_event and key == 'LifeEventType_LargeExpenditure' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Year</span>
+                    </label>
+                    <input type="number" name="lifeEventYear" required
+                        min="2024" max="2100"
+                        value="{{ edit_event.year if edit_event else '' }}"
+                        placeholder="e.g. 2028"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Calendar year the event occurs</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
+                    </label>
+                    <input type="number" name="lifeEventAmount" required
+                        step="1"
+                        value="{{ edit_event.amount if edit_event else '' }}"
+                        placeholder="e.g. 15000"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Positive = cost, negative = receipt (windfall)</span>
+                    </label>
+                </div>
+
+                <div class="form-control col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Notes <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="text" name="lifeEventNotes"
+                        value="{{ edit_event.notes if edit_event else '' }}"
+                        placeholder="e.g. Replace family car, contribution to daughter's first home"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+            </div>
+
+            <div class="flex justify-between items-center">
+                {% if edit_event %}
+                <a href="/life-events" class="btn btn-ghost btn-sm">Cancel</a>
+                {% else %}
+                <span></span>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    {% if edit_event %}Save changes{% else %}Add life event{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}

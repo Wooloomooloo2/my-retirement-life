@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Projection — {{ app_name }}{% endblock %}
+{% block page_title %}Retirement projection{% endblock %}
+{% block page_subtitle %}Your financial trajectory to life expectancy{% endblock %}
+
+{% block content %}
+
+{% if not projection %}
+<div class="alert alert-warning mb-6">
+    <i class="ti ti-alert-triangle"></i>
+    <div>
+        <p class="font-medium">Profile incomplete</p>
+        <p class="text-sm">Please complete your <a href="/profile" class="underline">profile</a> and add at least one <a href="/accounts" class="underline">cash account</a> to run a projection.</p>
+    </div>
+</div>
+
+{% else %}
+
+<!-- Confidence score -->
+<div class="card mb-6 shadow-sm
+    {% if projection.confidence == 'green' %}bg-success/10 border border-success/30
+    {% elif projection.confidence == 'amber' %}bg-warning/10 border border-warning/30
+    {% else %}bg-error/10 border border-error/30{% endif %}">
+    <div class="card-body p-4 flex flex-row items-center gap-4">
+        <div class="text-4xl">
+            {% if projection.confidence == 'green' %}✅
+            {% elif projection.confidence == 'amber' %}⚠️
+            {% else %}🔴{% endif %}
+        </div>
+        <div>
+            <p class="font-semibold text-base
+                {% if projection.confidence == 'green' %}text-success
+                {% elif projection.confidence == 'amber' %}text-warning
+                {% else %}text-error{% endif %}">
+                {{ projection.confidence_label }}
+            </p>
+            <p class="text-sm text-base-content/70">{{ projection.confidence_message }}</p>
+        </div>
+        <div class="ml-auto text-right text-xs text-base-content/50">
+            <p>Retirement: {{ projection.retirement_year }}</p>
+            <p>Life expectancy: {{ projection.end_year }}</p>
+            <p>Avg interest rate: {{ projection.weighted_rate }}%</p>
+        </div>
+    </div>
+</div>
+
+<!-- Summary metrics -->
+<div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Opening balance</p>
+            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(projection.opening_balance) }}</p>
+            <p class="text-xs text-base-content/40 mt-1">Today's total savings</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">At retirement</p>
+            {% set retirement_balance = projection.years | selectattr('is_retirement_year') | list %}
+            <p class="text-xl font-semibold mt-1">
+                {% if retirement_balance %}
+                    £{{ "{:,.0f}".format(retirement_balance[0].balance) }}
+                {% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.retirement_year }}</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Final balance</p>
+            <p class="text-xl font-semibold mt-1
+                {% if projection.final_balance >= 0 %}text-success{% else %}text-error{% endif %}">
+                {% if projection.final_balance >= 0 %}
+                    £{{ "{:,.0f}".format(projection.final_balance) }}
+                {% else %}
+                    −£{{ "{:,.0f}".format(projection.final_balance | abs) }}
+                {% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.end_year }}</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Runs out</p>
+            <p class="text-xl font-semibold mt-1
+                {% if not projection.runs_out_year %}text-success{% else %}text-error{% endif %}">
+                {% if projection.runs_out_year %}{{ projection.runs_out_year }}{% else %}Never{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">
+                {% if projection.runs_out_year %}Savings exhausted{% else %}Within life expectancy{% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Main chart -->
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+            <span class="flex items-center gap-2">
+                <i class="ti ti-chart-bar text-base-content/40" aria-hidden="true"></i>
+                Annual cashflow &amp; balance
+            </span>
+            <span class="text-xs text-base-content/40 font-normal">
+                Bars = annual spending by type &nbsp;|&nbsp; Line = running balance
+            </span>
+        </h3>
+        <canvas id="projectionChart" height="300"></canvas>
+    </div>
+</div>
+
+<!-- Assumptions -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-settings text-base-content/40" aria-hidden="true"></i>
+            Projection assumptions
+        </h3>
+        {% if settings_saved %}
+        <div class="alert alert-success mb-4 py-2 text-sm">
+            <i class="ti ti-circle-check"></i> Assumptions saved — projection updated.
+        </div>
+        {% endif %}
+        <form method="post" action="/projection/settings">
+            <div class="flex items-end gap-4">
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                            Default inflation rate %
+                        </span>
+                    </label>
+                    <input type="number" name="inflationRate"
+                        step="0.1" min="0" max="20"
+                        value="{{ inflation_rate }}"
+                        class="input input-bordered input-sm w-40" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">
+                            Applied to budget lines with no growth rate set
+                        </span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline mb-6">
+                    Update projection
+                </button>
+            </div>
+        </form>
+        <div class="text-xs text-base-content/40 mt-2 space-y-1">
+            <p>⚡ Interest rate used: {{ projection.weighted_rate }}% (weighted average across all accounts)</p>
+            <p>📌 Individual account interest tracking is a planned future feature</p>
+            <p>📌 Budget lines with a growth rate set use that rate; others use the default inflation rate above</p>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if projection %}
+<script>
+const years = {{ projection.years | map(attribute='year') | list | tojson }};
+const balances = {{ projection.years | map(attribute='balance') | list | tojson }};
+const mandatory = {{ projection.years | map(attribute='mandatory') | list | tojson }};
+const discretionary = {{ projection.years | map(attribute='discretionary') | list | tojson }};
+const loans = {{ projection.years | map(attribute='loans') | list | tojson }};
+const lifeEventCosts = {{ projection.years | map(attribute='life_event_costs') | list | tojson }};
+const income = {{ projection.years | map(attribute='income') | list | tojson }};
+const retirementYear = {{ projection.retirement_year }};
+
+const ctx = document.getElementById('projectionChart').getContext('2d');
+
+// Find retirement year index for annotation
+const retirementIdx = years.indexOf(retirementYear);
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: years,
+        datasets: [
+            {
+                label: 'Mandatory spending',
+                data: mandatory,
+                backgroundColor: 'rgba(239,68,68,0.7)',
+                stack: 'spending',
+                order: 2,
+            },
+            {
+                label: 'Discretionary spending',
+                data: discretionary,
+                backgroundColor: 'rgba(245,158,11,0.7)',
+                stack: 'spending',
+                order: 2,
+            },
+            {
+                label: 'Loan repayments',
+                data: loans,
+                backgroundColor: 'rgba(59,130,246,0.7)',
+                stack: 'spending',
+                order: 2,
+            },
+            {
+                label: 'Life event costs',
+                data: lifeEventCosts,
+                backgroundColor: 'rgba(168,85,247,0.7)',
+                stack: 'spending',
+                order: 2,
+            },
+            {
+                label: 'Income',
+                data: income,
+                backgroundColor: 'rgba(34,197,94,0.15)',
+                borderColor: 'rgba(34,197,94,0.6)',
+                borderWidth: 1,
+                stack: 'income',
+                order: 2,
+            },
+            {
+                label: 'Balance',
+                data: balances,
+                type: 'line',
+                borderColor: '#534AB7',
+                backgroundColor: 'rgba(83,74,183,0.08)',
+                borderWidth: 2,
+                fill: true,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                tension: 0.3,
+                yAxisID: 'yBalance',
+                order: 1,
+            },
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { font: { size: 11 }, boxWidth: 12, padding: 16 }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(ctx) {
+                        const val = ctx.parsed.y;
+                        return ` ${ctx.dataset.label}: £${Math.abs(val).toLocaleString('en-GB')}`;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                stacked: true,
+                ticks: {
+                    font: { size: 10 },
+                    maxTicksLimit: 20,
+                    callback: function(val, index) {
+                        const year = years[index];
+                        if (year === retirementYear) return `${year} ★`;
+                        return year % 5 === 0 ? year : '';
+                    }
+                },
+                grid: { display: false }
+            },
+            y: {
+                stacked: true,
+                ticks: {
+                    font: { size: 10 },
+                    callback: v => '£' + Math.abs(v/1000).toFixed(0) + 'k'
+                },
+                grid: { color: 'rgba(0,0,0,0.04)' },
+                title: {
+                    display: true,
+                    text: 'Annual cashflow (£)',
+                    font: { size: 10 },
+                    color: 'rgba(0,0,0,0.4)'
+                }
+            },
+            yBalance: {
+                position: 'right',
+                ticks: {
+                    font: { size: 10 },
+                    callback: v => '£' + (v/1000).toFixed(0) + 'k'
+                },
+                grid: { drawOnChartArea: false },
+                title: {
+                    display: true,
+                    text: 'Balance (£)',
+                    font: { size: 10 },
+                    color: '#534AB7'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}
