@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Budget — {{ app_name }}{% endblock %}
+{% block page_title %}Budget{% endblock %}
+{% block page_subtitle %}Your income and spending{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Budget line saved.</span>
+</div>
+{% endif %}
+
+{% if deleted %}
+<div class="alert alert-info mb-4">
+    <i class="ti ti-trash"></i>
+    <span>Budget line deleted.</span>
+</div>
+{% endif %}
+
+<!-- Summary cards -->
+{% if lines %}
+<div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Total annual</p>
+            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(summary.total) }}</p>
+            <p class="text-xs text-base-content/40 mt-1">All spending</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Mandatory</p>
+            <p class="text-xl font-semibold mt-1 text-error">£{{ "{:,.0f}".format(summary.mandatory) }}</p>
+            <p class="text-xs text-base-content/40 mt-1">Essential costs</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Discretionary</p>
+            <p class="text-xl font-semibold mt-1 text-warning">£{{ "{:,.0f}".format(summary.discretionary) }}</p>
+            <p class="text-xs text-base-content/40 mt-1">Lifestyle spending</p>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Loan repayments</p>
+            <p class="text-xl font-semibold mt-1 text-info">£{{ "{:,.0f}".format(summary.loans) }}</p>
+            <p class="text-xs text-base-content/40 mt-1">Fixed term</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Budget lines table -->
+{% if lines %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-list text-base-content/40" aria-hidden="true"></i>
+            Budget lines
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr class="text-xs uppercase tracking-wide text-base-content/40">
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Frequency</th>
+                        <th>Annual total</th>
+                        <th>Growth rate</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in lines %}
+                    <tr class="hover {% if edit_line and edit_line.n == line.n %}bg-base-200{% endif %}">
+                        <td class="font-medium">{{ line.name }}</td>
+                        <td>
+                            {% if line.lineType == 'BudgetLineType_Mandatory' %}
+                                <span class="badge badge-error badge-sm badge-outline">Mandatory</span>
+                            {% elif line.lineType == 'BudgetLineType_Discretionary' %}
+                                <span class="badge badge-warning badge-sm badge-outline">Discretionary</span>
+                            {% elif line.lineType == 'BudgetLineType_Loan' %}
+                                <span class="badge badge-info badge-sm badge-outline">Loan{% if line.loanEndYear %} ends {{ line.loanEndYear }}{% endif %}</span>
+                            {% endif %}
+                        </td>
+                        <td>£{{ "{:,.2f}".format(line.amount | float) }}</td>
+                        <td class="text-base-content/60 text-xs">{{ line.frequencyLabel }}</td>
+                        <td class="font-medium">£{{ "{:,.0f}".format(line.annualAmount) }}</td>
+                        <td>
+                            {% if line.changeRate and line.changeRate != '0' and line.changeRate != '0.0' %}
+                                <span class="text-xs {% if line.changeRate | float > 0 %}text-error{% else %}text-success{% endif %}">
+                                    {% if line.changeRate | float > 0 %}+{% endif %}{{ line.changeRate }}%/yr
+                                </span>
+                            {% else %}
+                                <span class="text-xs text-base-content/30">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            <div class="flex gap-1 justify-end">
+                                <a href="/budget/{{ line.n }}/edit"
+                                   class="btn btn-ghost btn-xs gap-1">
+                                    <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
+                                </a>
+                                <form method="post" action="/budget/{{ line.n }}/delete"
+                                      onsubmit="return confirm('Delete {{ line.name }}?')">
+                                    <button type="submit" class="btn btn-ghost btn-xs text-error gap-1">
+                                        <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="font-medium border-t border-base-200">
+                        <td colspan="4">Total annual spending</td>
+                        <td>£{{ "{:,.0f}".format(summary.total) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add / Edit form -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
+            {% if edit_line %}Edit — {{ edit_line.name }}{% else %}Add a budget line{% endif %}
+        </h3>
+
+        <form method="post"
+              action="{% if edit_line %}/budget/{{ edit_line.n }}/edit{% else %}/budget{% endif %}"
+              id="budget-form">
+
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                <!-- Name -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Name</span>
+                    </label>
+                    <input type="text" name="budgetLineName" required
+                        value="{{ edit_line.name if edit_line else '' }}"
+                        placeholder="e.g. Mortgage, Groceries, Netflix"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <!-- Type -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
+                    </label>
+                    <select name="budgetLineType" id="line-type"
+                            class="select select-bordered select-sm w-full"
+                            onchange="toggleLoanFields()">
+                        <option value="BudgetLineType_Mandatory"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Mandatory' %}selected{% elif not edit_line %}selected{% endif %}>
+                            Mandatory
+                        </option>
+                        <option value="BudgetLineType_Discretionary"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Discretionary' %}selected{% endif %}>
+                            Discretionary
+                        </option>
+                        <option value="BudgetLineType_Loan"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Loan' %}selected{% endif %}>
+                            Loan repayment
+                        </option>
+                    </select>
+                </div>
+
+                <!-- Amount -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
+                    </label>
+                    <input type="number" name="budgetLineAmount" required
+                        min="0" step="0.01"
+                        value="{{ edit_line.amount if edit_line else '' }}"
+                        placeholder="e.g. 500"
+                        class="input input-bordered input-sm w-full"
+                        id="amount-input"
+                        oninput="updateAnnual()" />
+                </div>
+
+                <!-- Frequency -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
+                    </label>
+                    <select name="budgetLineFrequency" id="freq-select"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateAnnual()">
+                        {% for key, label in frequency_options.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_line and edit_line.frequency == key %}selected
+                            {% elif not edit_line and key == 'FrequencyType_Monthly' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40" id="annual-hint"></span>
+                    </label>
+                </div>
+
+                <!-- Growth rate -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate %</span>
+                    </label>
+                    <input type="number" name="annualChangeRate"
+                        step="0.1" min="-100" max="100"
+                        value="{{ edit_line.changeRate if edit_line else '0' }}"
+                        placeholder="e.g. 3 for 3% inflation"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Positive = increases, negative = decreases</span>
+                    </label>
+                </div>
+
+                <!-- Loan end year (shown only for loans) -->
+                <div class="form-control" id="loan-end-year-field"
+                     style="{% if not edit_line or edit_line.lineType != 'BudgetLineType_Loan' %}display:none{% endif %}">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Loan end year</span>
+                    </label>
+                    <input type="number" name="loanEndYear"
+                        min="2024" max="2100"
+                        value="{{ edit_line.loanEndYear if edit_line else '' }}"
+                        placeholder="e.g. 2031"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Year repayments stop</span>
+                    </label>
+                </div>
+
+            </div>
+
+            <div class="flex justify-between items-center">
+                {% if edit_line %}
+                <a href="/budget" class="btn btn-ghost btn-sm">Cancel</a>
+                {% else %}
+                <span></span>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    {% if edit_line %}Save changes{% else %}Add budget line{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const multipliers = {
+        FrequencyType_Weekly: 52,
+        FrequencyType_Fortnightly: 26,
+        FrequencyType_TwiceMonthly: 24,
+        FrequencyType_Monthly: 12,
+        FrequencyType_Quarterly: 4,
+        FrequencyType_Annually: 1,
+    };
+
+    function updateAnnual() {
+        const amount = parseFloat(document.getElementById('amount-input').value) || 0;
+        const freq = document.getElementById('freq-select').value;
+        const multiplier = multipliers[freq] || 12;
+        const annual = amount * multiplier;
+        const hint = document.getElementById('annual-hint');
+        if (amount > 0) {
+            hint.textContent = `Annual equivalent: £${annual.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+        } else {
+            hint.textContent = '';
+        }
+    }
+
+    function toggleLoanFields() {
+        const type = document.getElementById('line-type').value;
+        const loanField = document.getElementById('loan-end-year-field');
+        loanField.style.display = type === 'BudgetLineType_Loan' ? 'block' : 'none';
+    }
+
+    // Run on page load to set initial state
+    updateAnnual();
+    toggleLoanFields();
+</script>
+{% endblock %}

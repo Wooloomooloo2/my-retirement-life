@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 from src.config import settings
-from src.api.routes import profile, accounts
+from src.api.routes import profile, accounts, budget
 
 app = FastAPI(title=settings.app_name)
 
@@ -20,6 +20,7 @@ templates = Jinja2Templates(directory=settings.templates_dir)
 # Register routers
 app.include_router(profile.router)
 app.include_router(accounts.router)
+app.include_router(budget.router)
 
 
 @app.get("/", response_class=HTMLResponse)

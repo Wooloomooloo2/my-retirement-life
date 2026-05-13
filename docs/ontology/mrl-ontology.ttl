@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.6.0" .
+    owl:versionInfo "0.7.0" .
 
 
 # ===========================================================================
@@ -186,6 +186,80 @@ mrlx:CashAccountType_Other a skos:Concept ;
     skos:prefLabel "Other cash account"@en ;
     skos:definition "A cash account that does not fit any other cash account subtype."@en ;
     skos:notation "CASH_OTHER" .
+
+
+# ===========================================================================
+# FREQUENCY TYPE — SKOS CONCEPT SCHEME
+#
+# A controlled vocabulary for how often a budget line amount recurs.
+# The raw amount and frequency are stored together; the projection engine
+# normalises to an annual figure at calculation time.
+#
+# Multipliers to annual:
+#   Weekly        × 52
+#   Fortnightly   × 26
+#   TwiceMonthly  × 24
+#   Monthly       × 12
+#   Quarterly     × 4
+#   Annually      × 1
+# ===========================================================================
+
+mrlx:FrequencyTypeScheme a skos:ConceptScheme ;
+    rdfs:label "Frequency Type Scheme"@en ;
+    skos:prefLabel "Frequency Type Scheme"@en ;
+    skos:definition "A controlled vocabulary for the recurrence frequency of budget line amounts."@en ;
+    skos:hasTopConcept
+        mrlx:FrequencyType_Weekly ,
+        mrlx:FrequencyType_Fortnightly ,
+        mrlx:FrequencyType_TwiceMonthly ,
+        mrlx:FrequencyType_Monthly ,
+        mrlx:FrequencyType_Quarterly ,
+        mrlx:FrequencyType_Annually .
+
+mrlx:FrequencyType_Weekly a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Weekly"@en ;
+    skos:definition "Amount recurs every week. Multiply by 52 to get annual equivalent."@en ;
+    skos:notation "WEEKLY" .
+
+mrlx:FrequencyType_Fortnightly a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Fortnightly"@en ;
+    skos:definition "Amount recurs every two weeks. Multiply by 26 to get annual equivalent."@en ;
+    skos:notation "FORTNIGHTLY" ;
+    skos:scopeNote "Common for payroll in UK, Australia, and other countries. Also known as biweekly."@en .
+
+mrlx:FrequencyType_TwiceMonthly a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Twice monthly"@en ;
+    skos:definition "Amount recurs twice per calendar month. Multiply by 24 to get annual equivalent."@en ;
+    skos:notation "TWICE_MONTHLY" ;
+    skos:scopeNote "Common for payroll in the US and some other countries. Distinct from fortnightly — 24 payments per year rather than 26."@en .
+
+mrlx:FrequencyType_Monthly a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Monthly"@en ;
+    skos:definition "Amount recurs once per calendar month. Multiply by 12 to get annual equivalent."@en ;
+    skos:notation "MONTHLY" .
+
+mrlx:FrequencyType_Quarterly a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Quarterly"@en ;
+    skos:definition "Amount recurs four times per year. Multiply by 4 to get annual equivalent."@en ;
+    skos:notation "QUARTERLY" .
+
+mrlx:FrequencyType_Annually a skos:Concept ;
+    skos:inScheme mrlx:FrequencyTypeScheme ;
+    skos:topConceptOf mrlx:FrequencyTypeScheme ;
+    skos:prefLabel "Annually"@en ;
+    skos:definition "Amount recurs once per year. No multiplication needed."@en ;
+    skos:notation "ANNUALLY" ;
+    skos:scopeNote "Use for insurance premiums, annual subscriptions, tax bills, and other yearly costs."@en .
 
 
 # ===========================================================================
@@ -828,15 +902,21 @@ mrl:budgetLineType a owl:ObjectProperty ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range mrlx:BudgetLineType .
 
+mrl:budgetLineFrequency a owl:ObjectProperty ;
+    rdfs:label "budget line frequency"@en ;
+    rdfs:comment "How often the amount recurs. Points to a skos:Concept in mrlx:FrequencyTypeScheme. The projection engine multiplies the stored amount by the frequency multiplier to get the annual equivalent."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range skos:Concept .
+
 mrl:annualChangeRate a owl:DatatypeProperty ;
     rdfs:label "annual change rate"@en ;
-    rdfs:comment "Annual percentage increase or decrease, e.g. 2.5 for 2.5% inflation."@en ;
+    rdfs:comment "Default annual percentage increase or decrease applied to this budget line, e.g. 2.5 for 2.5% inflation. Used by the MVP projection engine. For time-segmented rates see mrl:BudgetLineSegment (post-MVP)."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:decimal .
 
 mrl:loanEndYear a owl:DatatypeProperty ;
     rdfs:label "loan end year"@en ;
-    rdfs:comment "For mrlx:BudgetLineType_Loan: the year repayments cease."@en ;
+    rdfs:comment "For mrlx:BudgetLineType_Loan: the calendar year in which repayments cease."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:integer .
 
@@ -844,6 +924,52 @@ mrl:budgetOwner a owl:ObjectProperty ;
     rdfs:label "budget owner"@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range mrl:Person .
+
+
+# ---------------------------------------------------------------------------
+# BudgetLineSegment — post-MVP time-segmented growth rates
+#
+# Allows a budget line to have different growth rates over different periods.
+# For example: holidays up 5%/year until 2035, then up 50%/year until 2040,
+# then reduced to zero. The MVP uses mrl:annualChangeRate on mrl:BudgetLine
+# as a single default rate. BudgetLineSegment is declared here for future use.
+#
+# Instance pattern: mrl:BudgetLineSegment_<uuid>
+# ---------------------------------------------------------------------------
+
+mrl:BudgetLineSegment a owl:Class ;
+    rdfs:label "Budget line segment"@en ;
+    rdfs:comment "A time-bounded segment of a budget line with its own annual change rate. Enables modelling of spending that grows at different rates in different periods, or stops entirely at a future date. Post-MVP."@en .
+
+mrl:segmentStartYear a owl:DatatypeProperty ;
+    rdfs:label "segment start year"@en ;
+    rdfs:comment "The first calendar year this segment applies."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range xsd:integer .
+
+mrl:segmentEndYear a owl:DatatypeProperty ;
+    rdfs:label "segment end year"@en ;
+    rdfs:comment "The last calendar year this segment applies. Null means the segment continues indefinitely."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range xsd:integer .
+
+mrl:segmentChangeRate a owl:DatatypeProperty ;
+    rdfs:label "segment change rate"@en ;
+    rdfs:comment "Annual percentage change applied during this segment. Positive = increase, negative = decrease, zero = frozen."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range xsd:decimal .
+
+mrl:segmentAmountOverride a owl:DatatypeProperty ;
+    rdfs:label "segment amount override"@en ;
+    rdfs:comment "Optional: replaces the budget line amount entirely for this segment rather than applying a growth rate. Useful for modelling a sudden change in spending level."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range xsd:decimal .
+
+mrl:segmentOfLine a owl:ObjectProperty ;
+    rdfs:label "segment of line"@en ;
+    rdfs:comment "The budget line this segment belongs to."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range mrl:BudgetLine .
 
 
 # ===========================================================================
