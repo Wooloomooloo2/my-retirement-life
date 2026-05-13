@@ -38,6 +38,7 @@
                         <th>Balance date</th>
                         <th>Interest rate</th>
                         <th>Currency</th>
+                        <th>FX rate</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -51,6 +52,14 @@
                         <td>{{ account.interestRate }}%</td>
                         <td>
                             <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
+                        </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.exchangeRate and account.exchangeRate != '1.0' %}
+                                {{ account.exchangeRate }}
+                                {% if account.exchangeRateDate %}
+                                <span class="block text-base-content/30">{{ account.exchangeRateDate }}</span>
+                                {% endif %}
+                            {% else %}—{% endif %}
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
@@ -187,6 +196,30 @@
                     </select>
                 </div>
 
+                <!-- Exchange rate — shown dynamically for non-base currencies -->
+                <div class="form-control" id="fx-rate-field" style="display:none">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Exchange rate to base currency</span>
+                    </label>
+                    <input type="number" name="exchangeRateToBase"
+                        step="0.000001" min="0"
+                        value="{{ edit_account.exchangeRate if edit_account and edit_account.exchangeRate else '1.0' }}"
+                        placeholder="e.g. 0.79 for 1 USD = 0.79 GBP"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">1 unit of account currency = this many units of your base currency</span>
+                    </label>
+                </div>
+
+                <div class="form-control" id="fx-date-field" style="display:none">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Rate last updated</span>
+                    </label>
+                    <input type="date" name="exchangeRateDate"
+                        value="{{ edit_account.exchangeRateDate if edit_account and edit_account.exchangeRateDate else today }}"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
                 <div class="form-control col-span-2">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Notes <span class="font-normal normal-case">(optional)</span></span>
@@ -214,5 +247,30 @@
         </form>
     </div>
 </div>
+
+{% block scripts %}
+<script>
+    // Get person base currency from profile - we pass it via data attribute
+    // For now we detect by checking if selected currency dropdown value contains base currency
+    function toggleFxFields() {
+        const currencySelect = document.querySelector('select[name="accountCurrency"]');
+        if (!currencySelect) return;
+        const selected = currencySelect.options[currencySelect.selectedIndex];
+        const code = selected ? selected.text.split(' — ')[0] : '';
+        // Show FX fields for any non-GBP currency (TODO: make dynamic based on user base currency)
+        const isBase = code === 'GBP';
+        const fxField = document.getElementById('fx-rate-field');
+        const fxDateField = document.getElementById('fx-date-field');
+        if (fxField) fxField.style.display = isBase ? 'none' : 'block';
+        if (fxDateField) fxDateField.style.display = isBase ? 'none' : 'block';
+    }
+
+    const currSel = document.querySelector('select[name="accountCurrency"]');
+    if (currSel) {
+        currSel.addEventListener('change', toggleFxFields);
+        toggleFxFields();
+    }
+</script>
+{% endblock %}
 
 {% endblock %}

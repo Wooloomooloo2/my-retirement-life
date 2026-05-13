@@ -2,7 +2,7 @@
 
 **Namespace:** `https://myretirementlife.app/ontology#` (prefix: `mrl:`)  
 **Extended vocabulary namespace:** `https://myretirementlife.app/ontology/ext#` (prefix: `mrlx:`)  
-**Version:** 0.3.0  
+**Version:** 0.8.0  
 **File:** [mrl-ontology.ttl](mrl-ontology.ttl)  
 **Python loader:** `src/store/ontology_loader.py`
 
@@ -10,14 +10,15 @@
 
 ## Design principles
 
-- **Simple class hierarchy** — classes are defined for human understanding and extensibility, not for OWL reasoning
-- **Independent reference entities** — currencies, jurisdictions, and other shared concepts are named individuals, not string literals; this allows properties (exchange rates, symbols, rules) to be attached to them once and shared across all references
+- **Simple class hierarchy** — classes defined for human understanding and extensibility, not OWL reasoning
+- **Independent reference entities** — currencies, jurisdictions, and other shared concepts are named individuals, not string literals
 - **Two namespaces** — `mrl:` for ontology terms and instance data; `mrlx:` for controlled vocabularies and enumeration values
+- **SKOS concept schemes** for all taxonomical vocabularies — hierarchy expressed via `skos:broader`/`skos:narrower`
 - **Consistent IRI patterns** — see below
-- **Language-tagged labels** — all labels carry `@en` tags so additional languages can be added as extra triples without restructuring
-- **SKOS for controlled vocabularies** — `mrlx:` individuals use `skos:prefLabel` and `skos:definition`; everything else uses `rdfs:label` and `rdfs:comment`
-- **Named graph separation** — the ontology is loaded into its own named graph, kept separate from user instance data
-- **TTL as truth** — the `.ttl` file is the authoritative source; the Python store wrapper loads it on startup
+- **Language-tagged labels** — all labels carry `@en` so additional languages can be added as extra triples
+- **SKOS for controlled vocabularies** — `mrlx:` individuals use `skos:prefLabel`, `skos:definition`, `skos:notation`, `skos:scopeNote`
+- **Named graph separation** — ontology loaded into its own named graph, separate from user data
+- **TTL as truth** — the `.ttl` file is the authoritative source, loaded into Oxigraph on startup
 
 ---
 
@@ -29,20 +30,16 @@
 | `mrl:propertyName` | `mrl:accountBalance` | Properties (camelCase) |
 | `mrl:ClassName_Code` | `mrl:Currency_GBP` | Named individuals (reference data) |
 | `mrlx:ClassName_Value` | `mrlx:BudgetLineType_Mandatory` | Controlled vocabulary individuals |
-| `mrl:ClassName_<uuid>` | `mrl:Person_a3f9...` | User instance data (runtime) |
+| `mrl:ClassName_N` | `mrl:Person_1`, `mrl:CashAccount_3` | User instance data (runtime, ADR-006) |
 
 ---
 
 ## Named graphs
 
-The store uses two named graphs to keep ontology and user data cleanly separated:
-
-| Named graph | IRI | Contents |
-|-------------|-----|----------|
-| Ontology graph | `https://myretirementlife.app/ontology/graph` | All triples from `mrl-ontology.ttl` |
-| Data graph | `https://myretirementlife.app/data/graph` | User instance data created at runtime |
-
-This separation means ontology triples can be reloaded (e.g. after editing the TTL) without touching user data, and SPARQL queries can target either graph independently.
+| Named graph IRI | Contents |
+|----------------|----------|
+| `https://myretirementlife.app/ontology/graph` | All triples from `mrl-ontology.ttl` |
+| `https://myretirementlife.app/data/graph` | User instance data created at runtime |
 
 ---
 
@@ -50,86 +47,103 @@ This separation means ontology triples can be reloaded (e.g. after editing the T
 
 ```
 owl:Thing
-├── mrl:Currency                   (reference individual — mrl:Currency_GBP etc.)
-├── mrl:Jurisdiction               (reference individual — mrl:Jurisdiction_GB etc.)
-├── mrl:Person                     ✅ MVP
+├── mrl:Currency                     (reference individuals: mrl:Currency_GBP etc.)
+├── mrl:Jurisdiction                 (reference individuals: mrl:Jurisdiction_GB etc.)
+├── mrl:Person                       ✅ MVP
+├── mrl:IncomeSource                 ✅ MVP
 ├── mrl:Account
-│   ├── mrl:CashAccount            ✅ MVP
-│   ├── mrl:InvestmentAccount      🔮 post-MVP
-│   ├── mrl:PensionAccount         🔮 post-MVP
-│   ├── mrl:PropertyAsset          🔮 post-MVP
-│   └── mrl:OtherAsset             🔮 post-MVP
-├── mrl:BudgetLine                 ✅ MVP
-├── mrl:LifeEvent                  ✅ MVP
-└── mrl:ProjectionSettings         ✅ MVP
-
-mrlx: (controlled vocabularies)
-├── mrlx:EmploymentStatus
-│   ├── mrlx:EmploymentStatus_Employed
-│   ├── mrlx:EmploymentStatus_SelfEmployed
-│   ├── mrlx:EmploymentStatus_NotWorking
-│   └── mrlx:EmploymentStatus_Retired
-├── mrlx:BudgetLineType
-│   ├── mrlx:BudgetLineType_Mandatory
-│   ├── mrlx:BudgetLineType_Discretionary
-│   └── mrlx:BudgetLineType_Loan
-└── mrlx:LifeEventType
-    ├── mrlx:LifeEventType_LargeExpenditure
-    ├── mrlx:LifeEventType_Windfall
-    ├── mrlx:LifeEventType_PropertyTransaction
-    ├── mrlx:LifeEventType_RelocationAbroad
-    └── mrlx:LifeEventType_CaringResponsibility
+│   ├── mrl:CashAccount              ✅ MVP
+│   ├── mrl:InvestmentAccount        🔮 post-MVP
+│   ├── mrl:PensionAccount           🔮 post-MVP
+│   ├── mrl:PropertyAsset            🔮 post-MVP
+│   └── mrl:OtherAsset               🔮 post-MVP
+├── mrl:BudgetLine                   ✅ MVP
+├── mrl:BudgetLineSegment            🔮 post-MVP (time-segmented growth rates)
+├── mrl:LifeEvent                    ✅ MVP
+└── mrl:ProjectionSettings           ✅ MVP
 ```
 
 ---
 
-## Key design decisions
+## SKOS concept schemes (mrlx:)
 
-### Currency and Jurisdiction as named individuals
+All controlled vocabularies are modelled as SKOS concept schemes with `skos:broader`/`skos:narrower` hierarchy.
 
-`mrl:Currency_GBP`, `mrl:Currency_USD` etc. are instances of `mrl:Currency`, not string literals. This means:
+### IncomeSourceTypeScheme
+Top-level income source taxonomy with two hierarchical branches:
 
-```turtle
-# What we do
-mrl:Account_abc123 mrl:accountCurrency mrl:Currency_GBP .
-
-# What we avoid
-mrl:Account_abc123 mrl:accountCurrency "GBP" .
+```
+mrlx:IncomeSourceTypeScheme
+├── mrlx:IncomeSourceType_Employment
+├── mrlx:IncomeSourceType_BusinessIncome
+├── mrlx:IncomeSourceType_InterestIncome
+├── mrlx:IncomeSourceType_Property
+├── mrlx:IncomeSourceType_Retirement
+│   ├── mrlx:IncomeSourceType_Retirement_StatePension
+│   ├── mrlx:IncomeSourceType_Retirement_StateIncome
+│   ├── mrlx:IncomeSourceType_Retirement_WorkplacePension
+│   ├── mrlx:IncomeSourceType_Retirement_PrivatePension
+│   ├── mrlx:IncomeSourceType_Retirement_FourOOneK
+│   └── mrlx:IncomeSourceType_Retirement_Other
+├── mrlx:IncomeSourceType_Investment
+│   ├── mrlx:IncomeSourceType_Investment_Annuity
+│   ├── mrlx:IncomeSourceType_Investment_Dividends
+│   ├── mrlx:IncomeSourceType_Investment_BondIncome
+│   ├── mrlx:IncomeSourceType_Investment_FundIncome
+│   └── mrlx:IncomeSourceType_Investment_Other
+└── mrlx:IncomeSourceType_Other
 ```
 
-The benefit: exchange rates, symbols, and locale rules can be attached to `mrl:Currency_GBP` once and queried across every account that references it. When exchange rate data is added in a later release, no existing triples need to change.
+### AccountTypeScheme
+```
+mrlx:AccountTypeScheme
+└── mrlx:CashAccountType (top concept)
+    ├── mrlx:CashAccountType_Current
+    ├── mrlx:CashAccountType_Savings
+    ├── mrlx:CashAccountType_FixedTerm
+    ├── mrlx:CashAccountType_TaxAdvantaged
+    └── mrlx:CashAccountType_Other
+```
+Post-MVP: `InvestmentAccountType`, `PensionAccountType` etc. will be added as sibling top concepts.
 
-### Two namespaces: mrl: and mrlx:
+### FrequencyTypeScheme
+Used on `mrl:BudgetLine` to specify recurrence. The projection engine normalises to annual amounts.
 
-`mrl:` is for ontology terms (classes, properties) and named reference individuals.  
-`mrlx:` is exclusively for controlled vocabulary / enumeration values — anything taxonomical.
-
-This makes it immediately clear from an IRI alone whether something is a domain concept or a classification value.
-
-### Label and annotation strategy
-
-| Element type | Label predicate | Annotation predicate |
-|---|---|---|
-| Classes and properties | `rdfs:label` | `rdfs:comment` |
-| `mrlx:` controlled vocabulary individuals | `skos:prefLabel` | `skos:definition` |
-| `mrl:` reference individuals | `rdfs:label` | `rdfs:comment` |
-
-All labels are language-tagged with `@en`. Adding a French translation requires only adding extra triples — no restructuring:
-
-```turtle
-mrl:CashAccount rdfs:label "Cash Account"@en ;
-                rdfs:label "Compte de dépôt"@fr .
+```
+mrlx:FrequencyTypeScheme
+├── mrlx:FrequencyType_Weekly          (× 52)
+├── mrlx:FrequencyType_Fortnightly     (× 26)
+├── mrlx:FrequencyType_TwiceMonthly    (× 24)
+├── mrlx:FrequencyType_Monthly         (× 12)
+├── mrlx:FrequencyType_Quarterly       (× 4)
+└── mrlx:FrequencyType_Annually        (× 1)
 ```
 
-### Account as superclass
+### Other flat vocabularies (owl:Class with named individuals)
+- `mrlx:EmploymentStatus` — Employed, SelfEmployed, NotWorking, Retired
+- `mrlx:BudgetLineType` — Mandatory, Discretionary, Loan
+- `mrlx:LifeEventType` — LargeExpenditure, Windfall, PropertyTransaction, RelocationAbroad, CaringResponsibility
 
-`mrl:CashAccount` is a subclass of `mrl:Account`. Properties common to all accounts are defined on `mrl:Account`. Post-MVP account types are declared in the ontology now so future data can reference them, even though the application does not yet populate them.
+---
+
+## Key property notes
+
+### Exchange rates
+`mrl:exchangeRateToBase` on `mrl:Account` stores a user-maintained exchange rate for converting non-base-currency account balances into the base currency for projection calculations. Expressed as: 1 unit of account currency = N units of base currency (e.g. 0.79 for USD→GBP).
+
+Only required when account currency differs from the person's base currency. Post-MVP will support live rate fetching from an exchange rate API.
+
+### Interest rates
+`mrl:annualInterestRate` on `mrl:CashAccount` represents the **current rate only**. Rate history is a future feature — users should update this value when their rate changes.
+
+MVP projection applies a weighted average interest rate across all accounts. Post-MVP will track interest per account independently.
+
+### Budget line growth rates
+`mrl:annualChangeRate` on `mrl:BudgetLine` is the default annual percentage change for MVP. Post-MVP introduces `mrl:BudgetLineSegment` for time-segmented growth rates (e.g. holidays up 5%/year until 2035, then up 50%/year, then stops).
 
 ---
 
 ## Seed data
-
-The ontology file includes seed data for common currencies and jurisdictions loaded into the store at startup.
 
 **Currencies:** GBP, USD, EUR, AUD, CAD, CHF, JPY, NZD, SEK, NOK, DKK, SGD, HKD, ZAR  
 **Jurisdictions:** GB, US, EU, AU, CA, NZ, CH, SG, ZA
@@ -138,9 +152,7 @@ The ontology file includes seed data for common currencies and jurisdictions loa
 
 ## Loading and reloading
 
-The ontology is loaded by `src/store/ontology_loader.py` on application startup. It is idempotent — if the ontology graph already contains triples, it skips loading unless forced.
-
-To force a reload after editing the TTL (e.g. from the Python shell or a future admin endpoint):
+Loaded by `src/store/ontology_loader.py` on startup. Idempotent — skips if already loaded. Force reload after editing:
 
 ```python
 from src.store.graph import store
@@ -148,82 +160,59 @@ from src.store.ontology_loader import load_ontology
 load_ontology(store.store, force=True)
 ```
 
-You can verify the current state at runtime via the diagnostic endpoint:
-
-```
-http://127.0.0.1:8000/ontology/status
-```
-
----
-
-## Extending the ontology
-
-To add a new asset type, add a new subclass and any specific properties to the TTL, then force-reload:
-
-```turtle
-mrl:CryptoAccount a owl:Class ;
-    rdfs:subClassOf mrl:Account ;
-    rdfs:label "Crypto Account"@en ;
-    rdfs:comment "Cryptocurrency holdings. Post-MVP."@en .
-
-mrl:walletAddress a owl:DatatypeProperty ;
-    rdfs:label "wallet address"@en ;
-    rdfs:domain mrl:CryptoAccount ;
-    rdfs:range xsd:string .
-```
-
-No existing data is affected. The new subclass inherits all `mrl:Account` properties automatically.
+Verify at runtime: `http://127.0.0.1:8000/ontology/status`
 
 ---
 
 ## SPARQL examples
 
-**Get all cash accounts for a person:**
+**All cash accounts with base-currency equivalent balance:**
 ```sparql
 PREFIX mrl: <https://myretirementlife.app/ontology#>
 
-SELECT ?account ?name ?balance ?currencyCode
+SELECT ?name ?balance ?fxRate ?currencyCode
 WHERE {
     GRAPH <https://myretirementlife.app/data/graph> {
-        ?account a mrl:CashAccount ;
-                 mrl:ownedBy mrl:Person_<uuid> ;
-                 mrl:accountName ?name ;
-                 mrl:accountBalance ?balance ;
-                 mrl:accountCurrency ?curr .
+        ?acc a mrl:CashAccount ;
+             mrl:accountName ?name ;
+             mrl:accountBalance ?balance .
+        OPTIONAL { ?acc mrl:exchangeRateToBase ?fxRate }
+        OPTIONAL { ?acc mrl:accountCurrency ?curr }
     }
-    GRAPH <https://myretirementlife.app/ontology/graph> {
-        ?curr mrl:currencyCode ?currencyCode .
+    OPTIONAL {
+        GRAPH <https://myretirementlife.app/ontology/graph> {
+            ?curr mrl:currencyCode ?currencyCode .
+        }
     }
 }
 ```
 
-**Get all currency symbols:**
-```sparql
-PREFIX mrl: <https://myretirementlife.app/ontology#>
-
-SELECT ?code ?symbol ?name
-WHERE {
-    GRAPH <https://myretirementlife.app/ontology/graph> {
-        ?curr a mrl:Currency ;
-              mrl:currencyCode ?code ;
-              mrl:currencySymbol ?symbol ;
-              mrl:currencyName ?name .
-    }
-}
-ORDER BY ?code
-```
-
-**Get controlled vocabulary labels in English:**
+**All income source types (top level only):**
 ```sparql
 PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
 
-SELECT ?individual ?label
+SELECT ?concept ?label
 WHERE {
     GRAPH <https://myretirementlife.app/ontology/graph> {
-        ?individual a mrlx:BudgetLineType ;
-                    skos:prefLabel ?label .
-        FILTER(LANG(?label) = "en")
+        ?concept skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
+                 skos:prefLabel ?label .
+        FILTER(LANG(?label) = \"en\")
+    }
+}
+```
+
+**All budget line subtypes of Retirement income:**
+```sparql
+PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
+PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
+
+SELECT ?concept ?label
+WHERE {
+    GRAPH <https://myretirementlife.app/ontology/graph> {
+        ?concept skos:broader mrlx:IncomeSourceType_Retirement ;
+                 skos:prefLabel ?label .
+        FILTER(LANG(?label) = \"en\")
     }
 }
 ```

@@ -56,6 +56,8 @@ def get_all_accounts() -> list:
             "interestRate": get_val("annualInterestRate"),
             "jurisdiction": get_local("accountJurisdiction"),
             "accountType": get_local("accountType"),
+            "exchangeRate": get_val("exchangeRateToBase"),
+            "exchangeRateDate": get_val("exchangeRateDate"),
             "notes": get_val("accountNotes"),
         })
     accounts.sort(key=lambda a: int(a["n"]) if a["n"].isdigit() else 0)
@@ -140,12 +142,12 @@ def get_jurisdictions() -> list:
 
 def save_account(n: int, name: str, balance: float, balance_date: str,
                  currency_local: str, interest_rate: float,
-                 jurisdiction_local: str, account_type: str, notes: str) -> None:
+                 jurisdiction_local: str, account_type: str,
+                 exchange_rate: float, exchange_rate_date: str, notes: str) -> None:
     """Write or overwrite a CashAccount_N instance in the data graph."""
     account_iri = f"{MRL}CashAccount_{n}"
     person_iri = f"{MRL}Person_1"
 
-    # Clear existing triples for this account
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -153,9 +155,6 @@ def save_account(n: int, name: str, balance: float, balance_date: str,
             }}
         }}
     """)
-
-    # Insert new triples
-    notes_ttl = f'mrl:accountNotes "{notes}" ;' if notes.strip() else ""
 
     store.update(f"""
         PREFIX mrl:  <{MRL}>
@@ -173,10 +172,31 @@ def save_account(n: int, name: str, balance: float, balance_date: str,
                     mrl:accountJurisdiction mrl:{jurisdiction_local} ;
                     mrl:accountType mrlx:{account_type} ;
                     mrl:ownedBy <{person_iri}> .
-                    {notes_ttl}
             }}
         }}
     """)
+
+    if exchange_rate and float(exchange_rate) != 1.0:
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{account_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
+                                    mrl:exchangeRateDate "{exchange_rate_date}"^^xsd:date .
+                }}
+            }}
+        """)
+
+    if notes.strip():
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{account_iri}> mrl:accountNotes "{notes}" .
+                }}
+            }}
+        """)
 
 
 # ---------------------------------------------------------------------------
@@ -214,14 +234,20 @@ async def add_account(
     annualInterestRate: float = Form(0.0),
     accountJurisdiction: str = Form(...),
     accountType: str = Form("CashAccountType_Current"),
+    exchangeRateToBase: float = Form(1.0),
+    exchangeRateDate: str = Form(""),
     accountNotes: str = Form(""),
 ):
     # Get next N
     existing = get_all_accounts()
     next_n = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
+    if not exchangeRateDate:
+        from datetime import date as _date
+        exchangeRateDate = _date.today().isoformat()
 
     save_account(next_n, accountName, accountBalance, balanceDate,
-                 accountCurrency, annualInterestRate, accountJurisdiction, accountType, accountNotes)
+                 accountCurrency, annualInterestRate, accountJurisdiction,
+                 accountType, exchangeRateToBase, exchangeRateDate, accountNotes)
 
     accounts = get_all_accounts()
     currencies = get_currencies()
@@ -277,10 +303,16 @@ async def save_edit_account(
     annualInterestRate: float = Form(0.0),
     accountJurisdiction: str = Form(...),
     accountType: str = Form("CashAccountType_Current"),
+    exchangeRateToBase: float = Form(1.0),
+    exchangeRateDate: str = Form(""),
     accountNotes: str = Form(""),
 ):
+    if not exchangeRateDate:
+        from datetime import date as _date
+        exchangeRateDate = _date.today().isoformat()
     save_account(n, accountName, accountBalance, balanceDate,
-                 accountCurrency, annualInterestRate, accountJurisdiction, accountType, accountNotes)
+                 accountCurrency, annualInterestRate, accountJurisdiction,
+                 accountType, exchangeRateToBase, exchangeRateDate, accountNotes)
 
     accounts = get_all_accounts()
     currencies = get_currencies()

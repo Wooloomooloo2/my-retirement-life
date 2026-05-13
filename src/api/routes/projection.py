@@ -104,8 +104,14 @@ def load_accounts() -> list:
             balance_date = date.fromisoformat(balance_date_str)
         except ValueError:
             balance_date = date.today()
+        raw_balance = _float(iri, "accountBalance")
+        fx_rate = _float(iri, "exchangeRateToBase", 1.0)
+        # Convert to base currency using stored exchange rate
+        base_balance = raw_balance * fx_rate
         accounts.append({
-            "balance": _float(iri, "accountBalance"),
+            "balance": base_balance,
+            "raw_balance": raw_balance,
+            "fx_rate": fx_rate,
             "interest_rate": _float(iri, "annualInterestRate"),
             "balance_date": balance_date,
         })

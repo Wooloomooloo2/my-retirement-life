@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.7.0" .
+    owl:versionInfo "0.8.0" .
 
 
 # ===========================================================================
@@ -839,6 +839,18 @@ mrl:drawdownPriority a owl:DatatypeProperty ;
     rdfs:domain mrl:Account ;
     rdfs:range xsd:integer .
 
+mrl:exchangeRateToBase a owl:DatatypeProperty ;
+    rdfs:label "exchange rate to base currency"@en ;
+    rdfs:comment "The exchange rate used to convert this account balance to the person s base currency for projection calculations. Expressed as: 1 unit of account currency = N units of base currency. For example, if base currency is GBP and account is USD, a rate of 0.79 means 1 USD = 0.79 GBP. Only required when account currency differs from base currency. User-maintained — post-MVP will support live rate fetching."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:decimal .
+
+mrl:exchangeRateDate a owl:DatatypeProperty ;
+    rdfs:label "exchange rate date"@en ;
+    rdfs:comment "The date on which the exchange rate was last updated by the user. Displayed in the UI as a reminder to keep rates current."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:date .
+
 mrl:ownedBy a owl:ObjectProperty ;
     rdfs:label "owned by"@en ;
     rdfs:domain mrl:Account ;
@@ -854,6 +866,11 @@ mrl:annualInterestRate a owl:DatatypeProperty ;
     rdfs:comment "Annual interest rate as a percentage, e.g. 4.5 for 4.5%. Represents the current rate only — rate history is a future feature. Users should update this value when their rate changes."@en ;
     rdfs:domain mrl:CashAccount ;
     rdfs:range xsd:decimal .
+
+# NOTE: MVP projection applies a weighted average interest rate across all
+# accounts proportionally. Post-MVP will track interest per account
+# independently, allowing different rates to compound on their respective
+# balances and income streams to be credited to specific accounts.
 
 mrl:InvestmentAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
