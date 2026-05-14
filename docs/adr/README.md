@@ -23,6 +23,7 @@ Each ADR follows the structure:
 | [ADR-005](ADR-005-ontology-loading-strategy.md) | Ontology loading strategy and named graph separation | Accepted |
 | [ADR-006](ADR-006-instance-iri-naming-strategy.md) | Instance IRI naming strategy | Accepted |
 | [ADR-007](ADR-007-data-access-patterns.md) | Data access patterns — quad patterns vs SPARQL | Accepted |
+| [ADR-008](ADR-008-multiple-income-sources.md) | Multiple income sources with independent start/end dates in MVP | Accepted |
 
 ## Guiding Principles
 

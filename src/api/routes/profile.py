@@ -200,6 +200,14 @@ async def save_profile(
         }}
     """)
 
+    # Calculate actual retirement calendar year from DOB and retirement age
+    try:
+        from datetime import date as _date
+        dob = _date.fromisoformat(dateOfBirth)
+        retirement_year = dob.year + targetRetirementAge
+    except ValueError:
+        retirement_year = _date.today().year + targetRetirementAge
+
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -213,7 +221,7 @@ async def save_profile(
                     mrl:incomeAnnualAmount "{annualIncome}"^^xsd:decimal ;
                     mrl:incomeGrowthRate "{incomeGrowthRate}"^^xsd:decimal ;
                     mrl:incomeIsNetOfTax "{str(incomeIsNetOfTax).lower()}"^^xsd:boolean ;
-                    mrl:incomeEndYear {targetRetirementAge} ;
+                    mrl:incomeEndYear "{retirement_year}"^^xsd:integer ;
                     mrl:incomeOwner <{person_iri}> .
             }}
         }}

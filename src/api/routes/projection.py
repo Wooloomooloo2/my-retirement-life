@@ -78,16 +78,32 @@ def load_profile() -> dict | None:
     }
 
 
-def load_income() -> dict:
-    income = og.NamedNode(f"{MRL}IncomeSource_1")
-    type_check = list(store.store.quads_for_pattern(
-        income, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))
-    if not type_check:
-        return {"amount": 0, "growth_rate": 0}
-    return {
-        "amount": _float(income, "incomeAnnualAmount"),
-        "growth_rate": _float(income, "incomeGrowthRate"),
-    }
+def load_all_income_sources() -> list:
+    """Load all IncomeSource instances with their start/end years."""
+    type_node = og.NamedNode(f"{MRL}IncomeSource")
+    quads = store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    sources = []
+    for q in quads:
+        iri = q.subject
+        start_raw = _val(iri, "incomeStartYear", "")
+        end_raw = _val(iri, "incomeEndYear", "")
+        try:
+            start_year = int(start_raw) if start_raw else None
+        except ValueError:
+            start_year = None
+        try:
+            end_year = int(end_raw) if end_raw else None
+        except ValueError:
+            end_year = None
+        sources.append({
+            "name": _val(iri, "incomeSourceName", "Income"),
+            "amount": _float(iri, "incomeAnnualAmount"),
+            "growth_rate": _float(iri, "incomeGrowthRate"),
+            "start_year": start_year,
+            "end_year": end_year,
+        })
+    return sources
 
 
 def load_accounts() -> list:
@@ -207,7 +223,7 @@ def run_projection(inflation_rate: float = 2.5) -> dict | None:
     retirement_year = birth_year + profile["retirement_age"]
     end_year = birth_year + profile["life_expectancy"]
 
-    income_data = load_income()
+    income_sources = load_all_income_sources()
     accounts = load_accounts()
     budget_lines = load_budget_lines()
     life_events = load_life_events()
@@ -237,13 +253,16 @@ def run_projection(inflation_rate: float = 2.5) -> dict | None:
     for year in range(current_year, end_year + 1):
         years_from_start = year - current_year
 
-        # Income — grows each year, stops at retirement
-        if year < retirement_year:
-            income_amount = income_data["amount"] * (
-                (1 + income_data["growth_rate"] / 100) ** years_from_start
-            )
-        else:
-            income_amount = 0.0
+        # Income — sum all active sources for this year
+        # Each source is active if: start_year <= year <= end_year (or null)
+        income_amount = 0.0
+        for src in income_sources:
+            src_start = src["start_year"] or current_year
+            src_end = src["end_year"]  # None = indefinite
+            if year >= src_start and (src_end is None or year <= src_end):
+                income_amount += src["amount"] * (
+                    (1 + src["growth_rate"] / 100) ** years_from_start
+                )
 
         # Spending — each line grows at its own rate, loans expire
         mandatory = 0.0

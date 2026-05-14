@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
 from src.config import settings
-from src.api.routes import profile, accounts, budget, life_events, projection
+from src.api.routes import profile, accounts, budget, life_events, projection, income
 
 app = FastAPI(title=settings.app_name)
 
@@ -21,6 +21,7 @@ app.include_router(profile.router)
 app.include_router(accounts.router)
 app.include_router(budget.router)
 app.include_router(life_events.router)
+app.include_router(income.router)
 app.include_router(projection.router)
 
 
@@ -60,6 +61,7 @@ def get_dashboard_data() -> dict:
         run_projection, get_projection_settings,
         load_accounts as _load_accounts,
         load_budget_lines as _load_budget_lines,
+        load_all_income_sources as _load_income,
     )
     from src.api.routes.profile import get_profile
     import pyoxigraph as og
