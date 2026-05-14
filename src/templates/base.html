@@ -22,60 +22,57 @@
 </head>
 <body class="bg-base-200 min-h-screen">
 
-    <!-- Sidebar + main layout -->
     <div class="flex h-screen overflow-hidden">
 
         <!-- Sidebar -->
-        <aside class="w-64 bg-base-100 border-r border-base-300 flex flex-col">
+        <aside class="w-56 bg-base-100 border-r border-base-300 flex flex-col">
             <div class="p-4 border-b border-base-300">
-                <h1 class="font-semibold text-base-content">My Retirement Life</h1>
+                <h1 class="font-semibold text-base-content text-sm">My Retirement Life</h1>
                 <p class="text-xs text-base-content/50 mt-0.5">personal planning</p>
             </div>
-            <nav class="flex-1 py-3">
+            <nav class="flex-1 py-3 overflow-y-auto">
+
                 <p class="px-4 py-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Overview</p>
                 <a href="/" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'dashboard' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-layout-dashboard text-base"></i> Dashboard
+                    <i class="ti ti-layout-dashboard text-base" aria-hidden="true"></i> Dashboard
                 </a>
                 <a href="/projection" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'projection' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-chart-line text-base"></i> Projection
+                    <i class="ti ti-chart-line text-base" aria-hidden="true"></i> Projection
                 </a>
-                <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Planning</p>
-                <a href="/timeline" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'timeline' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-calendar-event text-base"></i> Timeline
-                </a>
-                <a href="/health" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'health' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-heart text-base"></i> Health
-                </a>
-                <a href="/housing" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'housing' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-home text-base"></i> Housing
-                </a>
-                <a href="/lifestyle" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'lifestyle' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-plane text-base"></i> Lifestyle
-                </a>
-                <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Finances</p>
+
+                <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">My data</p>
                 <a href="/profile" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'profile' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-user text-base"></i> Profile
+                    <i class="ti ti-user text-base" aria-hidden="true"></i> Profile
                 </a>
                 <a href="/accounts" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'accounts' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-wallet text-base"></i> Accounts
+                    <i class="ti ti-wallet text-base" aria-hidden="true"></i> Accounts
                 </a>
                 <a href="/budget" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'budget' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-chart-bar text-base"></i> Budget
+                    <i class="ti ti-chart-bar text-base" aria-hidden="true"></i> Budget
                 </a>
                 <a href="/life-events" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'life-events' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-heart text-base"></i> Life events
+                    <i class="ti ti-calendar-event text-base" aria-hidden="true"></i> Life events
                 </a>
+
+                <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Coming soon</p>
+                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
+                    <i class="ti ti-home text-base" aria-hidden="true"></i> Housing
+                </span>
+                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
+                    <i class="ti ti-heart text-base" aria-hidden="true"></i> Health
+                </span>
+                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
+                    <i class="ti ti-plane text-base" aria-hidden="true"></i> Lifestyle
+                </span>
+
             </nav>
-            <div class="p-4 border-t border-base-300">
-                <a href="/settings" class="flex items-center gap-3 text-sm hover:text-primary">
-                    <i class="ti ti-settings text-base"></i> Settings
-                </a>
+            <div class="p-4 border-t border-base-300 text-xs text-base-content/30">
+                <p>Data stored locally on this device.</p>
             </div>
         </aside>
 
         <!-- Main content -->
         <main class="flex-1 flex flex-col overflow-hidden">
-            <!-- Top bar -->
             <header class="bg-base-100 border-b border-base-300 px-6 py-3 flex items-center justify-between">
                 <div>
                     <h2 class="font-medium text-base-content">{% block page_title %}{% endblock %}</h2>
@@ -83,12 +80,11 @@
                 </div>
                 <div class="avatar placeholder">
                     <div class="bg-primary text-primary-content rounded-full w-8">
-                        <span class="text-xs">JD</span>
+                        <span class="text-xs">{{ user_initials() }}</span>
                     </div>
                 </div>
             </header>
 
-            <!-- Page content -->
             <div class="flex-1 overflow-y-auto p-6">
                 {% block content %}{% endblock %}
             </div>

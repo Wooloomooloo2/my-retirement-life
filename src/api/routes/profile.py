@@ -1,13 +1,12 @@
 """
 Profile routes — view and save the user's personal profile.
 
-GET  /profile        — render the profile form (pre-filled if data exists)
-POST /profile        — save profile data to the triple store
-GET  /profile/check  — HTMX partial: check if a profile exists (used by dashboard)
+GET  /profile  — render the profile form (pre-filled if data exists)
+POST /profile  — save profile data to the triple store
 """
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
 
@@ -15,19 +14,17 @@ from src.config import settings
 from src.store.graph import store, MRL, DATA_GRAPH
 
 router = APIRouter()
-templates = Jinja2Templates(directory=settings.templates_dir)
 
 MRL_EXT = "https://myretirementlife.app/ontology/ext#"
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 
 def get_profile() -> Optional[dict]:
     """Read Person_1 directly from the data graph using quad patterns."""
     person_iri = og.NamedNode(f"{MRL}Person_1")
-    
-    # Check person exists
+
     type_quads = list(store.store.quads_for_pattern(
-        person_iri, og.NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
-        None, DATA_GRAPH))
+        person_iri, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))
     if not type_quads:
         return None
 
@@ -57,8 +54,7 @@ def get_income_source() -> Optional[dict]:
     income_iri = og.NamedNode(f"{MRL}IncomeSource_1")
 
     type_quads = list(store.store.quads_for_pattern(
-        income_iri, og.NamedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
-        None, DATA_GRAPH))
+        income_iri, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))
     if not type_quads:
         return None
 
@@ -75,10 +71,8 @@ def get_income_source() -> Optional[dict]:
 
 
 def get_currencies() -> list:
-    """Get all currencies from the ontology graph for the dropdown."""
     sparql = f"""
         PREFIX mrl: <{MRL}>
-
         SELECT ?iri ?code ?name
         WHERE {{
             GRAPH <https://myretirementlife.app/ontology/graph> {{
@@ -90,22 +84,23 @@ def get_currencies() -> list:
         ORDER BY ?code
     """
     results = list(store.query(sparql))
-    return [
-        {
-            "iri": str(r["iri"].value),
-            "local": str(r["iri"].value).split("#")[-1],
-            "code": str(r["code"].value),
-            "name": str(r["name"].value),
-        }
-        for r in results
-    ]
+    currencies = []
+    for r in results:
+        try:
+            currencies.append({
+                "iri": str(r["iri"].value),
+                "local": str(r["iri"].value).split("#")[-1],
+                "code": str(r["code"].value),
+                "name": str(r["name"].value),
+            })
+        except Exception:
+            pass
+    return currencies
 
 
 def get_jurisdictions() -> list:
-    """Get all jurisdictions from the ontology graph for the dropdown."""
     sparql = f"""
         PREFIX mrl: <{MRL}>
-
         SELECT ?iri ?code ?name
         WHERE {{
             GRAPH <https://myretirementlife.app/ontology/graph> {{
@@ -117,25 +112,26 @@ def get_jurisdictions() -> list:
         ORDER BY ?name
     """
     results = list(store.query(sparql))
-    return [
-        {
-            "iri": str(r["iri"].value),
-            "local": str(r["iri"].value).split("#")[-1],
-            "code": str(r["code"].value),
-            "name": str(r["name"].value),
-        }
-        for r in results
-    ]
+    jurisdictions = []
+    for r in results:
+        try:
+            jurisdictions.append({
+                "iri": str(r["iri"].value),
+                "local": str(r["iri"].value).split("#")[-1],
+                "code": str(r["code"].value),
+                "name": str(r["name"].value),
+            })
+        except Exception:
+            pass
+    return jurisdictions
 
 
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
-    """Render the profile setup / edit page."""
     profile = get_profile()
     income = get_income_source()
     currencies = get_currencies()
     jurisdictions = get_jurisdictions()
-
     return templates.TemplateResponse(
         request=request,
         name="profile.html",
@@ -166,14 +162,10 @@ async def save_profile(
     incomeGrowthRate: float = Form(0.0),
     incomeIsNetOfTax: bool = Form(True),
 ):
-    """Save or update the user profile in the triple store."""
-
     person_iri = f"{MRL}Person_1"
     income_iri = f"{MRL}IncomeSource_1"
 
-    # Clear any existing Person_1 and IncomeSource_1 triples from data graph
     store.update(f"""
-        PREFIX mrl: <{MRL}>
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
                 <{person_iri}> ?p ?o .
@@ -181,7 +173,6 @@ async def save_profile(
         }}
     """)
     store.update(f"""
-        PREFIX mrl: <{MRL}>
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
                 <{income_iri}> ?p ?o .
@@ -189,7 +180,6 @@ async def save_profile(
         }}
     """)
 
-    # Insert Person triples
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -210,7 +200,6 @@ async def save_profile(
         }}
     """)
 
-    # Insert IncomeSource triples
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -230,7 +219,6 @@ async def save_profile(
         }}
     """)
 
-    # Re-fetch and return the updated form with a success message
     profile = get_profile()
     income = get_income_source()
     currencies = get_currencies()

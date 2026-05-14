@@ -1,211 +1,216 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - {{ app_name }}{% endblock %}
-
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block page_subtitle %}Retirement readiness overview{% endblock %}
-
-{% set active = 'dashboard' %}
+{% block page_subtitle %}Your retirement at a glance{% endblock %}
 
 {% block content %}
 
+{% if not profile %}
+<!-- First-run state -->
+<div class="max-w-lg mx-auto mt-12 text-center">
+    <div class="text-6xl mb-4">👋</div>
+    <h2 class="text-xl font-semibold mb-2">Welcome to My Retirement Life</h2>
+    <p class="text-base-content/60 mb-6">Let's get started by setting up your profile. It only takes a few minutes.</p>
+    <a href="/profile" class="btn btn-primary">Set up your profile</a>
+</div>
+
+{% else %}
+
+<!-- Confidence banner -->
+{% if projection %}
+<div class="card mb-5 shadow-sm
+    {% if projection.confidence == 'green' %}bg-success/10 border border-success/20
+    {% elif projection.confidence == 'amber' %}bg-warning/10 border border-warning/20
+    {% else %}bg-error/10 border border-error/20{% endif %}">
+    <div class="card-body p-4 flex flex-row items-center gap-4">
+        <div class="text-3xl">
+            {% if projection.confidence == 'green' %}✅
+            {% elif projection.confidence == 'amber' %}⚠️
+            {% else %}🔴{% endif %}
+        </div>
+        <div class="flex-1">
+            <p class="font-semibold
+                {% if projection.confidence == 'green' %}text-success
+                {% elif projection.confidence == 'amber' %}text-warning
+                {% else %}text-error{% endif %}">
+                {{ projection.confidence_label }}
+            </p>
+            <p class="text-sm text-base-content/60">{{ projection.confidence_message }}</p>
+        </div>
+        <a href="/projection" class="btn btn-sm btn-ghost">View projection →</a>
+    </div>
+</div>
+{% endif %}
+
 <!-- Metric cards -->
-<div class="grid grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-4 gap-4 mb-5">
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
-            <p class="text-xs text-base-content/50">Retirement readiness</p>
-            <p class="text-2xl font-semibold text-primary mt-1">78%</p>
-            <p class="text-xs text-success mt-1"><i class="ti ti-arrow-up"></i> +3% this year</p>
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Total savings</p>
+            <p class="text-xl font-semibold mt-1">
+                {% if total_balance %}£{{ "{:,.0f}".format(total_balance) }}{% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">{{ account_count }} account{% if account_count != 1 %}s{% endif %}</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
-            <p class="text-xs text-base-content/50">Years to retirement</p>
-            <p class="text-2xl font-semibold mt-1">12</p>
-            <p class="text-xs text-base-content/40 mt-1">Target age 67</p>
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Years to retirement</p>
+            <p class="text-xl font-semibold mt-1">
+                {% if years_to_retirement is not none %}
+                    {% if years_to_retirement > 0 %}{{ years_to_retirement }}{% else %}Retired{% endif %}
+                {% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">
+                {% if projection %}Target {{ projection.retirement_year }}{% endif %}
+            </p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
-            <p class="text-xs text-base-content/50">Projected income p/a</p>
-            <p class="text-2xl font-semibold mt-1">£34k</p>
-            <p class="text-xs text-success mt-1"><i class="ti ti-arrow-up"></i> On track</p>
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Annual spending</p>
+            <p class="text-xl font-semibold mt-1">
+                {% if annual_spending %}£{{ "{:,.0f}".format(annual_spending) }}{% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">{{ budget_line_count }} budget line{% if budget_line_count != 1 %}s{% endif %}</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
-            <p class="text-xs text-base-content/50">Active goals</p>
-            <p class="text-2xl font-semibold mt-1">6</p>
-            <p class="text-xs text-warning mt-1">2 need attention</p>
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Balance at retirement</p>
+            <p class="text-xl font-semibold mt-1">
+                {% if projection %}
+                    {% set ret = projection.years | selectattr('is_retirement_year') | list %}
+                    {% if ret %}£{{ "{:,.0f}".format(ret[0].balance) }}{% else %}—{% endif %}
+                {% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1">Projected savings pot</p>
         </div>
     </div>
 </div>
 
-<!-- Charts row -->
-<div class="grid grid-cols-5 gap-4 mb-6">
-    <!-- Savings projection chart -->
-    <div class="card bg-base-100 shadow-sm col-span-3">
-        <div class="card-body p-4">
-            <h3 class="text-sm font-medium flex items-center gap-2">
-                <i class="ti ti-chart-line text-base-content/40"></i>
-                Projected savings over time
+<!-- Mini chart + quick links -->
+<div class="grid grid-cols-3 gap-4">
+
+    <!-- Mini projection chart -->
+<!-- Mini projection chart -->
+    <div class="card bg-base-100 shadow-sm col-span-2">
+        <div class="card-body p-4 flex flex-col" style="min-height:280px">
+            <h3 class="text-sm font-medium flex items-center justify-between pb-2 mb-2 border-b border-base-200">
+                <span class="flex items-center gap-2">
+                    <i class="ti ti-chart-line text-base-content/40" aria-hidden="true"></i>
+                    Balance trajectory
+                </span>
+                <a href="/projection" class="text-xs text-primary hover:underline">Full projection →</a>
             </h3>
-            <canvas id="savingsChart" height="120"></canvas>
+            {% if projection %}
+            <div class="flex-1 relative" style="min-height:200px">
+                <canvas id="miniChart"></canvas>
+            </div>
+            {% else %}
+            <div class="flex items-center justify-center flex-1 text-base-content/30 text-sm">
+                Add accounts and budget to see projection
+            </div>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Goal progress -->
-    <div class="card bg-base-100 shadow-sm col-span-2">
+    <!-- Quick links -->
+    <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
-            <h3 class="text-sm font-medium flex items-center gap-2 mb-3">
-                <i class="ti ti-target text-base-content/40"></i>
-                Goal progress
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-2 mb-3 border-b border-base-200">
+                <i class="ti ti-bolt text-base-content/40" aria-hidden="true"></i>
+                Quick access
             </h3>
-            <div class="space-y-3">
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>Pension pot</span><span class="text-base-content/50">72%</span>
+            <div class="space-y-2">
+                <a href="/profile" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
+                    <i class="ti ti-user text-primary" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-medium">Profile</p>
+                        <p class="text-xs text-base-content/40">{{ profile.firstName }} {{ profile.lastName }}</p>
                     </div>
-                    <progress class="progress progress-primary w-full h-1.5" value="72" max="100"></progress>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>State pension</span><span class="text-base-content/50">88%</span>
+                </a>
+                <a href="/accounts" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
+                    <i class="ti ti-wallet text-primary" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-medium">Accounts</p>
+                        <p class="text-xs text-base-content/40">{{ account_count }} cash account{% if account_count != 1 %}s{% endif %}</p>
                     </div>
-                    <progress class="progress progress-success w-full h-1.5" value="88" max="100"></progress>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>Property</span><span class="text-base-content/50">100%</span>
+                </a>
+                <a href="/budget" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
+                    <i class="ti ti-chart-bar text-primary" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-medium">Budget</p>
+                        <p class="text-xs text-base-content/40">{{ budget_line_count }} line{% if budget_line_count != 1 %}s{% endif %}</p>
                     </div>
-                    <progress class="progress progress-success w-full h-1.5" value="100" max="100"></progress>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>Emergency fund</span><span class="text-base-content/50">45%</span>
+                </a>
+                <a href="/life-events" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
+                    <i class="ti ti-calendar-event text-primary" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-medium">Life events</p>
+                        <p class="text-xs text-base-content/40">{{ life_event_count }} event{% if life_event_count != 1 %}s{% endif %} planned</p>
                     </div>
-                    <progress class="progress progress-warning w-full h-1.5" value="45" max="100"></progress>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>Travel fund</span><span class="text-base-content/50">30%</span>
-                    </div>
-                    <progress class="progress progress-error w-full h-1.5" value="30" max="100"></progress>
-                </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span>Healthcare</span><span class="text-base-content/50">58%</span>
-                    </div>
-                    <progress class="progress progress-primary w-full h-1.5" value="58" max="100"></progress>
-                </div>
+                </a>
             </div>
         </div>
     </div>
+
 </div>
 
-<!-- Timeline -->
-<div class="card bg-base-100 shadow-sm">
-    <div class="card-body p-4">
-        <h3 class="text-sm font-medium flex items-center gap-2 mb-4">
-            <i class="ti ti-calendar-event text-base-content/40"></i>
-            Life timeline milestones
-        </h3>
-        <ul class="timeline timeline-vertical timeline-compact">
-            <li>
-                <div class="timeline-middle"><div class="w-2 h-2 rounded-full bg-primary"></div></div>
-                <div class="timeline-end mb-4">
-                    <div class="flex items-center justify-between gap-8">
-                        <div>
-                            <p class="text-sm font-medium">Downsize home</p>
-                            <p class="text-xs text-base-content/50">Move to smaller property, release equity</p>
-                        </div>
-                        <span class="badge badge-ghost badge-sm">Age 63</span>
-                    </div>
-                </div>
-                <hr class="bg-base-300"/>
-            </li>
-            <li>
-                <hr class="bg-base-300"/>
-                <div class="timeline-middle"><div class="w-2 h-2 rounded-full bg-success"></div></div>
-                <div class="timeline-end mb-4">
-                    <div class="flex items-center justify-between gap-8">
-                        <div>
-                            <p class="text-sm font-medium">Retire</p>
-                            <p class="text-xs text-base-content/50">Leave full-time employment</p>
-                        </div>
-                        <span class="badge badge-ghost badge-sm">Age 67</span>
-                    </div>
-                </div>
-                <hr class="bg-base-300"/>
-            </li>
-            <li>
-                <hr class="bg-base-300"/>
-                <div class="timeline-middle"><div class="w-2 h-2 rounded-full bg-success"></div></div>
-                <div class="timeline-end mb-4">
-                    <div class="flex items-center justify-between gap-8">
-                        <div>
-                            <p class="text-sm font-medium">State pension begins</p>
-                            <p class="text-xs text-base-content/50">Full new state pension</p>
-                        </div>
-                        <span class="badge badge-ghost badge-sm">Age 67</span>
-                    </div>
-                </div>
-                <hr class="bg-base-300"/>
-            </li>
-            <li>
-                <hr class="bg-base-300"/>
-                <div class="timeline-middle"><div class="w-2 h-2 rounded-full bg-warning"></div></div>
-                <div class="timeline-end">
-                    <div class="flex items-center justify-between gap-8">
-                        <div>
-                            <p class="text-sm font-medium">World trip</p>
-                            <p class="text-xs text-base-content/50">6-month travel goal</p>
-                        </div>
-                        <span class="badge badge-ghost badge-sm">Age 70</span>
-                    </div>
-                </div>
-            </li>
-        </ul>
-    </div>
-</div>
-
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{% if projection %}
 <script>
-    const ctx = document.getElementById('savingsChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['2025', '2027', '2029', '2031', '2033', '2035', '2037'],
-            datasets: [{
-                label: 'Projected savings',
-                data: [45000, 95000, 155000, 225000, 305000, 370000, 420000],
-                borderColor: '#6366f1',
-                backgroundColor: 'rgba(99,102,241,0.08)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 3,
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: v => '£' + (v/1000) + 'k',
-                        font: { size: 11 }
-                    },
-                    grid: { color: 'rgba(0,0,0,0.05)' }
+const years = {{ projection.years | map(attribute='year') | list | tojson }};
+const balances = {{ projection.years | map(attribute='balance') | list | tojson }};
+const retirementYear = {{ projection.retirement_year }};
+const retirementIdx = years.indexOf(retirementYear);
+
+const ctx = document.getElementById('miniChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: years,
+        datasets: [{
+            data: balances,
+            borderColor: '{% if projection.confidence == "green" %}#22c55e{% elif projection.confidence == "amber" %}#f59e0b{% else %}#ef4444{% endif %}',
+            backgroundColor: '{% if projection.confidence == "green" %}rgba(34,197,94,0.08){% elif projection.confidence == "amber" %}rgba(245,158,11,0.08){% else %}rgba(239,68,68,0.08){% endif %}',
+            borderWidth: 2,
+            fill: true,
+            pointRadius: 0,
+            tension: 0.4,
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: {
+                ticks: {
+                    font: { size: 9 },
+                    maxTicksLimit: 8,
+                    callback: function(val, index) {
+                        const year = years[index];
+                        if (year === retirementYear) return `${year}★`;
+                        return year % 10 === 0 ? year : '';
+                    }
                 },
-                x: {
-                    ticks: { font: { size: 11 } },
-                    grid: { display: false }
-                }
+                grid: { display: false }
+            },
+            y: {
+                ticks: {
+                    font: { size: 9 },
+                    callback: v => '£' + (v/1000).toFixed(0) + 'k'
+                },
+                grid: { color: 'rgba(0,0,0,0.04)' }
             }
         }
-    });
+    }
+});
 </script>
+{% endif %}
 {% endblock %}

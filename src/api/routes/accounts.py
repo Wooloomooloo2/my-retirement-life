@@ -10,7 +10,7 @@ POST /accounts/{n}/delete   — delete account N
 from datetime import date
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
 
@@ -18,7 +18,6 @@ from src.config import settings
 from src.store.graph import store, MRL, DATA_GRAPH
 
 router = APIRouter()
-templates = Jinja2Templates(directory=settings.templates_dir)
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
