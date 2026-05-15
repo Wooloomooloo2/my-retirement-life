@@ -7,30 +7,170 @@
 {% block content %}
 
 {% if not profile %}
-<!-- First-run state -->
-<div class="max-w-lg mx-auto mt-12 text-center">
-    <div class="text-6xl mb-4">👋</div>
-    <h2 class="text-xl font-semibold mb-2">Welcome to My Retirement Life</h2>
-    <p class="text-base-content/60 mb-6">Let's get started by setting up your profile. It only takes a few minutes.</p>
-    <a href="/profile" class="btn btn-primary">Set up your profile</a>
+<!-- =========================================================
+     FIRST-RUN STATE — no profile yet
+     ========================================================= -->
+
+<!-- Welcome card -->
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-8 text-center">
+        <div class="flex justify-center mb-4">
+            <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <i class="ti ti-chart-line text-3xl text-primary" aria-hidden="true"></i>
+            </div>
+        </div>
+        <h2 class="text-xl font-semibold mb-2">Welcome to My Retirement Life</h2>
+        <p class="text-base-content/60 mb-6 max-w-md mx-auto">
+            Build your complete retirement picture in a few minutes. Set up your profile, add your income and savings, then see when you can retire.
+        </p>
+
+        <!-- Progress steps -->
+        <div class="flex items-center justify-center gap-0 mb-6 max-w-lg mx-auto">
+            {% set steps = [
+                ('1', 'Profile'),
+                ('2', 'Income'),
+                ('3', 'Accounts'),
+                ('4', 'Budget'),
+                ('5', 'Projection')
+            ] %}
+            {% for num, label in steps %}
+            <div class="flex items-center">
+                <div class="flex flex-col items-center gap-1">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium
+                        bg-base-200 text-base-content/40 border border-base-300">
+                        {{ num }}
+                    </div>
+                    <span class="text-xs text-base-content/40 whitespace-nowrap">{{ label }}</span>
+                </div>
+                {% if not loop.last %}
+                <div class="w-8 h-px bg-base-300 mb-4 mx-1"></div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <a href="/profile" class="btn btn-primary gap-2 mx-auto">
+            <i class="ti ti-arrow-right" aria-hidden="true"></i>
+            Start with your profile
+        </a>
+    </div>
+</div>
+
+<!-- Setup checklist -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-checklist text-base-content/40" aria-hidden="true"></i>
+            Setup checklist
+        </h3>
+
+        {% set checklist = [
+            ('Profile', 'Personal details and retirement goal', '/profile', false),
+            ('Income', 'At least one income source', '/income', false),
+            ('Accounts', 'At least one cash account', '/accounts', false),
+            ('Budget', 'Your spending lines', '/budget', false),
+            ('Projection', 'View your retirement projection', '/projection', false),
+        ] %}
+
+        {% for title, desc, url, done in checklist %}
+        <a href="{{ url }}" class="flex items-center gap-3 py-3 px-2 hover:bg-base-200 rounded-lg
+            {% if not loop.first %}border-t border-base-200{% endif %}">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0
+                bg-base-200 border border-base-300">
+                <span class="text-xs text-base-content/40">{{ loop.index }}</span>
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-base-content/70">{{ title }}</p>
+                <p class="text-xs text-base-content/40">{{ desc }}</p>
+            </div>
+            <i class="ti ti-chevron-right text-base-content/30 text-sm" aria-hidden="true"></i>
+        </a>
+        {% endfor %}
+    </div>
 </div>
 
 {% else %}
+<!-- =========================================================
+     MAIN DASHBOARD — data exists
+     ========================================================= -->
+
+<!-- Setup checklist (shown until all steps complete) -->
+{% set setup_complete = profile and income_count > 0 and account_count > 0 and budget_line_count > 0 %}
+{% if not setup_complete %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-checklist text-base-content/40" aria-hidden="true"></i>
+            Setup checklist
+            <span class="badge badge-sm badge-ghost ml-auto">
+                {{ [profile is not none, income_count > 0, account_count > 0, budget_line_count > 0] | select | list | length }}/4 done
+            </span>
+        </h3>
+
+        {% set items = [
+            (profile is not none, 'Profile', 'Personal details and retirement goal', '/profile'),
+            (income_count > 0, 'Income', income_count ~ ' source' ~ ('s' if income_count != 1 else '') ~ ' added' if income_count > 0 else 'Add at least one income source', '/income'),
+            (account_count > 0, 'Accounts', account_count ~ ' account' ~ ('s' if account_count != 1 else '') ~ ' added' if account_count > 0 else 'Add at least one cash account', '/accounts'),
+            (budget_line_count > 0, 'Budget', budget_line_count ~ ' line' ~ ('s' if budget_line_count != 1 else '') ~ ' added' if budget_line_count > 0 else 'Add your spending lines', '/budget'),
+        ] %}
+
+        {% set ns = namespace(found_current=false) %}
+        {% for done, title, desc, url in items %}
+        {% set is_current = not done and not ns.found_current %}
+        {% if is_current %}{% set ns.found_current = true %}{% endif %}
+        <a href="{{ url }}" class="flex items-center gap-3 py-3 px-2 rounded-lg hover:bg-base-200
+            {% if not loop.first %}border-t border-base-200{% endif %}
+            {% if is_current %}bg-primary/5{% endif %}">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0
+                {% if done %}bg-success/20 text-success border border-success/30
+                {% elif is_current %}bg-primary/20 text-primary border border-primary/30
+                {% else %}bg-base-200 border border-base-300 text-base-content/30{% endif %}">
+                {% if done %}
+                    <i class="ti ti-check text-xs" aria-hidden="true"></i>
+                {% elif is_current %}
+                    <i class="ti ti-arrow-right text-xs" aria-hidden="true"></i>
+                {% else %}
+                    <span class="text-xs">{{ loop.index }}</span>
+                {% endif %}
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-medium
+                    {% if done %}text-base-content/50 line-through
+                    {% elif is_current %}text-primary
+                    {% else %}text-base-content/40{% endif %}">
+                    {{ title }}
+                </p>
+                <p class="text-xs text-base-content/40">{{ desc }}</p>
+            </div>
+            {% if is_current %}
+            <span class="text-xs text-primary font-medium">Add now →</span>
+            {% elif done %}
+            <span class="text-xs text-base-content/30">Edit</span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <!-- Confidence banner -->
 {% if projection %}
-<div class="card mb-5 shadow-sm
-    {% if projection.confidence == 'green' %}bg-success/10 border border-success/20
-    {% elif projection.confidence == 'amber' %}bg-warning/10 border border-warning/20
-    {% else %}bg-error/10 border border-error/20{% endif %}">
+<div class="card mb-5 shadow-sm border
+    {% if projection.confidence == 'green' %}border-success/20 bg-success/5
+    {% elif projection.confidence == 'amber' %}border-warning/20 bg-warning/5
+    {% else %}border-error/20 bg-error/5{% endif %}">
     <div class="card-body p-4 flex flex-row items-center gap-4">
-        <div class="text-3xl">
-            {% if projection.confidence == 'green' %}✅
-            {% elif projection.confidence == 'amber' %}⚠️
-            {% else %}🔴{% endif %}
+        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+            {% if projection.confidence == 'green' %}bg-success/20
+            {% elif projection.confidence == 'amber' %}bg-warning/20
+            {% else %}bg-error/20{% endif %}">
+            <i class="ti
+                {% if projection.confidence == 'green' %}ti-circle-check text-success
+                {% elif projection.confidence == 'amber' %}ti-alert-triangle text-warning
+                {% else %}ti-circle-x text-error{% endif %} text-lg" aria-hidden="true"></i>
         </div>
         <div class="flex-1">
-            <p class="font-semibold
+            <p class="font-semibold text-sm
                 {% if projection.confidence == 'green' %}text-success
                 {% elif projection.confidence == 'amber' %}text-warning
                 {% else %}text-error{% endif %}">
@@ -93,8 +233,6 @@
 <!-- Mini chart + quick links -->
 <div class="grid grid-cols-3 gap-4">
 
-    <!-- Mini projection chart -->
-<!-- Mini projection chart -->
     <div class="card bg-base-100 shadow-sm col-span-2">
         <div class="card-body p-4 flex flex-col" style="min-height:280px">
             <h3 class="text-sm font-medium flex items-center justify-between pb-2 mb-2 border-b border-base-200">
@@ -109,14 +247,13 @@
                 <canvas id="miniChart"></canvas>
             </div>
             {% else %}
-            <div class="flex items-center justify-center flex-1 text-base-content/30 text-sm">
+            <div class="flex-1 flex items-center justify-center text-base-content/30 text-sm">
                 Add accounts and budget to see projection
             </div>
             {% endif %}
         </div>
     </div>
 
-    <!-- Quick links -->
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <h3 class="text-sm font-medium flex items-center gap-2 pb-2 mb-3 border-b border-base-200">
@@ -129,6 +266,13 @@
                     <div>
                         <p class="font-medium">Profile</p>
                         <p class="text-xs text-base-content/40">{{ profile.firstName }} {{ profile.lastName }}</p>
+                    </div>
+                </a>
+                <a href="/income" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
+                    <i class="ti ti-cash text-primary" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-medium">Income</p>
+                        <p class="text-xs text-base-content/40">{{ income_count }} source{% if income_count != 1 %}s{% endif %}</p>
                     </div>
                 </a>
                 <a href="/accounts" class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 text-sm">
@@ -167,7 +311,6 @@
 const years = {{ projection.years | map(attribute='year') | list | tojson }};
 const balances = {{ projection.years | map(attribute='balance') | list | tojson }};
 const retirementYear = {{ projection.retirement_year }};
-const retirementIdx = years.indexOf(retirementYear);
 
 const ctx = document.getElementById('miniChart').getContext('2d');
 new Chart(ctx, {

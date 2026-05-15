@@ -3,6 +3,8 @@ Profile routes — view and save the user's personal profile.
 
 GET  /profile  — render the profile form (pre-filled if data exists)
 POST /profile  — save profile data to the triple store
+
+Income is managed separately on the /income screen.
 """
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse
@@ -46,27 +48,6 @@ def get_profile() -> Optional[dict]:
         "lifeExpectancy": get_val("lifeExpectancy"),
         "baseCurrency": get_local("baseCurrency"),
         "jurisdiction": get_local("residesIn"),
-    }
-
-
-def get_income_source() -> Optional[dict]:
-    """Read IncomeSource_1 directly from the data graph using quad patterns."""
-    income_iri = og.NamedNode(f"{MRL}IncomeSource_1")
-
-    type_quads = list(store.store.quads_for_pattern(
-        income_iri, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))
-    if not type_quads:
-        return None
-
-    def get_val(prop: str) -> str:
-        quads = list(store.store.quads_for_pattern(
-            income_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
-        return str(quads[0].object.value) if quads else ""
-
-    return {
-        "annualAmount": get_val("incomeAnnualAmount"),
-        "growthRate": get_val("incomeGrowthRate"),
-        "isNetOfTax": get_val("incomeIsNetOfTax"),
     }
 
 
@@ -129,7 +110,6 @@ def get_jurisdictions() -> list:
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
     profile = get_profile()
-    income = get_income_source()
     currencies = get_currencies()
     jurisdictions = get_jurisdictions()
     return templates.TemplateResponse(
@@ -138,7 +118,6 @@ async def profile_page(request: Request):
         context={
             "app_name": settings.app_name,
             "profile": profile,
-            "income": income,
             "currencies": currencies,
             "jurisdictions": jurisdictions,
             "active": "profile",
@@ -158,13 +137,10 @@ async def save_profile(
     lifeExpectancy: int = Form(...),
     baseCurrency: str = Form(...),
     jurisdiction: str = Form(...),
-    annualIncome: float = Form(...),
-    incomeGrowthRate: float = Form(0.0),
-    incomeIsNetOfTax: bool = Form(True),
 ):
     person_iri = f"{MRL}Person_1"
-    income_iri = f"{MRL}IncomeSource_1"
 
+    # Clear existing person triples
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -172,14 +148,8 @@ async def save_profile(
             }}
         }}
     """)
-    store.update(f"""
-        DELETE WHERE {{
-            GRAPH <{DATA_GRAPH.value}> {{
-                <{income_iri}> ?p ?o .
-            }}
-        }}
-    """)
 
+    # Insert person triples
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -200,35 +170,7 @@ async def save_profile(
         }}
     """)
 
-    # Calculate actual retirement calendar year from DOB and retirement age
-    try:
-        from datetime import date as _date
-        dob = _date.fromisoformat(dateOfBirth)
-        retirement_year = dob.year + targetRetirementAge
-    except ValueError:
-        retirement_year = _date.today().year + targetRetirementAge
-
-    store.update(f"""
-        PREFIX mrl:  <{MRL}>
-        PREFIX mrlx: <{MRL_EXT}>
-        PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-
-        INSERT DATA {{
-            GRAPH <{DATA_GRAPH.value}> {{
-                <{income_iri}> a mrl:IncomeSource ;
-                    mrl:incomeSourceName "Employment income" ;
-                    mrl:incomeSourceType mrlx:IncomeSourceType_Employment ;
-                    mrl:incomeAnnualAmount "{annualIncome}"^^xsd:decimal ;
-                    mrl:incomeGrowthRate "{incomeGrowthRate}"^^xsd:decimal ;
-                    mrl:incomeIsNetOfTax "{str(incomeIsNetOfTax).lower()}"^^xsd:boolean ;
-                    mrl:incomeEndYear "{retirement_year}"^^xsd:integer ;
-                    mrl:incomeOwner <{person_iri}> .
-            }}
-        }}
-    """)
-
     profile = get_profile()
-    income = get_income_source()
     currencies = get_currencies()
     jurisdictions = get_jurisdictions()
 
@@ -238,7 +180,6 @@ async def save_profile(
         context={
             "app_name": settings.app_name,
             "profile": profile,
-            "income": income,
             "currencies": currencies,
             "jurisdictions": jurisdictions,
             "active": "profile",

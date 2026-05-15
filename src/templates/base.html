@@ -44,14 +44,14 @@
                 <a href="/profile" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'profile' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-user text-base" aria-hidden="true"></i> Profile
                 </a>
+                <a href="/income" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'income' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
+                    <i class="ti ti-cash text-base" aria-hidden="true"></i> Income
+                </a>
                 <a href="/accounts" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'accounts' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-wallet text-base" aria-hidden="true"></i> Accounts
                 </a>
                 <a href="/budget" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'budget' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-chart-bar text-base" aria-hidden="true"></i> Budget
-                </a>
-                <a href="/income" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'income' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-cash text-base" aria-hidden="true"></i> Income
                 </a>
                 <a href="/life-events" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'life-events' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-calendar-event text-base" aria-hidden="true"></i> Life events
@@ -91,6 +91,30 @@
             </header>
 
             <div class="flex-1 overflow-y-auto p-6">
+
+                {% set s = setup_state() %}
+                {% if not s.setup_all_done %}
+                <div class="mb-5 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-4">
+                    <div class="flex items-center gap-1.5">
+                        {% for i in range(4) %}
+                        <div class="w-2 h-2 rounded-full
+                            {% if i < s.setup_steps_done %}bg-primary
+                            {% else %}bg-base-300{% endif %}">
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <p class="text-sm text-base-content/70 flex-1">
+                        <span class="font-medium text-primary">{{ s.setup_steps_done }}/4</span>
+                        setup steps complete
+                    </p>
+                    <a href="{{ s.setup_next_url }}"
+                       class="btn btn-primary btn-xs gap-1">
+                        {{ s.setup_next_label }}
+                        <i class="ti ti-arrow-right text-xs" aria-hidden="true"></i>
+                    </a>
+                </div>
+                {% endif %}
+
                 {% block content %}{% endblock %}
             </div>
         </main>

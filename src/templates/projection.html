@@ -110,45 +110,32 @@
     </div>
 </div>
 
-<!-- Assumptions -->
+<!-- Assumptions summary -->
 <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
-        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
-            <i class="ti ti-settings text-base-content/40" aria-hidden="true"></i>
-            Projection assumptions
+        <h3 class="text-sm font-medium flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+            <span class="flex items-center gap-2">
+                <i class="ti ti-adjustments text-base-content/40" aria-hidden="true"></i>
+                Projection assumptions
+            </span>
+            <a href="/settings" class="text-xs text-primary hover:underline">Change in Settings →</a>
         </h3>
-        {% if settings_saved %}
-        <div class="alert alert-success mb-4 py-2 text-sm">
-            <i class="ti ti-circle-check"></i> Assumptions saved — projection updated.
-        </div>
-        {% endif %}
-        <form method="post" action="/projection/settings">
-            <div class="flex items-end gap-4">
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
-                            Default inflation rate %
-                        </span>
-                    </label>
-                    <input type="number" name="inflationRate"
-                        step="0.1" min="0" max="20"
-                        value="{{ inflation_rate }}"
-                        class="input input-bordered input-sm w-40" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">
-                            Applied to budget lines with no growth rate set
-                        </span>
-                    </label>
-                </div>
-                <button type="submit" class="btn btn-sm btn-outline mb-6">
-                    Update projection
-                </button>
+        <div class="flex gap-8 text-sm">
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Default inflation rate</p>
+                <p class="font-medium">{{ inflation_rate }}%</p>
+                <p class="text-xs text-base-content/40 mt-0.5">Applied to budget lines with no individual rate</p>
             </div>
-        </form>
-        <div class="text-xs text-base-content/40 mt-2 space-y-1">
-            <p>⚡ Interest rate used: {{ projection.weighted_rate }}% (weighted average across all accounts)</p>
-            <p>📌 Individual account interest tracking is a planned future feature</p>
-            <p>📌 Budget lines with a growth rate set use that rate; others use the default inflation rate above</p>
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Interest rate applied</p>
+                <p class="font-medium">{{ projection.weighted_rate }}%</p>
+                <p class="text-xs text-base-content/40 mt-0.5">Weighted average across all accounts</p>
+            </div>
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Planning horizon</p>
+                <p class="font-medium">{{ projection.current_year }} — {{ projection.end_year }}</p>
+                <p class="text-xs text-base-content/40 mt-0.5">To life expectancy</p>
+            </div>
         </div>
     </div>
 </div>

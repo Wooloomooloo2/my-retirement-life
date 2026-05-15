@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from src.config import settings
 from src.api.routes import profile, accounts, budget, life_events, projection, income, settings_route
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 app = FastAPI(title=settings.app_name)
 
@@ -55,6 +56,47 @@ from src.api.templates import templates as _shared_templates
 _shared_templates.env.globals["user_initials"] = get_user_initials
 
 
+def get_setup_state() -> dict:
+    """Returns setup completion state for the persistent banner in base.html."""
+    from src.store.graph import store, MRL, DATA_GRAPH
+    from src.api.routes.projection import load_all_income_sources, load_accounts
+    from src.api.routes.profile import get_profile
+    import pyoxigraph as og
+
+    RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    prof = get_profile()
+    has_profile = prof is not None
+    has_income = len(load_all_income_sources()) > 0
+    has_accounts = len(load_accounts()) > 0
+    type_node = og.NamedNode(f"{MRL}BudgetLine")
+    has_budget = len(list(store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH))) > 0
+    all_done = has_profile and has_income and has_accounts and has_budget
+    if not has_profile:
+        next_url, next_label = "/profile", "Set up your profile"
+    elif not has_income:
+        next_url, next_label = "/income", "Add your income"
+    elif not has_accounts:
+        next_url, next_label = "/accounts", "Add a cash account"
+    elif not has_budget:
+        next_url, next_label = "/budget", "Add your budget"
+    else:
+        next_url, next_label = "/projection", "View your projection"
+    return {
+        "setup_all_done": all_done,
+        "setup_steps_done": sum([has_profile, has_income, has_accounts, has_budget]),
+        "setup_next_url": next_url,
+        "setup_next_label": next_label,
+        "setup_has_profile": has_profile,
+        "setup_has_income": has_income,
+        "setup_has_accounts": has_accounts,
+        "setup_has_budget": has_budget,
+    }
+
+
+_shared_templates.env.globals["setup_state"] = get_setup_state
+
+
 def get_dashboard_data() -> dict:
     """Load all data needed for the dashboard."""
     from src.store.graph import store, MRL, DATA_GRAPH
@@ -71,6 +113,10 @@ def get_dashboard_data() -> dict:
 
     # Profile
     prof = get_profile()
+
+    # Income sources
+    income_sources = _load_income()
+    income_count = len(income_sources)
 
     # Accounts
     accs = _load_accounts()
@@ -105,6 +151,7 @@ def get_dashboard_data() -> dict:
 
     return {
         "profile": prof,
+        "income_count": income_count,
         "account_count": account_count,
         "total_balance": round(total_balance, 0) if total_balance else 0,
         "budget_line_count": budget_line_count,
@@ -118,6 +165,52 @@ def get_dashboard_data() -> dict:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Exception handlers
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    from src.api.templates import templates
+    if exc.status_code == 404:
+        return templates.TemplateResponse(
+            request=request,
+            name="error.html",
+            status_code=404,
+            context={
+                "app_name": settings.app_name,
+                "active": "",
+                "error_detail": f"Page not found: {request.url.path}",
+            }
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        status_code=exc.status_code,
+        context={
+            "app_name": settings.app_name,
+            "active": "",
+            "error_detail": str(exc.detail),
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    from src.api.templates import templates
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        status_code=500,
+        context={
+            "app_name": settings.app_name,
+            "active": "",
+            "error_detail": str(exc),
+        }
+    )
+
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Something went wrong — {{ app_name }}{% endblock %}
+{% block page_title %}Something went wrong{% endblock %}
+{% block page_subtitle %}An unexpected error occurred{% endblock %}
+
+{% block content %}
+
+<div class="max-w-lg mx-auto mt-8">
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-8 text-center">
+
+            <div class="flex justify-center mb-4">
+                <div class="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center">
+                    <i class="ti ti-alert-circle text-3xl text-error" aria-hidden="true"></i>
+                </div>
+            </div>
+
+            <h2 class="text-lg font-semibold mb-2">Something went wrong</h2>
+
+            <p class="text-base-content/60 text-sm mb-6">
+                The application encountered an unexpected error.
+                Your data is safe — this is a display issue, not a data problem.
+            </p>
+
+            {% if error_detail %}
+            <div class="bg-base-200 rounded-lg p-3 mb-6 text-left">
+                <p class="text-xs font-medium uppercase tracking-wide text-base-content/40 mb-1">Error detail</p>
+                <p class="font-mono text-xs text-error break-all">{{ error_detail }}</p>
+            </div>
+            {% endif %}
+
+            <div class="flex gap-3 justify-center">
+                <a href="/" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-home" aria-hidden="true"></i>
+                    Go to dashboard
+                </a>
+                <button onclick="history.back()" class="btn btn-ghost btn-sm gap-1">
+                    <i class="ti ti-arrow-left" aria-hidden="true"></i>
+                    Go back
+                </button>
+            </div>
+
+            <p class="text-xs text-base-content/30 mt-6">
+                If this keeps happening, check the terminal for details or
+                <a href="/settings" class="hover:underline">visit Settings</a> to verify your data.
+            </p>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}

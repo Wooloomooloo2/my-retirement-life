@@ -2,32 +2,16 @@
 
 {% block title %}Profile — {{ app_name }}{% endblock %}
 {% block page_title %}Your profile{% endblock %}
-{% block page_subtitle %}{% if is_new %}Set up your profile to get started{% else %}Edit your personal details{% endif %}{% endblock %}
+{% block page_subtitle %}{% if is_new %}Personal details and retirement goal{% else %}Edit your personal details{% endif %}{% endblock %}
 
 {% block content %}
 
 {% if saved %}
 <div class="alert alert-success mb-4">
     <i class="ti ti-circle-check"></i>
-    <span>Profile saved successfully.</span>
+    <span>Profile saved.</span>
 </div>
 {% endif %}
-
-<!-- Setup progress steps -->
-<div class="flex gap-2 mb-6">
-    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-[#EEEDFE] text-[#534AB7] border border-[#AFA9EC]">
-        <i class="ti ti-user text-sm" aria-hidden="true"></i> Profile
-    </div>
-    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
-        <i class="ti ti-wallet text-sm" aria-hidden="true"></i> Accounts
-    </div>
-    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
-        <i class="ti ti-chart-bar text-sm" aria-hidden="true"></i> Budget
-    </div>
-    <div class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-base-200 text-base-content/40 border border-base-300">
-        <i class="ti ti-heart text-sm" aria-hidden="true"></i> Life events
-    </div>
-</div>
 
 <form method="post" action="/profile">
 
@@ -108,7 +92,7 @@
                 <i class="ti ti-target text-base-content/40" aria-hidden="true"></i>
                 Retirement goals
             </h3>
-            <div class="grid grid-cols-3 gap-x-4 gap-y-3">
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3">
 
                 <div class="form-control">
                     <label class="label py-0.5">
@@ -137,44 +121,18 @@
                     </label>
                 </div>
 
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Income growth rate %</span>
-                    </label>
-                    <input type="number" name="incomeGrowthRate" step="0.1" min="-10" max="20"
-                        value="{{ income.growthRate if income else '0' }}"
-                        placeholder="e.g. 2.5"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Annual % change</span>
-                    </label>
-                </div>
-
             </div>
         </div>
     </div>
 
-    <!-- Income & currency -->
+    <!-- Currency & jurisdiction -->
     <div class="card bg-base-100 shadow-sm mb-4">
         <div class="card-body p-4">
             <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
-                <i class="ti ti-wallet text-base-content/40" aria-hidden="true"></i>
-                Income &amp; currency
+                <i class="ti ti-world text-base-content/40" aria-hidden="true"></i>
+                Currency &amp; location
             </h3>
             <div class="grid grid-cols-2 gap-x-4 gap-y-3">
-
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual net income</span>
-                    </label>
-                    <input type="number" name="annualIncome" required min="0" step="1"
-                        value="{{ income.annualAmount if income else '' }}"
-                        placeholder="e.g. 45000"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Take-home pay after tax</span>
-                    </label>
-                </div>
 
                 <div class="form-control">
                     <label class="label py-0.5">
@@ -212,24 +170,17 @@
                     </label>
                 </div>
 
-                <div class="form-control justify-end">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Income is net of tax</span>
-                    </label>
-                    <div class="flex items-center gap-3 h-8">
-                        <input type="checkbox" name="incomeIsNetOfTax" value="true"
-                            {% if not income or income.isNetOfTax == 'true' %}checked{% endif %}
-                            class="checkbox checkbox-sm checkbox-primary" />
-                        <span class="text-xs text-base-content/60">Take-home pay (after tax)</span>
-                    </div>
-                </div>
-
             </div>
         </div>
     </div>
 
     <!-- Action buttons -->
-    <div class="flex justify-end gap-2">
+    <div class="flex justify-between items-center">
+        <p class="text-xs text-base-content/40">
+            <i class="ti ti-cash text-xs" aria-hidden="true"></i>
+            Manage income sources on the
+            <a href="/income" class="text-primary hover:underline">Income screen</a>
+        </p>
         <button type="submit" class="btn btn-primary btn-sm gap-1">
             <i class="ti ti-device-floppy" aria-hidden="true"></i>
             Save profile
@@ -253,7 +204,9 @@
         if (retAge && age) {
             const years = retAge - age;
             document.getElementById('years-to-retirement').textContent =
-                years > 0 ? `${years} years to retirement` : years === 0 ? 'Retirement year' : 'Already retired';
+                years > 0 ? `${years} years to retirement`
+                : years === 0 ? 'Retirement year'
+                : 'Already retired';
         }
     }
     document.getElementById('dob').addEventListener('change', updateAgeDisplay);
