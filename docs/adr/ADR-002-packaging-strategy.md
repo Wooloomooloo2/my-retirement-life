@@ -1,62 +1,90 @@
 # ADR-002: Packaging strategy
 
-**Date:** 2026-05-09
+**Date:** 2026-05-09  
+**Updated:** 2026-05-14  
 **Status:** Accepted
 
 ---
 
 ## Context
 
-My Retirement Life targets non-technical end users on both Windows and Linux. A core requirement is that users should not be required to install unfamiliar software, use a terminal, or interact with package managers in order to run the application.
+My Retirement Life targets non-technical end users on Windows, macOS, and Linux. A core requirement is that users should not be required to install unfamiliar software, use a terminal, or interact with package managers in order to run the application.
 
 The application is a local Python process (FastAPI + embedded Oxigraph) that serves a browser-based UI. The packaging approach must:
 - Require no pre-installed Python, database engine, or runtime on the user's machine
-- Work on Windows 10/11 and common Linux distributions (Ubuntu, Fedora, Mint etc.)
+- Work on Windows 10/11, macOS (Apple Silicon and Intel), and common Linux distributions
 - Produce a distributable that a non-technical user can download and run
 - Remain maintainable as Python and OS versions evolve
+
+macOS was added as a target platform after initial design. Mac users are disproportionately represented in the target demographic — higher net worth individuals and people approaching retirement — making macOS support a priority alongside Windows and Linux.
 
 ### Options considered
 
 | Option | Platform | Notes |
 |--------|----------|-------|
-| PyInstaller | Windows & Linux | Bundles Python interpreter and all dependencies into a single executable or folder. Widely used, mature, no runtime required on the host. |
-| Docker Desktop | Both | Consistent environment but requires Docker Desktop installation — crosses the complexity threshold for non-technical users. |
-| AppImage | Linux | Self-contained Linux executable. No installation, no root access required. User downloads, marks executable, runs. Universally supported across distributions. |
-| Flatpak / Snap | Linux | Distribution-friendly packaging formats. Require a runtime (Flatpak runtime or snapd) to be present — adds a step for some users. |
-| cx_Freeze | Windows & Linux | Alternative to PyInstaller; less widely adopted, smaller community. |
+| PyInstaller | Windows, macOS, Linux | Bundles Python interpreter and all dependencies. Produces `.exe` on Windows, `.app` on macOS, and a folder executable on Linux. Widely used and mature. |
+| Docker Desktop | All | Consistent environment but requires Docker Desktop installation — crosses the complexity threshold for non-technical users. |
+| AppImage | Linux only | Self-contained Linux executable. No installation, no root access required. Distribution-agnostic. |
+| Flatpak / Snap | Linux only | Require a runtime to be present — adds a step for some users. |
+| cx_Freeze | Windows & Linux | Alternative to PyInstaller; less widely adopted. |
+| py2app | macOS only | macOS-specific alternative to PyInstaller for `.app` bundles. Less actively maintained. |
 
 ---
 
 ## Decision
 
-**Windows: PyInstaller**
-**Linux: AppImage**
+**Windows: PyInstaller → `.exe`**  
+**macOS: PyInstaller → `.app` bundle**  
+**Linux: PyInstaller → AppImage (via appimagetool)**
 
-These two formats together achieve the goal of a one-file, no-install user experience on both platforms.
+PyInstaller is used as the single build toolchain across all three platforms, producing platform-appropriate output in each case. This minimises build toolchain complexity — one tool, three targets.
 
-On **Windows**, PyInstaller produces a single `.exe` (or a folder with a launcher `.exe`) that bundles the Python interpreter, FastAPI, pyoxigraph, and all dependencies. The user double-clicks the executable; the application starts and opens in their default browser. No Python installation is required.
+### Windows
+PyInstaller produces a single `.exe` or a folder with a launcher `.exe`. The user double-clicks and the app opens in their default browser. No Python installation required.
 
-On **Linux**, AppImage is the best match for the portability requirement. A single `.AppImage` file is downloaded by the user, marked as executable (`chmod +x`), and run directly — no package manager, no root access, no dependencies to resolve. AppImage files are distribution-agnostic and run on any Linux system with FUSE support (standard on all mainstream distributions).
+### macOS
+PyInstaller produces a `.app` bundle which the user drags to their Applications folder and double-clicks. The app opens in their default browser. No Python installation required.
 
-The build pipeline will use **PyInstaller** to produce the application bundle for both targets, with the Linux bundle then wrapped into an AppImage using **appimagetool**. This keeps a single build toolchain producing both outputs.
+**macOS code signing and Gatekeeper:** Apple's Gatekeeper security blocks unsigned `.app` bundles by default. Three tiers apply:
+
+| Tier | Requirement | User experience |
+|------|-------------|-----------------|
+| Unsigned | None | User must right-click → Open on first launch; warning shown |
+| Signed | Apple Developer account ($99/yr) | Normal double-click, no warning |
+| Notarised | Apple Developer account + notarisation step | Fully trusted, no warning, recommended for public distribution |
+
+For initial releases, the app will be distributed **unsigned**. Users who download from GitHub will see a Gatekeeper warning on first launch and must right-click → Open. This is a known limitation and will be documented clearly in the release notes. Code signing and notarisation are targeted for v1.0 public release.
+
+### Linux
+PyInstaller produces the application bundle, which is then wrapped into an AppImage using **appimagetool**. A single `.AppImage` file is downloaded, marked executable (`chmod +x`), and run directly — no package manager, no root access, no dependencies.
 
 ---
 
 ## Consequences
 
 **Positive**
-- Zero installation friction for end users on either platform
-- No dependency on system Python version — the interpreter is bundled
-- AppImage requires no root access and leaves no system-wide footprint
+- Single build toolchain (PyInstaller) produces all three platform targets
+- Zero installation friction for end users on all platforms
+- No dependency on system Python version — interpreter is bundled
+- AppImage requires no root access on Linux
 - Build process is automatable via GitHub Actions for future CI/CD
+- macOS support covers the disproportionately large share of target users on Apple hardware
 
 **Trade-offs accepted**
-- Distributable file size will be larger than a native application (~80–150MB) due to bundled Python runtime — acceptable given modern storage and network speeds
-- PyInstaller occasionally requires maintenance when major Python versions are released; this is expected ongoing build toolchain work, not a data or application architecture concern
-- AppImage requires FUSE to be available on the user's Linux system; this is standard on all mainstream distributions but may require a one-line install on minimal systems (e.g. `sudo apt install fuse`)
-- Auto-update mechanisms are not provided in the initial release; users will download new versions manually
+- Distributable file size will be ~80–150MB due to bundled Python runtime — acceptable given modern storage and network speeds
+- PyInstaller requires maintenance when major Python versions are released
+- AppImage requires FUSE on Linux (standard on all mainstream distributions; may need `sudo apt install fuse` on minimal systems)
+- macOS Gatekeeper warning on unsigned builds creates friction for initial users — mitigated by clear documentation
+- Auto-update mechanisms are not provided; users download new versions manually
+- macOS builds must be produced on a Mac; cross-compilation is not supported by PyInstaller
+
+**macOS-specific build notes**
+- PyInstaller must be run on a Mac to produce a `.app` bundle — it cannot cross-compile from Windows or Linux
+- Both Apple Silicon (arm64) and Intel (x86_64) Macs should be targeted; universal binaries can be produced with PyInstaller's `--target-arch universal2` flag on Apple Silicon
+- The `.app` bundle should be compressed as a `.dmg` disk image for distribution — standard macOS convention
 
 **Not in scope for initial release**
-- macOS packaging (can be added later via PyInstaller with a `.app` bundle)
+- Code signing and notarisation (targeted for v1.0)
 - System tray integration or native OS notifications
 - Automatic updates
+- Universal binary build pipeline (initially target the architecture of the build machine)

@@ -169,5 +169,5 @@ The MVP is considered complete when a user can:
 | v0.6 | Time-segmented budget growth rates (BudgetLineSegment) |
 | v0.7 | Life events expanded (property transactions, relocation, caring costs) |
 | v0.8 | Scenario comparison and what-if modelling |
-| v0.9 | Packaging (PyInstaller / AppImage) for distribution |
-| v1.0 | Full feature set, public release |
+| v0.9 | Packaging — Windows (.exe), Linux (AppImage), macOS (.app unsigned) |
+| v1.0 | Full feature set, macOS code signing and notarisation, public release |
