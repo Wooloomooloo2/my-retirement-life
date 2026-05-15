@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — {{ app_name }}{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}Backup, restore, and configure your app{% endblock %}
+
+{% block content %}
+
+{% if import_success is defined %}
+<div class="alert {% if import_success %}alert-success{% else %}alert-error{% endif %} mb-5">
+    <i class="ti ti-{% if import_success %}circle-check{% else %}alert-circle{% endif %}"></i>
+    <span>{{ import_message }}</span>
+    {% if import_success %}
+    <a href="/" class="btn btn-sm btn-ghost ml-auto">Go to dashboard →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if inflation_saved %}
+<div class="alert alert-success mb-5">
+    <i class="ti ti-circle-check"></i>
+    <span>Inflation rate updated.</span>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-2 gap-5">
+
+    <!-- Backup & restore -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-database-export text-base-content/40" aria-hidden="true"></i>
+                Backup &amp; restore
+            </h3>
+
+            <p class="text-sm text-base-content/60 mb-4">
+                Your data is stored locally on this device. Export a backup regularly so you don't lose your data if something goes wrong.
+            </p>
+
+            <!-- Export -->
+            <div class="mb-5">
+                <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-2">Export</p>
+                <a href="/settings/export"
+                   class="btn btn-primary btn-sm gap-2 w-full">
+                    <i class="ti ti-download" aria-hidden="true"></i>
+                    Download backup (JSON)
+                </a>
+                <p class="text-xs text-base-content/40 mt-2">
+                    Saves all your profile, income, accounts, budget, and life event data to a JSON file.
+                </p>
+            </div>
+
+            <div class="divider my-2"></div>
+
+            <!-- Import -->
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-2">Restore from backup</p>
+                <form method="post" action="/settings/import" enctype="multipart/form-data">
+                    <div class="form-control mb-3">
+                        <input type="file" name="backup_file" accept=".json" required
+                               class="file-input file-input-bordered file-input-sm w-full" />
+                        <label class="label py-1">
+                            <span class="label-text-alt text-base-content/40">Select a .json backup file</span>
+                        </label>
+                    </div>
+                    <div class="alert alert-warning py-2 text-xs mb-3">
+                        <i class="ti ti-alert-triangle"></i>
+                        <span>Restoring will replace all existing data. This cannot be undone.</span>
+                    </div>
+                    <button type="submit"
+                            onclick="return confirm('This will replace all your current data with the backup. Are you sure?')"
+                            class="btn btn-warning btn-sm gap-2 w-full">
+                        <i class="ti ti-database-import" aria-hidden="true"></i>
+                        Restore from backup
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projection assumptions -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-adjustments text-base-content/40" aria-hidden="true"></i>
+                Projection assumptions
+            </h3>
+
+            <p class="text-sm text-base-content/60 mb-4">
+                These values are used in the retirement projection calculation.
+            </p>
+
+            <form method="post" action="/settings/inflation">
+                <div class="form-control mb-4">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Default inflation rate %</span>
+                    </label>
+                    <input type="number" name="inflationRate"
+                        step="0.1" min="0" max="20"
+                        value="{{ inflation_rate }}"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-1">
+                        <span class="label-text-alt text-base-content/40">
+                            Applied to budget lines with no individual growth rate set.
+                            Budget lines with their own rate use that rate instead.
+                        </span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm gap-2">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    Save
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Data storage info -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-folder text-base-content/40" aria-hidden="true"></i>
+                Data storage
+            </h3>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <p class="text-xs font-medium uppercase tracking-wide text-base-content/40 mb-1">Data directory</p>
+                    <p class="font-mono text-xs bg-base-200 rounded p-2 break-all">{{ data_dir }}</p>
+                    <p class="text-xs text-base-content/40 mt-1">
+                        Your Oxigraph triple store is stored here. Back up this folder to preserve your data.
+                    </p>
+                </div>
+                <div class="flex gap-6 text-xs text-base-content/50">
+                    <div>
+                        <p class="font-medium text-base-content/70">{{ data_triple_count }}</p>
+                        <p>data triples</p>
+                    </div>
+                    <div>
+                        <p class="font-medium text-base-content/70">{{ ontology_triple_count }}</p>
+                        <p>ontology triples</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-info-circle text-base-content/40" aria-hidden="true"></i>
+                About
+            </h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-base-content/50">Application</span>
+                    <span class="font-medium">My Retirement Life</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-base-content/50">Version</span>
+                    <span class="font-mono text-xs">{{ app_version }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-base-content/50">Backend</span>
+                    <span class="text-xs">Python + FastAPI + Oxigraph</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-base-content/50">Frontend</span>
+                    <span class="text-xs">HTMX + Tailwind + DaisyUI</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-base-content/50">Ontology</span>
+                    <span class="font-mono text-xs">v0.8.0</span>
+                </div>
+                <div class="divider my-1"></div>
+                <p class="text-xs text-base-content/40">
+                    Open source. Your data never leaves your device.
+                    <a href="https://github.com/Wooloomooloo2/my-retirement-life"
+                       target="_blank" class="text-primary hover:underline">View on GitHub →</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

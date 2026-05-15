@@ -69,8 +69,10 @@
                 </span>
 
             </nav>
-            <div class="p-4 border-t border-base-300 text-xs text-base-content/30">
-                <p>Data stored locally on this device.</p>
+            <div class="p-4 border-t border-base-300">
+                <a href="/settings" class="flex items-center gap-2 text-xs text-base-content/40 hover:text-base-content/70 {% if active == 'settings' %}text-base-content/70{% endif %}">
+                    <i class="ti ti-settings text-sm" aria-hidden="true"></i> Settings &amp; backup
+                </a>
             </div>
         </aside>
 

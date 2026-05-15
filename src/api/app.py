@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
 from src.config import settings
-from src.api.routes import profile, accounts, budget, life_events, projection, income
+from src.api.routes import profile, accounts, budget, life_events, projection, income, settings_route
 
 app = FastAPI(title=settings.app_name)
 
@@ -22,6 +22,7 @@ app.include_router(accounts.router)
 app.include_router(budget.router)
 app.include_router(life_events.router)
 app.include_router(income.router)
+app.include_router(settings_route.router)
 app.include_router(projection.router)
 
 
