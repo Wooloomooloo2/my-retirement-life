@@ -162,12 +162,12 @@ The MVP is considered complete when a user can:
 
 | Release | Focus |
 |---------|-------|
-| v0.2 | Retirement income account types (state pension, workplace pension, private pension, 401k) |
-| v0.3 | Investment income and investment accounts |
-| v0.4 | Property assets and equity release |
-| v0.5 | Per-account interest tracking and drawdown prioritisation |
-| v0.6 | Time-segmented budget growth rates (BudgetLineSegment) |
-| v0.7 | Life events expanded (property transactions, relocation, caring costs) |
-| v0.8 | Scenario comparison and what-if modelling |
+| v0.2 | Budget start/stop dates; retirement jurisdiction (plansToRetireIn) |
+| v0.3 | Investment accounts — pot model with growth rate, dividend rate, reinvest flag |
+| v0.4 | Monte Carlo simulation — Pessimistic, Conservative, Optimistic profiles |
+| v0.5 | Retirement income types (state pension, workplace pension, private pension, 401k) |
+| v0.6 | Property assets and equity release |
+| v0.7 | Per-account interest and drawdown prioritisation |
+| v0.8 | Time-segmented budget growth rates (BudgetLineSegment) |
 | v0.9 | Packaging — Windows (.exe), Linux (AppImage), macOS (.app unsigned) |
 | v1.0 | Full feature set, macOS code signing and notarisation, public release |

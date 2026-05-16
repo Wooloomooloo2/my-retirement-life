@@ -24,6 +24,7 @@ Each ADR follows the structure:
 | [ADR-006](ADR-006-instance-iri-naming-strategy.md) | Instance IRI naming strategy | Accepted |
 | [ADR-007](ADR-007-data-access-patterns.md) | Data access patterns — quad patterns vs SPARQL | Accepted |
 | [ADR-008](ADR-008-multiple-income-sources.md) | Multiple income sources with independent start/end dates in MVP | Accepted |
+| [ADR-009](ADR-009-investment-accounts-and-monte-carlo.md) | Investment account model and Monte Carlo simulation design | Accepted |
 
 ## Guiding Principles
 
