@@ -1,7 +1,7 @@
 # ADR-009: Investment account model and Monte Carlo simulation design
 
 **Date:** 2026-05-16  
-**Status:** Accepted
+**Status:** Implemented
 
 ---
 
@@ -52,9 +52,10 @@ A new `mrlx:InvestmentAccountType` SKOS concept scheme is added as a sibling top
 mrlx:AccountTypeScheme
 ├── mrlx:CashAccountType (existing)
 └── mrlx:InvestmentAccountType (new)
-    ├── mrlx:InvestmentAccountType_StocksAndShares
-    ├── mrlx:InvestmentAccountType_ISA
-    ├── mrlx:InvestmentAccountType_PensionPot (DC pension)
+    ├── mrlx:InvestmentAccountType_StocksShares
+    ├── mrlx:InvestmentAccountType_TaxAdvantaged
+    ├── mrlx:InvestmentAccountType_Pension
+    ├── mrlx:InvestmentAccountType_UnitTrust
     ├── mrlx:InvestmentAccountType_Bonds
     └── mrlx:InvestmentAccountType_Other
 ```
@@ -63,49 +64,66 @@ mrlx:AccountTypeScheme
 
 ## Decision 3: Monte Carlo simulation with named profiles
 
-**Decision:** Monte Carlo simulation is implemented with three named profiles — Pessimistic, Conservative, and Optimistic — each defining a mean and standard deviation for annual growth rate and inflation rate. 500 simulations are run per projection. The UI shows the median outcome, a 10th–90th percentile confidence band, and the probability of not running out of money before life expectancy.
+**Decision:** Monte Carlo simulation is implemented with three named profiles — Conservative, Moderate, and Aggressive — each defining a standard deviation for annual returns and inflation. 500 simulations are run per projection. The UI shows the median outcome, a 10th–90th percentile confidence band, and the probability of not running out of money before life expectancy.
 
 The named profiles are declared as `mrlx:` individuals in the ontology so their parameters can be adjusted without code changes.
 
-### Initial profile parameters
+### Profile parameters as implemented
 
-| Profile | Growth rate mean | Growth rate σ | Inflation mean | Inflation σ |
-|---------|-----------------|---------------|----------------|-------------|
-| `mrlx:MonteCarloProfile_Pessimistic` | 3% | 4% | 5.5% | 0.5% |
-| `mrlx:MonteCarloProfile_Conservative` | 5% | 3% | 3.0% | 0.5% |
-| `mrlx:MonteCarloProfile_Optimistic` | 8% | 3% | 2.0% | 0.5% |
+| Profile | Return σ | Inflation σ |
+|---------|----------|-------------|
+| `mrlx:MonteCarloProfile_Conservative` | 3.0% | 0.8% |
+| `mrlx:MonteCarloProfile_Moderate` | 6.0% | 1.5% |
+| `mrlx:MonteCarloProfile_Aggressive` | 10.0% | 2.5% |
 
-Parameters are stored on the named individuals as datatype properties so they can be updated in the TTL without touching Python code.
+Parameters are stored on the named individuals as `mrlx:returnVolatility` and `mrlx:inflationVolatility` datatype properties so they can be updated in the TTL without touching Python code.
 
 **Number of simulations:** 500. This gives statistically stable percentile bands for a personal finance application without noticeable performance impact on modest hardware.
 
 **Variables randomised per year:**
-- Annual investment return (drawn from a normal distribution around the account's growth rate, with σ from the selected profile)
-- Annual inflation (applied to all budget lines without an individual rate, drawn from a normal distribution)
+- Annual return rate: drawn from N(weighted_rate, returnVolatility). `weighted_rate` is the blended weighted average return across all cash and investment accounts.
+- Annual inflation: drawn from N(inflation_rate, inflationVolatility). Applied to all budget lines without an individual rate.
 
 **Variables held fixed per simulation run:**
 - Income growth rates (per income source)
 - Individual budget line growth rates (where set by the user)
 - Life events (deterministic — a known expenditure in a known year)
+- Non-reinvested dividend income (grows at the investment account's capital growth rate, not perturbed)
 
-**Rationale for named profiles over user-defined parameters:** Monte Carlo parameters are not intuitive for most users. Named profiles with meaningful labels (Pessimistic, Conservative, Optimistic) communicate the scenario clearly without requiring financial modelling knowledge. Users who want fine-grained control can edit the TTL directly.
+**Rationale for named profiles over user-defined parameters:** Monte Carlo parameters are not intuitive for most users. Named profiles with meaningful labels communicate the scenario clearly without requiring financial modelling knowledge. Users who want fine-grained control can edit the TTL directly.
 
 ---
 
 ## Decision 4: Retirement jurisdiction
 
-`mrl:plansToRetireIn` is added as an object property on `mrl:Person`, pointing to a `mrl:Jurisdiction` individual. From the retirement year onward, the projection engine uses the target jurisdiction's default currency for display purposes and optionally applies a cost-of-living differential.
+`mrl:plansToRetireIn` is added as an object property on `mrl:Person`, pointing to a `mrl:Jurisdiction` individual. From the retirement year onward, the projection engine applies a cost-of-living adjustment by computing `retire_col / current_col` where each COL value comes from `mrl:costOfLivingIndex` on the respective jurisdiction.
 
-A `mrl:costOfLivingIndex` datatype property is added to `mrl:Jurisdiction` (indexed to UK = 100) to support this calculation. This property is populated for common jurisdictions as seed data.
+`mrl:costOfLivingIndex` (indexed to UK = 1.00) is added to `mrl:Jurisdiction` and populated for all seed jurisdiction individuals. If `plansToRetireIn` is absent or identical to `residesIn`, no adjustment is applied.
 
 ---
 
-## Build order
+## Build order (as implemented)
 
-1. Budget start/stop dates — small ontology addition, completes income/budget symmetry
-2. Investment accounts — main feature, new UI screen and projection engine update
-3. Monte Carlo — builds on top of investment account projection
-4. Retirement jurisdiction — self-contained addition to profile and projection engine
+1. Budget start/stop dates
+2. Retirement jurisdiction
+3. Investment accounts
+4. Monte Carlo
+
+Note: the build order differs from the order listed in the original ADR. Retirement jurisdiction was moved earlier as it was a simpler, self-contained change that improved the projection engine before the more complex investment account work.
+
+---
+
+## Implementation notes (divergences from original design)
+
+The following aspects of the implementation differ from what was originally specified. These are recorded here for traceability.
+
+**Profile names:** The original ADR specified Pessimistic / Conservative / Optimistic. The implemented names are Conservative / Moderate / Aggressive. This better reflects what the profiles actually model (market volatility scenarios) and avoids the negative connotation of "Pessimistic" as a label users interact with.
+
+**Profile parameters:** The original ADR specified mean return rates per profile (e.g. Conservative growth mean = 5%). The implementation does not override mean return rates — it only adds volatility (standard deviation) around the user's own account rates. This is a deliberate simplification: overriding the mean would conflict with the rates the user has already entered on their accounts. The profiles control uncertainty only, not the central expectation.
+
+**InvestmentAccountType subtypes:** The original ADR listed `StocksAndShares`, `ISA`, `PensionPot`, `Bonds`, `Other`. The implemented subtypes are `StocksShares`, `TaxAdvantaged`, `Pension`, `UnitTrust`, `Bonds`, `Other`. `TaxAdvantaged` and `UnitTrust` replace `ISA` and the ISA-specific naming to keep the vocabulary jurisdiction-neutral (covering UK ISAs, US Roth IRAs, Canadian TFSAs, etc.).
+
+**numpy dependency:** The Monte Carlo engine uses numpy for random number generation and percentile calculation. This is not mentioned in the original ADR. Added to `requirements.txt` as an unpinned dependency.
 
 ---
 

@@ -81,6 +81,8 @@ def get_all_budget_lines() -> list:
             "lineType": get_local("budgetLineType"),
             "changeRate": get_val("annualChangeRate"),
             "loanEndYear": get_val("loanEndYear"),
+            "startYear": get_val("budgetStartYear"),
+            "endYear": get_val("budgetEndYear"),
         })
     lines.sort(key=lambda l: int(l["n"]) if l["n"].isdigit() else 0)
     return lines
@@ -104,7 +106,9 @@ def get_budget_summary(lines: list) -> dict:
 
 def save_budget_line(n: int, name: str, amount: float, frequency: str,
                      line_type: str, change_rate: float,
-                     loan_end_year: Optional[int]) -> None:
+                     loan_end_year: Optional[int],
+                     start_year: Optional[int] = None,
+                     end_year: Optional[int] = None) -> None:
     """Write or overwrite a BudgetLine_N instance in the data graph."""
     line_iri = f"{MRL}BudgetLine_{n}"
     person_iri = f"{MRL}Person_1"
@@ -146,6 +150,28 @@ def save_budget_line(n: int, name: str, amount: float, frequency: str,
             }}
         """)
 
+    if start_year:
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{line_iri}> mrl:budgetStartYear "{start_year}"^^xsd:integer .
+                }}
+            }}
+        """)
+
+    if end_year:
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{line_iri}> mrl:budgetEndYear "{end_year}"^^xsd:integer .
+                }}
+            }}
+        """)
+
 
 def _page_context(request, lines, edit_line=None, **kwargs):
     summary = get_budget_summary(lines)
@@ -179,12 +205,15 @@ async def add_budget_line(
     budgetLineType: str = Form(...),
     annualChangeRate: float = Form(0.0),
     loanEndYear: Optional[int] = Form(None),
+    budgetStartYear: Optional[int] = Form(None),
+    budgetEndYear: Optional[int] = Form(None),
 ):
     existing = get_all_budget_lines()
     next_n = max([int(l["n"]) for l in existing if l["n"].isdigit()], default=0) + 1
     save_budget_line(next_n, budgetLineName, budgetLineAmount,
                      budgetLineFrequency, budgetLineType,
-                     annualChangeRate, loanEndYear)
+                     annualChangeRate, loanEndYear,
+                     budgetStartYear, budgetEndYear)
     lines = get_all_budget_lines()
     return templates.TemplateResponse(
         request=request,
@@ -214,10 +243,13 @@ async def save_edit_budget_line(
     budgetLineType: str = Form(...),
     annualChangeRate: float = Form(0.0),
     loanEndYear: Optional[int] = Form(None),
+    budgetStartYear: Optional[int] = Form(None),
+    budgetEndYear: Optional[int] = Form(None),
 ):
     save_budget_line(n, budgetLineName, budgetLineAmount,
                      budgetLineFrequency, budgetLineType,
-                     annualChangeRate, loanEndYear)
+                     annualChangeRate, loanEndYear,
+                     budgetStartYear, budgetEndYear)
     lines = get_all_budget_lines()
     return templates.TemplateResponse(
         request=request,

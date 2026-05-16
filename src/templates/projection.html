@@ -36,6 +36,15 @@
                 {{ projection.confidence_label }}
             </p>
             <p class="text-sm text-base-content/70">{{ projection.confidence_message }}</p>
+            {% if mc %}
+            <p class="text-xs text-base-content/40 mt-1">
+                Monte Carlo: <span class="font-medium
+                    {% if mc.success_rate >= 80 %}text-success
+                    {% elif mc.success_rate >= 50 %}text-warning
+                    {% else %}text-error{% endif %}">
+                    {{ mc.success_rate }}%</span> of {{ mc.n_sims }} simulations succeeded
+            </p>
+            {% endif %}
         </div>
         <div class="ml-auto text-right text-xs text-base-content/50">
             <p>Retirement: {{ projection.retirement_year }}</p>
@@ -110,6 +119,45 @@
     </div>
 </div>
 
+<!-- Monte Carlo chart -->
+{% if mc %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+            <span class="flex items-center gap-2">
+                <i class="ti ti-chart-dots text-base-content/40" aria-hidden="true"></i>
+                Monte Carlo simulation
+                <span class="badge badge-ghost badge-xs">{{ mc.n_sims }} runs</span>
+            </span>
+            <form method="post" action="/projection/mc-profile"
+                  class="flex items-center gap-2">
+                <span class="text-xs text-base-content/40 font-normal">Scenario:</span>
+                <select name="mc_profile"
+                        class="select select-xs select-bordered"
+                        onchange="this.form.submit()">
+                    <option value="MonteCarloProfile_Conservative"
+                        {% if mc_profile == 'MonteCarloProfile_Conservative' %}selected{% endif %}>
+                        Conservative
+                    </option>
+                    <option value="MonteCarloProfile_Moderate"
+                        {% if mc_profile == 'MonteCarloProfile_Moderate' %}selected{% endif %}>
+                        Moderate
+                    </option>
+                    <option value="MonteCarloProfile_Aggressive"
+                        {% if mc_profile == 'MonteCarloProfile_Aggressive' %}selected{% endif %}>
+                        Aggressive
+                    </option>
+                </select>
+            </form>
+        </h3>
+        <canvas id="mcChart" height="260"></canvas>
+        <p class="text-xs text-base-content/40 mt-3 text-center">
+            Shaded band = 10th–90th percentile range &nbsp;|&nbsp; Line = median (P50) outcome &nbsp;|&nbsp; ★ = retirement year
+        </p>
+    </div>
+</div>
+{% endif %}
+
 <!-- Assumptions summary -->
 <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
@@ -153,6 +201,7 @@ const mandatory = {{ projection.years | map(attribute='mandatory') | list | tojs
 const discretionary = {{ projection.years | map(attribute='discretionary') | list | tojson }};
 const loans = {{ projection.years | map(attribute='loans') | list | tojson }};
 const lifeEventCosts = {{ projection.years | map(attribute='life_event_costs') | list | tojson }};
+const lifeEventReceipts = {{ projection.years | map(attribute='life_event_receipts') | list | tojson }};
 const income = {{ projection.years | map(attribute='income') | list | tojson }};
 const retirementYear = {{ projection.retirement_year }};
 
@@ -200,6 +249,13 @@ new Chart(ctx, {
                 backgroundColor: 'rgba(34,197,94,0.15)',
                 borderColor: 'rgba(34,197,94,0.6)',
                 borderWidth: 1,
+                stack: 'income',
+                order: 2,
+            },
+            {
+                label: 'Life event receipts',
+                data: lifeEventReceipts,
+                backgroundColor: 'rgba(20,184,166,0.7)',
                 stack: 'income',
                 order: 2,
             },
@@ -281,6 +337,103 @@ new Chart(ctx, {
         }
     }
 });
+
+// ---------------------------------------------------------------------------
+// Monte Carlo chart
+// ---------------------------------------------------------------------------
+{% if mc %}
+const mcYears = {{ mc.years | tojson }};
+const mcP10   = {{ mc.p10   | tojson }};
+const mcP50   = {{ mc.p50   | tojson }};
+const mcP90   = {{ mc.p90   | tojson }};
+
+const mcCtx = document.getElementById('mcChart').getContext('2d');
+new Chart(mcCtx, {
+    type: 'line',
+    data: {
+        labels: mcYears,
+        datasets: [
+            {
+                // P90 fills DOWN to P10 (next dataset), creating the band
+                label: 'Optimistic (P90)',
+                data: mcP90,
+                borderColor: 'rgba(34,197,94,0.35)',
+                backgroundColor: 'rgba(34,197,94,0.10)',
+                borderWidth: 1,
+                fill: '+1',
+                pointRadius: 0,
+                tension: 0.3,
+            },
+            {
+                label: 'Pessimistic (P10)',
+                data: mcP10,
+                borderColor: 'rgba(239,68,68,0.35)',
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                fill: false,
+                pointRadius: 0,
+                tension: 0.3,
+            },
+            {
+                label: 'Median (P50)',
+                data: mcP50,
+                borderColor: '#534AB7',
+                backgroundColor: 'transparent',
+                borderWidth: 2.5,
+                fill: false,
+                pointRadius: 0,
+                tension: 0.3,
+            },
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { font: { size: 11 }, boxWidth: 12, padding: 16 }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(ctx) {
+                        const val = ctx.parsed.y;
+                        const sign = val < 0 ? '−£' : '£';
+                        return ` ${ctx.dataset.label}: ${sign}${Math.abs(val).toLocaleString('en-GB')}`;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: {
+                    font: { size: 10 },
+                    maxTicksLimit: 20,
+                    callback: function(val, index) {
+                        const year = mcYears[index];
+                        if (year === retirementYear) return `${year} ★`;
+                        return year % 5 === 0 ? year : '';
+                    }
+                },
+                grid: { display: false }
+            },
+            y: {
+                ticks: {
+                    font: { size: 10 },
+                    callback: v => (v < 0 ? '−' : '') + '£' + Math.abs(v / 1000).toFixed(0) + 'k'
+                },
+                grid: { color: 'rgba(0,0,0,0.04)' },
+                title: {
+                    display: true,
+                    text: 'Balance (£)',
+                    font: { size: 10 },
+                    color: 'rgba(0,0,0,0.4)'
+                }
+            }
+        }
+    }
+});
+{% endif %}
 </script>
 {% endif %}
 {% endblock %}

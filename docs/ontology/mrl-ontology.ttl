@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.8.0" .
+    owl:versionInfo "0.9.0" .
 
 
 # ===========================================================================
@@ -132,7 +132,9 @@ mrlx:AccountTypeScheme a skos:ConceptScheme ;
     rdfs:label "Account Type Scheme"@en ;
     skos:prefLabel "Account Type Scheme"@en ;
     skos:definition "A controlled vocabulary of account types used to classify mrl:Account individuals."@en ;
-    skos:hasTopConcept mrlx:CashAccountType .
+    skos:hasTopConcept
+        mrlx:CashAccountType ,
+        mrlx:InvestmentAccountType .
 
 
 # --- CashAccountType top concept ---
@@ -186,6 +188,67 @@ mrlx:CashAccountType_Other a skos:Concept ;
     skos:prefLabel "Other cash account"@en ;
     skos:definition "A cash account that does not fit any other cash account subtype."@en ;
     skos:notation "CASH_OTHER" .
+
+
+# --- InvestmentAccountType top concept ---
+
+mrlx:InvestmentAccountType a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:topConceptOf mrlx:AccountTypeScheme ;
+    skos:prefLabel "Investment account"@en ;
+    skos:definition "The parent concept for all investment account types holding financial instruments rather than cash deposits."@en ;
+    skos:notation "INVEST" ;
+    skos:scopeNote "Covers equity, bond, fund, and pension pot accounts. Does not include cash deposit accounts — those are classified under CashAccountType."@en .
+
+
+# --- InvestmentAccountType subtypes ---
+
+mrlx:InvestmentAccountType_StocksShares a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Stocks and shares account"@en ;
+    skos:definition "A general account holding equities, ETFs, funds, or a mix of investment instruments."@en ;
+    skos:notation "INVEST_STOCKS" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK General Investment Accounts (GIA), US brokerage accounts, and equivalent non-sheltered investment accounts in other jurisdictions."@en .
+
+mrlx:InvestmentAccountType_TaxAdvantaged a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Tax-advantaged investment account"@en ;
+    skos:definition "An investment account held within a tax-sheltered wrapper providing tax-free or tax-deferred growth on investment assets."@en ;
+    skos:notation "INVEST_TAX_ADV" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK Stocks and Shares ISAs, US Roth IRA investment holdings, Canadian TFSA investment holdings, and equivalent tax-advantaged investment wrappers in other jurisdictions."@en .
+
+mrlx:InvestmentAccountType_Pension a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Self-directed pension pot"@en ;
+    skos:definition "A pension account where the holder directs investment choices, such as a SIPP, 401(k), or RRSP."@en ;
+    skos:notation "INVEST_PENSION" ;
+    skos:scopeNote "For defined contribution pensions where the pot value can be tracked. Covers UK SIPPs, US 401(k) and IRA accounts, Canadian RRSPs, and Australian Superannuation funds."@en .
+
+mrlx:InvestmentAccountType_UnitTrust a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Unit trust / mutual fund"@en ;
+    skos:definition "A pooled investment vehicle where the holder owns units in a fund managed by a third party."@en ;
+    skos:notation "INVEST_UNIT_TRUST" ;
+    skos:scopeNote "Covers UK unit trusts, OEICs, US mutual funds, and equivalent pooled investment vehicles."@en .
+
+mrlx:InvestmentAccountType_Bonds a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Bond portfolio"@en ;
+    skos:definition "A portfolio of fixed income instruments such as government bonds, corporate bonds, or gilts."@en ;
+    skos:notation "INVEST_BONDS" ;
+    skos:scopeNote "Use for direct bond holdings. Bond funds or ETFs are better classified under Stocks and shares account or Unit trust."@en .
+
+mrlx:InvestmentAccountType_Other a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Other investment account"@en ;
+    skos:definition "An investment account that does not fit any other investment account subtype."@en ;
+    skos:notation "INVEST_OTHER" .
 
 
 # ===========================================================================
@@ -598,59 +661,74 @@ mrl:defaultCurrency a owl:ObjectProperty ;
     rdfs:domain mrl:Jurisdiction ;
     rdfs:range mrl:Currency .
 
+mrl:costOfLivingIndex a owl:DatatypeProperty ;
+    rdfs:label "cost of living index"@en ;
+    rdfs:comment "Approximate cost of living relative to the United Kingdom (GB = 1.00). Used by the projection engine to scale spending when the user plans to retire in a different jurisdiction. Values above 1.00 indicate a more expensive country; below 1.00 a cheaper one. Figures are indicative and based on broad cross-country comparisons — users should adjust their budget lines directly for greater precision."@en ;
+    rdfs:domain mrl:Jurisdiction ;
+    rdfs:range xsd:decimal .
+
 mrl:Jurisdiction_GB a mrl:Jurisdiction ;
     rdfs:label "United Kingdom"@en ;
     mrl:jurisdictionCode "GB" ;
     mrl:jurisdictionName "United Kingdom"@en ;
-    mrl:defaultCurrency mrl:Currency_GBP .
+    mrl:defaultCurrency mrl:Currency_GBP ;
+    mrl:costOfLivingIndex "1.00"^^xsd:decimal .
 
 mrl:Jurisdiction_US a mrl:Jurisdiction ;
     rdfs:label "United States"@en ;
     mrl:jurisdictionCode "US" ;
     mrl:jurisdictionName "United States"@en ;
-    mrl:defaultCurrency mrl:Currency_USD .
+    mrl:defaultCurrency mrl:Currency_USD ;
+    mrl:costOfLivingIndex "1.05"^^xsd:decimal .
 
 mrl:Jurisdiction_EU a mrl:Jurisdiction ;
     rdfs:label "European Union"@en ;
     mrl:jurisdictionCode "EU" ;
     mrl:jurisdictionName "European Union"@en ;
-    mrl:defaultCurrency mrl:Currency_EUR .
+    mrl:defaultCurrency mrl:Currency_EUR ;
+    mrl:costOfLivingIndex "0.88"^^xsd:decimal .
 
 mrl:Jurisdiction_AU a mrl:Jurisdiction ;
     rdfs:label "Australia"@en ;
     mrl:jurisdictionCode "AU" ;
     mrl:jurisdictionName "Australia"@en ;
-    mrl:defaultCurrency mrl:Currency_AUD .
+    mrl:defaultCurrency mrl:Currency_AUD ;
+    mrl:costOfLivingIndex "0.92"^^xsd:decimal .
 
 mrl:Jurisdiction_CA a mrl:Jurisdiction ;
     rdfs:label "Canada"@en ;
     mrl:jurisdictionCode "CA" ;
     mrl:jurisdictionName "Canada"@en ;
-    mrl:defaultCurrency mrl:Currency_CAD .
+    mrl:defaultCurrency mrl:Currency_CAD ;
+    mrl:costOfLivingIndex "0.90"^^xsd:decimal .
 
 mrl:Jurisdiction_NZ a mrl:Jurisdiction ;
     rdfs:label "New Zealand"@en ;
     mrl:jurisdictionCode "NZ" ;
     mrl:jurisdictionName "New Zealand"@en ;
-    mrl:defaultCurrency mrl:Currency_NZD .
+    mrl:defaultCurrency mrl:Currency_NZD ;
+    mrl:costOfLivingIndex "0.88"^^xsd:decimal .
 
 mrl:Jurisdiction_CH a mrl:Jurisdiction ;
     rdfs:label "Switzerland"@en ;
     mrl:jurisdictionCode "CH" ;
     mrl:jurisdictionName "Switzerland"@en ;
-    mrl:defaultCurrency mrl:Currency_CHF .
+    mrl:defaultCurrency mrl:Currency_CHF ;
+    mrl:costOfLivingIndex "1.38"^^xsd:decimal .
 
 mrl:Jurisdiction_SG a mrl:Jurisdiction ;
     rdfs:label "Singapore"@en ;
     mrl:jurisdictionCode "SG" ;
     mrl:jurisdictionName "Singapore"@en ;
-    mrl:defaultCurrency mrl:Currency_SGD .
+    mrl:defaultCurrency mrl:Currency_SGD ;
+    mrl:costOfLivingIndex "1.08"^^xsd:decimal .
 
 mrl:Jurisdiction_ZA a mrl:Jurisdiction ;
     rdfs:label "South Africa"@en ;
     mrl:jurisdictionCode "ZA" ;
     mrl:jurisdictionName "South Africa"@en ;
-    mrl:defaultCurrency mrl:Currency_ZAR .
+    mrl:defaultCurrency mrl:Currency_ZAR ;
+    mrl:costOfLivingIndex "0.52"^^xsd:decimal .
 
 
 # ===========================================================================
@@ -705,6 +783,12 @@ mrl:baseCurrency a owl:ObjectProperty ;
 mrl:residesIn a owl:ObjectProperty ;
     rdfs:label "resides in"@en ;
     rdfs:comment "Points to a mrl:Jurisdiction individual."@en ;
+    rdfs:domain mrl:Person ;
+    rdfs:range mrl:Jurisdiction .
+
+mrl:plansToRetireIn a owl:ObjectProperty ;
+    rdfs:label "plans to retire in"@en ;
+    rdfs:comment "The jurisdiction the person intends to retire in, if different from their current residence. If absent or identical to mrl:residesIn, the projection applies no cost-of-living adjustment. If set, the projection engine applies the ratio of the retirement jurisdiction's mrl:costOfLivingIndex to the current jurisdiction's from the retirement year onwards."@en ;
     rdfs:domain mrl:Person ;
     rdfs:range mrl:Jurisdiction .
 
@@ -875,7 +959,25 @@ mrl:annualInterestRate a owl:DatatypeProperty ;
 mrl:InvestmentAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
     rdfs:label "Investment account"@en ;
-    rdfs:comment "Stocks, funds, bonds, or other investment holdings. Post-MVP."@en .
+    rdfs:comment "Stocks, funds, bonds, or other investment holdings. Uses mrlx:InvestmentAccountType for classification."@en .
+
+mrl:annualGrowthRate a owl:DatatypeProperty ;
+    rdfs:label "annual growth rate"@en ;
+    rdfs:comment "Expected annual capital appreciation of the investment as a percentage, e.g. 7.0 for 7%. Does not include dividend or income return — that is captured in mrl:annualDividendRate. The projection engine compounds the account balance at this rate each year."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:annualDividendRate a owl:DatatypeProperty ;
+    rdfs:label "annual dividend rate"@en ;
+    rdfs:comment "Expected annual income yield from the investment as a percentage, e.g. 3.5 for a 3.5% dividend yield. If mrl:reinvestDividends is true, this amount is added to the balance each year. If false, it is treated as annual income for the projection."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:reinvestDividends a owl:DatatypeProperty ;
+    rdfs:label "reinvest dividends"@en ;
+    rdfs:comment "If true, dividend income is reinvested into the account (compounding the balance). If false, dividends are treated as annual income in the projection and paid into the cash pool."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:boolean .
 
 mrl:PensionAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
@@ -934,6 +1036,18 @@ mrl:annualChangeRate a owl:DatatypeProperty ;
 mrl:loanEndYear a owl:DatatypeProperty ;
     rdfs:label "loan end year"@en ;
     rdfs:comment "For mrlx:BudgetLineType_Loan: the calendar year in which repayments cease."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:integer .
+
+mrl:budgetStartYear a owl:DatatypeProperty ;
+    rdfs:label "budget start year"@en ;
+    rdfs:comment "The first calendar year this budget line applies. If absent, the line is active from the current projection year. Use this to model future spending that has not yet begun, e.g. school fees starting in 2027."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:integer .
+
+mrl:budgetEndYear a owl:DatatypeProperty ;
+    rdfs:label "budget end year"@en ;
+    rdfs:comment "The last calendar year this budget line applies. If absent, the line continues indefinitely. For loan repayments prefer mrl:loanEndYear so the line type badge displays correctly; budgetEndYear is for general time-bounded spending, e.g. school fees ending in 2033."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:integer .
 
@@ -1051,3 +1165,69 @@ mrl:projectionOwner a owl:ObjectProperty ;
     rdfs:label "projection owner"@en ;
     rdfs:domain mrl:ProjectionSettings ;
     rdfs:range mrl:Person .
+
+mrl:monteCarloProfile a owl:ObjectProperty ;
+    rdfs:label "Monte Carlo profile"@en ;
+    rdfs:comment "Points to a mrlx:MonteCarloProfile_* SKOS individual. Determines the volatility parameters used in Monte Carlo simulations. Defaults to mrlx:MonteCarloProfile_Moderate if not set."@en ;
+    rdfs:domain mrl:ProjectionSettings ;
+    rdfs:range skos:Concept .
+
+
+# ===========================================================================
+# MONTE CARLO PROFILE — SKOS CONCEPT SCHEME
+#
+# Named volatility profiles for the Monte Carlo retirement simulation.
+# Each profile specifies:
+#   mrlx:returnVolatility    — std dev of annual returns (percentage points)
+#   mrlx:inflationVolatility — std dev of annual inflation (percentage points)
+#
+# Values represent one standard deviation. In each simulated year, returns
+# and inflation are drawn from N(deterministic_rate, volatility).
+# GB = 1.00 is the base for cost-of-living; these profiles are independent.
+# ===========================================================================
+
+mrlx:returnVolatility a owl:DatatypeProperty ;
+    rdfs:label "return volatility"@en ;
+    rdfs:comment "Standard deviation of annual investment and savings returns as percentage points, e.g. 6.0 means returns are drawn from N(weighted_rate, 6%). Used by the Monte Carlo engine."@en ;
+    rdfs:range xsd:decimal .
+
+mrlx:inflationVolatility a owl:DatatypeProperty ;
+    rdfs:label "inflation volatility"@en ;
+    rdfs:comment "Standard deviation of annual inflation as percentage points, e.g. 1.5 means inflation is drawn from N(inflation_rate, 1.5%). Used by the Monte Carlo engine."@en ;
+    rdfs:range xsd:decimal .
+
+mrlx:MonteCarloProfileScheme a skos:ConceptScheme ;
+    rdfs:label "Monte Carlo Profile Scheme"@en ;
+    skos:prefLabel "Monte Carlo Profile Scheme"@en ;
+    skos:definition "A set of named volatility profiles for the Monte Carlo retirement projection. Each profile pairs a return volatility with an inflation volatility to characterise a market environment."@en ;
+    skos:hasTopConcept
+        mrlx:MonteCarloProfile_Conservative ,
+        mrlx:MonteCarloProfile_Moderate ,
+        mrlx:MonteCarloProfile_Aggressive .
+
+mrlx:MonteCarloProfile_Conservative a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Conservative"@en ;
+    skos:definition "Low volatility scenario representing a mostly cash and bond portfolio with stable inflation. Suitable for risk-averse users or those close to retirement."@en ;
+    skos:notation "MC_CONSERVATIVE" ;
+    mrlx:returnVolatility "3.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "0.8"^^xsd:decimal .
+
+mrlx:MonteCarloProfile_Moderate a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Moderate"@en ;
+    skos:definition "Medium volatility scenario representing a balanced portfolio with typical inflation variability. A reasonable default for most users."@en ;
+    skos:notation "MC_MODERATE" ;
+    mrlx:returnVolatility "6.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "1.5"^^xsd:decimal .
+
+mrlx:MonteCarloProfile_Aggressive a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Aggressive"@en ;
+    skos:definition "High volatility scenario representing an equity-heavy portfolio with significant inflation uncertainty. Suitable for users with a long time horizon or high risk tolerance."@en ;
+    skos:notation "MC_AGGRESSIVE" ;
+    mrlx:returnVolatility "10.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "2.5"^^xsd:decimal .

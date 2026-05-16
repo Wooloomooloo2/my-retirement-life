@@ -373,3 +373,24 @@ async def projection_page(request: Request):
             "inflation_rate": proj_settings["inflation_rate"],
         }
     )
+
+
+@router.post("/projection/settings", response_class=HTMLResponse)
+async def update_projection_settings(
+    request: Request,
+    inflationRate: float = Form(2.5),
+):
+    save_projection_settings(inflationRate)
+    proj_settings = get_projection_settings()
+    projection = run_projection(proj_settings["inflation_rate"])
+    return templates.TemplateResponse(
+        request=request,
+        name="projection.html",
+        context={
+            "app_name": settings.app_name,
+            "active": "projection",
+            "projection": projection,
+            "inflation_rate": proj_settings["inflation_rate"],
+            "settings_saved": True,
+        }
+    )

@@ -72,6 +72,7 @@
                         <th>Frequency</th>
                         <th>Annual total</th>
                         <th>Growth rate</th>
+                        <th>Active</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -100,6 +101,17 @@
                                 <span class="text-xs text-base-content/30">—</span>
                             {% endif %}
                         </td>
+                        <td>
+                            {% if line.startYear or line.endYear %}
+                                <span class="text-xs text-base-content/50">
+                                    {{ line.startYear if line.startYear else '…' }}
+                                    →
+                                    {{ line.endYear if line.endYear else '∞' }}
+                                </span>
+                            {% else %}
+                                <span class="text-xs text-base-content/30">—</span>
+                            {% endif %}
+                        </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
                                 <a href="/budget/{{ line.n }}/edit"
@@ -121,7 +133,7 @@
                     <tr class="font-medium border-t border-base-200">
                         <td colspan="4">Total annual spending</td>
                         <td>£{{ "{:,.0f}".format(summary.total) }}</td>
-                        <td colspan="2"></td>
+                        <td colspan="3"></td>
                     </tr>
                 </tfoot>
             </table>
@@ -241,6 +253,36 @@
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40">Year repayments stop</span>
+                    </label>
+                </div>
+
+                <!-- Start year -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="number" name="budgetStartYear"
+                        min="2020" max="2100"
+                        value="{{ edit_line.startYear if edit_line and edit_line.startYear else '' }}"
+                        placeholder="e.g. 2027"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Leave blank to start immediately</span>
+                    </label>
+                </div>
+
+                <!-- End year -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="number" name="budgetEndYear"
+                        min="2020" max="2100"
+                        value="{{ edit_line.endYear if edit_line and edit_line.endYear else '' }}"
+                        placeholder="e.g. 2033"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Leave blank to continue indefinitely</span>
                     </label>
                 </div>
 

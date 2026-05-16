@@ -48,6 +48,7 @@ def get_profile() -> Optional[dict]:
         "lifeExpectancy": get_val("lifeExpectancy"),
         "baseCurrency": get_local("baseCurrency"),
         "jurisdiction": get_local("residesIn"),
+        "plansToRetireIn": get_local("plansToRetireIn"),
     }
 
 
@@ -137,6 +138,7 @@ async def save_profile(
     lifeExpectancy: int = Form(...),
     baseCurrency: str = Form(...),
     jurisdiction: str = Form(...),
+    plansToRetireIn: Optional[str] = Form(None),
 ):
     person_iri = f"{MRL}Person_1"
 
@@ -149,7 +151,7 @@ async def save_profile(
         }}
     """)
 
-    # Insert person triples
+    # Insert core person triples
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -169,6 +171,17 @@ async def save_profile(
             }}
         }}
     """)
+
+    # Save retirement jurisdiction only if one was selected
+    if plansToRetireIn:
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{person_iri}> mrl:plansToRetireIn mrl:{plansToRetireIn} .
+                }}
+            }}
+        """)
 
     profile = get_profile()
     currencies = get_currencies()

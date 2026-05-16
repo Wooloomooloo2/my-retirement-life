@@ -170,6 +170,24 @@
                     </label>
                 </div>
 
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Plans to retire in <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <select name="plansToRetireIn" class="select select-bordered select-sm w-full">
+                        <option value="">Same as current location</option>
+                        {% for j in jurisdictions %}
+                        <option value="{{ j.local }}"
+                            {% if profile and profile.plansToRetireIn == j.local %}selected{% endif %}>
+                            {{ j.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Adjusts spending from retirement year using cost-of-living index</span>
+                    </label>
+                </div>
+
             </div>
         </div>
     </div>

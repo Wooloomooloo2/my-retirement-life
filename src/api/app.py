@@ -10,6 +10,10 @@ from src.config import settings
 from src.api.routes import profile, accounts, budget, life_events, projection, income, settings_route
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from src.api.routes import investments
+import logging
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title=settings.app_name)
 
 # Mount static files
@@ -25,7 +29,7 @@ app.include_router(life_events.router)
 app.include_router(income.router)
 app.include_router(settings_route.router)
 app.include_router(projection.router)
-
+app.include_router(investments.router)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -57,9 +61,9 @@ _shared_templates.env.globals["user_initials"] = get_user_initials
 
 
 def get_setup_state() -> dict:
-    """Returns setup completion state for the persistent banner in base.html."""
     from src.store.graph import store, MRL, DATA_GRAPH
     from src.api.routes.projection import load_all_income_sources, load_accounts
+    from src.api.routes.investments import get_all_investment_accounts
     from src.api.routes.profile import get_profile
     import pyoxigraph as og
 
@@ -68,28 +72,33 @@ def get_setup_state() -> dict:
     has_profile = prof is not None
     has_income = len(load_all_income_sources()) > 0
     has_accounts = len(load_accounts()) > 0
+    has_investments = len(get_all_investment_accounts()) > 0
     type_node = og.NamedNode(f"{MRL}BudgetLine")
     has_budget = len(list(store.store.quads_for_pattern(
         None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH))) > 0
-    all_done = has_profile and has_income and has_accounts and has_budget
+    all_done = has_profile and has_income and has_accounts and has_investments and has_budget
     if not has_profile:
         next_url, next_label = "/profile", "Set up your profile"
     elif not has_income:
         next_url, next_label = "/income", "Add your income"
     elif not has_accounts:
         next_url, next_label = "/accounts", "Add a cash account"
+    elif not has_investments:
+        next_url, next_label = "/investments", "Add an investment account"
     elif not has_budget:
         next_url, next_label = "/budget", "Add your budget"
     else:
         next_url, next_label = "/projection", "View your projection"
     return {
         "setup_all_done": all_done,
-        "setup_steps_done": sum([has_profile, has_income, has_accounts, has_budget]),
+        "setup_steps_done": sum([has_profile, has_income, has_accounts,
+                                  has_investments, has_budget]),
         "setup_next_url": next_url,
         "setup_next_label": next_label,
         "setup_has_profile": has_profile,
         "setup_has_income": has_income,
         "setup_has_accounts": has_accounts,
+        "setup_has_investments": has_investments,
         "setup_has_budget": has_budget,
     }
 

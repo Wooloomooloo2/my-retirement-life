@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Investments — {{ app_name }}{% endblock %}
+{% block page_title %}Investment accounts{% endblock %}
+{% block page_subtitle %}Your stocks, funds, pensions and other investment holdings{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Investment account saved.</span>
+</div>
+{% endif %}
+
+{% if deleted %}
+<div class="alert alert-info mb-4">
+    <i class="ti ti-trash"></i>
+    <span>Investment account deleted.</span>
+</div>
+{% endif %}
+
+<!-- Existing accounts list -->
+{% if accounts %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-chart-line text-base-content/40" aria-hidden="true"></i>
+            Your investment accounts
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr class="text-xs uppercase tracking-wide text-base-content/40">
+                        <th>Account name</th>
+                        <th>Type</th>
+                        <th>Balance</th>
+                        <th>Balance date</th>
+                        <th>Growth rate</th>
+                        <th>Dividend yield</th>
+                        <th>Dividends</th>
+                        <th>Currency</th>
+                        <th>FX rate</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts %}
+                    <tr class="hover {% if edit_account and edit_account.n == account.n %}bg-base-200{% endif %}">
+                        <td class="font-medium">{{ account.name }}</td>
+                        <td><span class="badge badge-ghost badge-sm">{{ account.accountTypeLabel }}</span></td>
+                        <td>{{ account.currencySymbol }}{{ "{:,.2f}".format(account.balance | float) }}</td>
+                        <td class="text-base-content/60 text-xs">{{ account.balanceDate }}</td>
+                        <td>
+                            {% if account.growthRate and account.growthRate != '0' and account.growthRate != '0.0' %}
+                                <span class="text-success text-xs">+{{ account.growthRate }}%/yr</span>
+                            {% else %}
+                                <span class="text-xs text-base-content/30">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if account.dividendRate and account.dividendRate != '0' and account.dividendRate != '0.0' %}
+                                <span class="text-xs text-info">{{ account.dividendRate }}%/yr</span>
+                            {% else %}
+                                <span class="text-xs text-base-content/30">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if account.reinvestDividends %}
+                                <span class="badge badge-success badge-xs badge-outline">Reinvested</span>
+                            {% else %}
+                                <span class="badge badge-info badge-xs badge-outline">Paid out</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
+                        </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.exchangeRate and account.exchangeRate != '1.0' %}
+                                {{ account.exchangeRate }}
+                                {% if account.exchangeRateDate %}
+                                <span class="block text-base-content/30">{{ account.exchangeRateDate }}</span>
+                                {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-right">
+                            <div class="flex gap-1 justify-end">
+                                <a href="/investments/{{ account.n }}/edit"
+                                   class="btn btn-ghost btn-xs gap-1">
+                                    <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
+                                </a>
+                                <form method="post" action="/investments/{{ account.n }}/delete"
+                                      onsubmit="return confirm('Delete {{ account.name }}?')">
+                                    <button type="submit" class="btn btn-ghost btn-xs text-error gap-1">
+                                        <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="font-medium border-t border-base-200">
+                        <td>Total</td>
+                        <td colspan="7" class="text-base-content/60 text-xs">
+                            {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
+                            included in retirement projection
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add / Edit form -->
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
+            {% if edit_account %}Edit — {{ edit_account.name }}{% else %}Add an investment account{% endif %}
+        </h3>
+
+        <form method="post"
+              action="{% if edit_account %}/investments/{{ edit_account.n }}/edit{% else %}/investments{% endif %}">
+
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                <!-- Name -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account name</span>
+                    </label>
+                    <input type="text" name="accountName" required
+                        value="{{ edit_account.name if edit_account else '' }}"
+                        placeholder="e.g. Vanguard ISA, Fidelity SIPP"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <!-- Type -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
+                    </label>
+                    <select name="accountType" class="select select-bordered select-sm w-full">
+                        {% for key, label in account_types.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_account and edit_account.accountType == key %}selected
+                            {% elif not edit_account and key == 'InvestmentAccountType_StocksShares' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Balance -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Current value</span>
+                    </label>
+                    <input type="number" name="accountBalance" required min="0" step="0.01"
+                        value="{{ edit_account.balance if edit_account else '' }}"
+                        placeholder="e.g. 50000"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <!-- Balance date -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Value date</span>
+                    </label>
+                    <input type="date" name="balanceDate" required
+                        value="{{ edit_account.balanceDate if edit_account else today }}"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">When this valuation was recorded</span>
+                    </label>
+                </div>
+
+                <!-- Currency -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Currency</span>
+                    </label>
+                    <select name="accountCurrency" class="select select-bordered select-sm w-full"
+                            onchange="toggleFxFields()">
+                        <option value="">Select currency...</option>
+                        {% for c in currencies %}
+                        <option value="{{ c.local }}"
+                            {% if edit_account and edit_account.currency == c.local %}selected
+                            {% elif not edit_account and c.code == 'GBP' %}selected{% endif %}>
+                            {{ c.code }} — {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Jurisdiction -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Country / jurisdiction</span>
+                    </label>
+                    <select name="accountJurisdiction" class="select select-bordered select-sm w-full">
+                        <option value="">Select country...</option>
+                        {% for j in jurisdictions %}
+                        <option value="{{ j.local }}"
+                            {% if edit_account and edit_account.jurisdiction == j.local %}selected
+                            {% elif not edit_account and j.code == 'GB' %}selected{% endif %}>
+                            {{ j.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Annual growth rate -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate %</span>
+                    </label>
+                    <input type="number" name="annualGrowthRate"
+                        step="0.1" min="0" max="50"
+                        value="{{ edit_account.growthRate if edit_account else '7.0' }}"
+                        placeholder="e.g. 7"
+                        class="input input-bordered input-sm w-full"
+                        id="growth-rate-input"
+                        oninput="updateReturnHint()" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Expected annual capital appreciation</span>
+                    </label>
+                </div>
+
+                <!-- Dividend rate -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual dividend yield %</span>
+                    </label>
+                    <input type="number" name="annualDividendRate"
+                        step="0.1" min="0" max="30"
+                        value="{{ edit_account.dividendRate if edit_account else '0.0' }}"
+                        placeholder="e.g. 3.5"
+                        class="input input-bordered input-sm w-full"
+                        id="dividend-rate-input"
+                        oninput="updateReturnHint()" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40" id="return-hint"></span>
+                    </label>
+                </div>
+
+                <!-- Reinvest dividends (full width, inline toggle style) -->
+                <div class="form-control col-span-2">
+                    <label class="label cursor-pointer justify-start gap-3 py-1">
+                        <input type="checkbox" name="reinvestDividends" value="true"
+                            class="checkbox checkbox-sm checkbox-primary"
+                            id="reinvest-checkbox"
+                            {% if edit_account and edit_account.reinvestDividends %}checked
+                            {% elif not edit_account %}checked{% endif %}
+                            onchange="updateReturnHint()" />
+                        <span class="label-text text-sm">Reinvest dividends <span class="text-base-content/40 font-normal">(if unchecked, dividend yield is added to your annual income instead)</span></span>
+                    </label>
+                </div>
+
+                <!-- FX rate (shown for non-GBP) -->
+                <div class="form-control" id="fx-rate-field" style="display:none">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Exchange rate to base currency</span>
+                    </label>
+                    <input type="number" name="exchangeRateToBase"
+                        step="0.000001" min="0"
+                        value="{{ edit_account.exchangeRate if edit_account and edit_account.exchangeRate else '1.0' }}"
+                        placeholder="e.g. 0.79 for 1 USD = 0.79 GBP"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">1 unit of account currency = this many units of your base currency</span>
+                    </label>
+                </div>
+
+                <div class="form-control" id="fx-date-field" style="display:none">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Rate last updated</span>
+                    </label>
+                    <input type="date" name="exchangeRateDate"
+                        value="{{ edit_account.exchangeRateDate if edit_account and edit_account.exchangeRateDate else today }}"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+                <!-- Notes -->
+                <div class="form-control col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Notes <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="text" name="accountNotes"
+                        value="{{ edit_account.notes if edit_account else '' }}"
+                        placeholder="e.g. Globally diversified index funds, drawdown from age 57"
+                        class="input input-bordered input-sm w-full" />
+                </div>
+
+            </div>
+
+            <div class="flex justify-between items-center">
+                {% if edit_account %}
+                <a href="/investments" class="btn btn-ghost btn-sm">Cancel</a>
+                {% else %}
+                <span></span>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    {% if edit_account %}Save changes{% else %}Add account{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleFxFields() {
+        const currencySelect = document.querySelector('select[name="accountCurrency"]');
+        if (!currencySelect) return;
+        const selected = currencySelect.options[currencySelect.selectedIndex];
+        const code = selected ? selected.text.split(' — ')[0] : '';
+        const isBase = code === 'GBP';
+        document.getElementById('fx-rate-field').style.display = isBase ? 'none' : 'block';
+        document.getElementById('fx-date-field').style.display = isBase ? 'none' : 'block';
+    }
+
+    function updateReturnHint() {
+        const growth = parseFloat(document.getElementById('growth-rate-input').value) || 0;
+        const dividend = parseFloat(document.getElementById('dividend-rate-input').value) || 0;
+        const reinvest = document.getElementById('reinvest-checkbox').checked;
+        const hint = document.getElementById('return-hint');
+        if (growth > 0 || dividend > 0) {
+            const total = growth + (reinvest ? dividend : 0);
+            const label = reinvest
+                ? `Total compounding return: ${total.toFixed(1)}%/yr`
+                : `Capital growth: ${growth.toFixed(1)}%/yr · Dividends paid as income: ${dividend.toFixed(1)}%/yr`;
+            hint.textContent = label;
+        } else {
+            hint.textContent = '';
+        }
+    }
+
+    // Init on load
+    const currSel = document.querySelector('select[name="accountCurrency"]');
+    if (currSel) currSel.addEventListener('change', toggleFxFields);
+    toggleFxFields();
+    updateReturnHint();
+</script>
+{% endblock %}

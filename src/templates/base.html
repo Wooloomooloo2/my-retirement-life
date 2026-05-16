@@ -50,6 +50,9 @@
                 <a href="/accounts" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'accounts' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-wallet text-base" aria-hidden="true"></i> Accounts
                 </a>
+                <a href="/investments" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'investments' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
+                    <i class="ti ti-chart-line text-base" aria-hidden="true"></i> Investments
+                </a>
                 <a href="/budget" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'budget' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-chart-bar text-base" aria-hidden="true"></i> Budget
                 </a>
@@ -96,7 +99,7 @@
                 {% if not s.setup_all_done %}
                 <div class="mb-5 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-4">
                     <div class="flex items-center gap-1.5">
-                        {% for i in range(4) %}
+                        {% for i in range(5) %}
                         <div class="w-2 h-2 rounded-full
                             {% if i < s.setup_steps_done %}bg-primary
                             {% else %}bg-base-300{% endif %}">
@@ -104,7 +107,7 @@
                         {% endfor %}
                     </div>
                     <p class="text-sm text-base-content/70 flex-1">
-                        <span class="font-medium text-primary">{{ s.setup_steps_done }}/4</span>
+                        <span class="font-medium text-primary">{{ s.setup_steps_done }}/5</span>
                         setup steps complete
                     </p>
                     <a href="{{ s.setup_next_url }}"
