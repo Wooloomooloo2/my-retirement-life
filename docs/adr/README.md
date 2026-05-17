@@ -1,277 +1,85 @@
-# My Retirement Life Ontology
+# Architecture Decision Records
 
-**Namespace:** `https://myretirementlife.app/ontology#` (prefix: `mrl:`)  
-**Extended vocabulary namespace:** `https://myretirementlife.app/ontology/ext#` (prefix: `mrlx:`)  
-**Version:** 0.9.0  
-**File:** [mrl-ontology.ttl](mrl-ontology.ttl)  
-**Python loader:** `src/store/ontology_loader.py`
+This directory contains the Architecture Decision Records (ADRs) for **My Retirement Life**. ADRs capture significant technical and architectural decisions made during the project, including the context that motivated them, the options considered, and the consequences of the decision taken.
 
 ---
 
-## Design principles
+## What is an ADR?
 
-- **Simple class hierarchy** — classes defined for human understanding and extensibility, not OWL reasoning
-- **Independent reference entities** — currencies, jurisdictions, and other shared concepts are named individuals, not string literals
-- **Two namespaces** — `mrl:` for ontology terms and instance data; `mrlx:` for controlled vocabularies and enumeration values
-- **SKOS concept schemes** for all taxonomical vocabularies — hierarchy expressed via `skos:broader`/`skos:narrower`
-- **Consistent IRI patterns** — see below
-- **Language-tagged labels** — all labels carry `@en` so additional languages can be added as extra triples
-- **SKOS for controlled vocabularies** — `mrlx:` individuals use `skos:prefLabel`, `skos:definition`, `skos:notation`, `skos:scopeNote`
-- **Named graph separation** — ontology loaded into its own named graph, separate from user data
-- **TTL as truth** — the `.ttl` file is the authoritative source, loaded into Oxigraph on startup
+An Architecture Decision Record is a short document that captures a single architectural decision. Each ADR records:
+- **Context** — the situation or problem that required a decision
+- **Options considered** — the alternatives evaluated
+- **Decision** — what was decided and why
+- **Consequences** — the positive outcomes, trade-offs accepted, and ongoing responsibilities
+
+ADRs are written at the time a decision is made and are not retrospective documents. Once accepted, an ADR is not edited to reflect subsequent changes — instead, a new ADR is written that supersedes or amends it.
 
 ---
 
-## IRI patterns
+## Index
 
-| Pattern | Example | Used for |
-|---------|---------|----------|
-| `mrl:ClassName` | `mrl:CashAccount` | Classes |
-| `mrl:propertyName` | `mrl:accountBalance` | Properties (camelCase) |
-| `mrl:ClassName_Code` | `mrl:Currency_GBP` | Named individuals (reference data) |
-| `mrlx:ClassName_Value` | `mrlx:BudgetLineType_Mandatory` | Controlled vocabulary individuals |
-| `mrl:ClassName_N` | `mrl:Person_1`, `mrl:CashAccount_3` | User instance data (runtime, ADR-006) |
-
----
-
-## Named graphs
-
-| Named graph IRI | Contents |
-|----------------|----------|
-| `https://myretirementlife.app/ontology/graph` | All triples from `mrl-ontology.ttl` |
-| `https://myretirementlife.app/data/graph` | User instance data created at runtime |
+| ADR | Title | Date | Status |
+|-----|-------|------|--------|
+| [ADR-001](ADR-001-backend-language-and-triple-store.md) | Backend language and triple store | 2026-05-09 | Accepted |
+| [ADR-002](ADR-002-packaging-strategy.md) | Packaging strategy | 2026-05-09 (updated 2026-05-14) | Accepted |
+| [ADR-003](ADR-003-frontend-stack.md) | Frontend stack | 2026-05-09 | Accepted |
+| [ADR-004](ADR-004-cross-platform-portability.md) | Cross-platform portability approach | 2026-05-09 | Accepted |
+| [ADR-005](ADR-005-ontology-loading-strategy.md) | Ontology loading strategy and named graph separation | 2026-05-10 | Accepted |
+| [ADR-006](ADR-006-instance-iri-naming-strategy.md) | Instance IRI naming strategy | 2026-05-10 | Accepted |
+| [ADR-007](ADR-007-data-access-patterns.md) | Data access patterns — quad patterns vs SPARQL | 2026-05-11 | Accepted |
+| [ADR-008](ADR-008-multiple-income-sources.md) | Multiple income sources with independent start/end dates in MVP | 2026-05-14 | Accepted |
+| [ADR-009](ADR-009-investment-accounts-and-monte-carlo.md) | Investment account model and Monte Carlo simulation design | 2026-05-16 | Implemented |
 
 ---
 
-## Class hierarchy
+## Summaries
 
-```
-owl:Thing
-├── mrl:Currency                     (reference individuals: mrl:Currency_GBP etc.)
-├── mrl:Jurisdiction                 (reference individuals: mrl:Jurisdiction_GB etc.)
-├── mrl:Person                       ✅ MVP
-├── mrl:IncomeSource                 ✅ MVP
-├── mrl:Account
-│   ├── mrl:CashAccount              ✅ MVP
-│   ├── mrl:InvestmentAccount        ✅ v0.2 (ADR-009)
-│   ├── mrl:PensionAccount           🔮 post-MVP
-│   ├── mrl:PropertyAsset            🔮 post-MVP
-│   └── mrl:OtherAsset               🔮 post-MVP
-├── mrl:BudgetLine                   ✅ MVP
-├── mrl:BudgetLineSegment            🔮 post-MVP (time-segmented growth rates)
-├── mrl:LifeEvent                    ✅ MVP
-└── mrl:ProjectionSettings           ✅ MVP
-```
+### ADR-001 — Backend language and triple store
+Selects **Python** as the backend language and **Oxigraph** (via `pyoxigraph`) as the embedded triple store. Oxigraph runs inside the Python process with no separate server, has a very low memory footprint suitable for older consumer hardware, and is fully SPARQL 1.1 compliant. The API layer uses **FastAPI**. Apache Jena Fuseki was rejected due to its JVM memory footprint; RDFLib was rejected as not production-grade for persistent storage.
 
----
+### ADR-002 — Packaging strategy
+Defines the distribution approach for non-technical end users across all three target platforms: **Windows** (PyInstaller → `.exe`), **macOS** (PyInstaller → `.app` bundle), and **Linux** (PyInstaller → AppImage via appimagetool). A single build toolchain (PyInstaller) produces all platform targets. macOS was added as a target platform after initial design, reflecting the disproportionate representation of Apple hardware among the target demographic. Unsigned macOS builds will show a Gatekeeper warning on first launch until code signing is implemented for v1.0.
 
-## SKOS concept schemes (mrlx:)
+### ADR-003 — Frontend stack
+Selects **HTMX + Tailwind CSS + DaisyUI** as the frontend stack. HTMX enables server-driven UI updates from the FastAPI backend without a JavaScript build pipeline. DaisyUI provides a complete component library including built-in light/dark theming. **Chart.js** (CDN) is used for data visualisation. React and Vue were rejected as requiring a separate build toolchain and JavaScript codebase inconsistent with the project's maintainability goals.
 
-All controlled vocabularies are modelled as SKOS concept schemes with `skos:broader`/`skos:narrower` hierarchy.
+### ADR-004 — Cross-platform portability approach
+Defines the engineering practices that enforce Windows/Linux/macOS portability throughout the codebase: `pathlib.Path` for all file path construction, `platformdirs` for OS-appropriate data directories, `.gitattributes` enforcing LF line endings, `python-dotenv` for configuration, and a prohibition on platform-specific runtime dependencies. A `devcontainer.json` is provided for optional Linux development on Windows.
 
-### IncomeSourceTypeScheme
-Top-level income source taxonomy with two hierarchical branches:
+### ADR-005 — Ontology loading strategy and named graph separation
+Defines how the OWL ontology (`docs/ontology/mrl-ontology.ttl`) is loaded into the Oxigraph store: on first startup only (skipped if already present), with a `force=True` option for reloading after edits. Two named graphs separate ontology triples from user instance data: `https://myretirementlife.app/ontology/graph` and `https://myretirementlife.app/data/graph`. The `.ttl` file is the authoritative source; Python code never defines ontology structure.
 
-```
-mrlx:IncomeSourceTypeScheme
-├── mrlx:IncomeSourceType_Employment
-├── mrlx:IncomeSourceType_BusinessIncome
-├── mrlx:IncomeSourceType_InterestIncome
-├── mrlx:IncomeSourceType_Property
-├── mrlx:IncomeSourceType_Retirement
-│   ├── mrlx:IncomeSourceType_Retirement_StatePension
-│   ├── mrlx:IncomeSourceType_Retirement_StateIncome
-│   ├── mrlx:IncomeSourceType_Retirement_WorkplacePension
-│   ├── mrlx:IncomeSourceType_Retirement_PrivatePension
-│   ├── mrlx:IncomeSourceType_Retirement_FourOOneK
-│   └── mrlx:IncomeSourceType_Retirement_Other
-├── mrlx:IncomeSourceType_Investment
-│   ├── mrlx:IncomeSourceType_Investment_Annuity
-│   ├── mrlx:IncomeSourceType_Investment_Dividends
-│   ├── mrlx:IncomeSourceType_Investment_BondIncome
-│   ├── mrlx:IncomeSourceType_Investment_FundIncome
-│   └── mrlx:IncomeSourceType_Investment_Other
-└── mrlx:IncomeSourceType_Other
-```
+### ADR-006 — Instance IRI naming strategy
+All user-created instance IRIs follow the pattern **`mrl:ClassName_N`** where N is a simple incrementing integer (e.g. `mrl:Person_1`, `mrl:CashAccount_2`). The next N is determined by querying the store for the highest existing N for that class. This is consistent across all instance types, human-readable in SPARQL and logs, and free of collision risk. UUID-based IRIs are noted as a future privacy option.
 
-### AccountTypeScheme
-Extended in v0.2 to include `InvestmentAccountType` as a sibling top concept alongside `CashAccountType`.
+### ADR-007 — Data access patterns — quad patterns vs SPARQL
+Establishes a clear split between the two Oxigraph read mechanisms: **`quads_for_pattern`** (quad pattern matching) is used for fetching all properties of a known IRI (e.g. `mrl:Person_1`) and checking existence, as it is reliable regardless of how literals were stored and avoids datatype matching failures in SPARQL. **SPARQL SELECT** is reserved for filtering, aggregation, multi-hop traversal, and projection calculations. All writes use **SPARQL UPDATE** with explicit XSD datatype annotations on numeric and boolean values.
 
-```
-mrlx:AccountTypeScheme
-├── mrlx:CashAccountType
-│   ├── mrlx:CashAccountType_Current
-│   ├── mrlx:CashAccountType_Savings
-│   ├── mrlx:CashAccountType_FixedTerm
-│   ├── mrlx:CashAccountType_TaxAdvantaged
-│   └── mrlx:CashAccountType_Other
-└── mrlx:InvestmentAccountType             ✅ v0.2
-    ├── mrlx:InvestmentAccountType_StocksShares
-    ├── mrlx:InvestmentAccountType_TaxAdvantaged
-    ├── mrlx:InvestmentAccountType_Pension
-    ├── mrlx:InvestmentAccountType_UnitTrust
-    ├── mrlx:InvestmentAccountType_Bonds
-    └── mrlx:InvestmentAccountType_Other
-```
+### ADR-008 — Multiple income sources with independent start/end dates in MVP
+Extends the MVP from a single Employment income source to **multiple income sources with independent start and end years**, managed via a dedicated `/income` screen. This was necessary to accurately model common retirement income patterns: employment stopping at retirement while rental, partner, state pension, and part-time income continue on their own timelines. The ontology's `mrl:IncomeSource` class was already designed for this; only the application layer needed to be built. A bug was also fixed: `mrl:incomeEndYear` was previously stored as an age rather than a calendar year.
 
-Post-MVP: `PensionAccountType` will be added as a further sibling top concept when `mrl:PensionAccount` is implemented.
-
-### FrequencyTypeScheme
-Used on `mrl:BudgetLine` to specify recurrence. The projection engine normalises to annual amounts.
-
-```
-mrlx:FrequencyTypeScheme
-├── mrlx:FrequencyType_Weekly          (× 52)
-├── mrlx:FrequencyType_Fortnightly     (× 26)
-├── mrlx:FrequencyType_TwiceMonthly    (× 24)
-├── mrlx:FrequencyType_Monthly         (× 12)
-├── mrlx:FrequencyType_Quarterly       (× 4)
-└── mrlx:FrequencyType_Annually        (× 1)
-```
-
-### MonteCarloProfileScheme                ✅ v0.2
-Named volatility profiles for the Monte Carlo retirement simulation. Each profile carries `mrlx:returnVolatility` and `mrlx:inflationVolatility` as datatype properties (standard deviations in percentage points), allowing parameters to be adjusted in the TTL without code changes.
-
-```
-mrlx:MonteCarloProfileScheme
-├── mrlx:MonteCarloProfile_Conservative   (returnVol=3.0%, inflationVol=0.8%)
-├── mrlx:MonteCarloProfile_Moderate       (returnVol=6.0%, inflationVol=1.5%)  ← default
-└── mrlx:MonteCarloProfile_Aggressive     (returnVol=10.0%, inflationVol=2.5%)
-```
-
-### Other flat vocabularies (owl:Class with named individuals)
-- `mrlx:EmploymentStatus` — Employed, SelfEmployed, NotWorking, Retired
-- `mrlx:BudgetLineType` — Mandatory, Discretionary, Loan
-- `mrlx:LifeEventType` — LargeExpenditure, Windfall, PropertyTransaction, RelocationAbroad, CaringResponsibility
+### ADR-009 — Investment account model and Monte Carlo simulation design
+Adds **investment accounts** modelled as aggregate pots (current balance, annual growth rate %, annual dividend rate %, reinvest dividends flag) rather than individual holdings. Introduces **Monte Carlo simulation** with three named profiles — Conservative, Moderate, and Aggressive — each defining a standard deviation for annual returns and inflation; 500 simulations are run per projection. Profile parameters are stored as `mrlx:` individuals in the ontology TTL, adjustable without code changes. Also adds `mrl:plansToRetireIn` on `mrl:Person` for cost-of-living adjustment from the retirement year onward. `numpy` is added as a dependency for random number generation and percentile calculation.
 
 ---
 
-## Key property notes
+## Status values
 
-### Exchange rates
-`mrl:exchangeRateToBase` on `mrl:Account` stores a user-maintained exchange rate for converting non-base-currency account balances into the base currency for projection calculations. Expressed as: 1 unit of account currency = N units of base currency (e.g. 0.79 for USD→GBP).
-
-Only required when account currency differs from the person's base currency. Post-MVP will support live rate fetching from an exchange rate API.
-
-### Interest rates
-`mrl:annualInterestRate` on `mrl:CashAccount` represents the **current rate only**. Rate history is a future feature — users should update this value when their rate changes.
-
-MVP projection applies a weighted average return rate across all accounts (cash and investment). Post-MVP will track interest per account independently.
-
-### Investment account rates  ✅ v0.2
-`mrl:annualGrowthRate` and `mrl:annualDividendRate` on `mrl:InvestmentAccount` represent expected annual capital appreciation and income yield respectively, both as percentages. `mrl:reinvestDividends` (boolean) controls whether dividend income is compounded back into the pot or treated as annual cashflow income in the projection.
-
-The projection engine includes investment accounts in the blended weighted return rate. Non-reinvested dividends are modelled as a separate annual income stream growing at the account's capital growth rate.
-
-### Budget line growth rates
-`mrl:annualChangeRate` on `mrl:BudgetLine` is the default annual percentage change for MVP. Post-MVP introduces `mrl:BudgetLineSegment` for time-segmented growth rates.
-
-### Budget line active dates  ✅ v0.2
-`mrl:budgetStartYear` and `mrl:budgetEndYear` on `mrl:BudgetLine` allow time-bounded spending. If absent, the line is active from the current year indefinitely. `mrl:loanEndYear` remains a separate property specifically for loan-type lines (drives the "ends YYYY" badge in the UI).
-
-### Retirement jurisdiction  ✅ v0.2
-`mrl:plansToRetireIn` on `mrl:Person` optionally points to a `mrl:Jurisdiction` individual. If set and different from `mrl:residesIn`, the projection engine multiplies all spending from the retirement year onward by `retire_col / current_col` where each COL index comes from `mrl:costOfLivingIndex` on the respective `mrl:Jurisdiction` individual.
-
-`mrl:costOfLivingIndex` on `mrl:Jurisdiction` is indexed to UK = 1.00. Values are approximate and based on broad cross-country comparisons — users should adjust their budget lines directly for precision.
-
-### Monte Carlo profile  ✅ v0.2
-`mrl:monteCarloProfile` on `mrl:ProjectionSettings` points to a `mrlx:MonteCarloProfile_*` individual. Defaults to `mrlx:MonteCarloProfile_Moderate` if not set. The projection engine reads `mrlx:returnVolatility` and `mrlx:inflationVolatility` from the selected individual at runtime.
+| Status | Meaning |
+|--------|---------|
+| **Proposed** | Under discussion; not yet decided |
+| **Accepted** | Decision made and adopted; the approach described is in effect |
+| **Implemented** | Accepted and fully built; implementation notes may record divergences from the original design |
+| **Superseded** | Replaced by a later ADR; kept for historical reference |
+| **Deprecated** | No longer applicable but not replaced by a specific decision |
 
 ---
 
-## Seed data
+## Adding a new ADR
 
-**Currencies:** GBP, USD, EUR, AUD, CAD, CHF, JPY, NZD, SEK, NOK, DKK, SGD, HKD, ZAR
-
-**Jurisdictions:** GB, US, EU, AU, CA, NZ, CH, SG, ZA — each with a `mrl:costOfLivingIndex` value (GB = 1.00 base). Values: US=1.05, EU=0.88, AU=0.92, CA=0.90, NZ=0.88, CH=1.38, SG=1.08, ZA=0.52.
-
----
-
-## Loading and reloading
-
-Loaded by `src/store/ontology_loader.py` on startup. Idempotent — skips if already loaded. Force reload after editing:
-
-```python
-from src.store.graph import store
-from src.store.ontology_loader import load_ontology
-load_ontology(store.store, force=True)
-```
-
-Or delete the Oxigraph store folder and restart — the loader will rebuild from the TTL on next startup.
-
-Verify at runtime: `http://127.0.0.1:8000/ontology/status`
-
----
-
-## SPARQL examples
-
-**All cash accounts with base-currency equivalent balance:**
-```sparql
-PREFIX mrl: <https://myretirementlife.app/ontology#>
-
-SELECT ?name ?balance ?fxRate ?currencyCode
-WHERE {
-    GRAPH <https://myretirementlife.app/data/graph> {
-        ?acc a mrl:CashAccount ;
-             mrl:accountName ?name ;
-             mrl:accountBalance ?balance .
-        OPTIONAL { ?acc mrl:exchangeRateToBase ?fxRate }
-        OPTIONAL { ?acc mrl:accountCurrency ?curr }
-    }
-    OPTIONAL {
-        GRAPH <https://myretirementlife.app/ontology/graph> {
-            ?curr mrl:currencyCode ?currencyCode .
-        }
-    }
-}
-```
-
-**All income source types (top level only):**
-```sparql
-PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
-PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
-
-SELECT ?concept ?label
-WHERE {
-    GRAPH <https://myretirementlife.app/ontology/graph> {
-        ?concept skos:topConceptOf mrlx:IncomeSourceTypeScheme ;
-                 skos:prefLabel ?label .
-        FILTER(LANG(?label) = "en")
-    }
-}
-```
-
-**All Monte Carlo profiles with their volatility parameters:**
-```sparql
-PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
-PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>
-
-SELECT ?profile ?label ?returnVol ?inflationVol
-WHERE {
-    GRAPH <https://myretirementlife.app/ontology/graph> {
-        ?profile skos:inScheme mrlx:MonteCarloProfileScheme ;
-                 skos:prefLabel ?label ;
-                 mrlx:returnVolatility ?returnVol ;
-                 mrlx:inflationVolatility ?inflationVol .
-        FILTER(LANG(?label) = "en")
-    }
-}
-ORDER BY ?returnVol
-```
-
-**All investment accounts with effective annual return:**
-```sparql
-PREFIX mrl: <https://myretirementlife.app/ontology#>
-
-SELECT ?name ?balance ?growthRate ?dividendRate ?reinvest
-WHERE {
-    GRAPH <https://myretirementlife.app/data/graph> {
-        ?acc a mrl:InvestmentAccount ;
-             mrl:accountName ?name ;
-             mrl:accountBalance ?balance ;
-             mrl:annualGrowthRate ?growthRate ;
-             mrl:annualDividendRate ?dividendRate ;
-             mrl:reinvestDividends ?reinvest .
-    }
-}
-```
+1. Copy the filename pattern: `ADR-NNN-short-description-of-decision.md`
+2. Use the next available number in sequence
+3. Fill in Context, Options considered, Decision, and Consequences
+4. Set status to `Proposed` until the decision is agreed
+5. Add a row to the index table and a summary paragraph above
+6. Once agreed, update status to `Accepted`
