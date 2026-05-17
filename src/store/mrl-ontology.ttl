@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.9.0" .
+    owl:versionInfo "1.0.0" .
 
 
 # ===========================================================================
@@ -132,7 +132,10 @@ mrlx:AccountTypeScheme a skos:ConceptScheme ;
     rdfs:label "Account Type Scheme"@en ;
     skos:prefLabel "Account Type Scheme"@en ;
     skos:definition "A controlled vocabulary of account types used to classify mrl:Account individuals."@en ;
-    skos:hasTopConcept mrlx:CashAccountType .
+    skos:hasTopConcept
+        mrlx:CashAccountType ,
+        mrlx:InvestmentAccountType ,
+        mrlx:CreditCardAccountType .
 
 
 # --- CashAccountType top concept ---
@@ -186,6 +189,67 @@ mrlx:CashAccountType_Other a skos:Concept ;
     skos:prefLabel "Other cash account"@en ;
     skos:definition "A cash account that does not fit any other cash account subtype."@en ;
     skos:notation "CASH_OTHER" .
+
+
+# --- InvestmentAccountType top concept ---
+
+mrlx:InvestmentAccountType a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:topConceptOf mrlx:AccountTypeScheme ;
+    skos:prefLabel "Investment account"@en ;
+    skos:definition "The parent concept for all investment account types holding financial instruments rather than cash deposits."@en ;
+    skos:notation "INVEST" ;
+    skos:scopeNote "Covers equity, bond, fund, and pension pot accounts. Does not include cash deposit accounts — those are classified under CashAccountType."@en .
+
+
+# --- InvestmentAccountType subtypes ---
+
+mrlx:InvestmentAccountType_StocksShares a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Stocks and shares account"@en ;
+    skos:definition "A general account holding equities, ETFs, funds, or a mix of investment instruments."@en ;
+    skos:notation "INVEST_STOCKS" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK General Investment Accounts (GIA), US brokerage accounts, and equivalent non-sheltered investment accounts in other jurisdictions."@en .
+
+mrlx:InvestmentAccountType_TaxAdvantaged a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Tax-advantaged investment account"@en ;
+    skos:definition "An investment account held within a tax-sheltered wrapper providing tax-free or tax-deferred growth on investment assets."@en ;
+    skos:notation "INVEST_TAX_ADV" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers UK Stocks and Shares ISAs, US Roth IRA investment holdings, Canadian TFSA investment holdings, and equivalent tax-advantaged investment wrappers in other jurisdictions."@en .
+
+mrlx:InvestmentAccountType_Pension a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Self-directed pension pot"@en ;
+    skos:definition "A pension account where the holder directs investment choices, such as a SIPP, 401(k), or RRSP."@en ;
+    skos:notation "INVEST_PENSION" ;
+    skos:scopeNote "For defined contribution pensions where the pot value can be tracked. Covers UK SIPPs, US 401(k) and IRA accounts, Canadian RRSPs, and Australian Superannuation funds."@en .
+
+mrlx:InvestmentAccountType_UnitTrust a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Unit trust / mutual fund"@en ;
+    skos:definition "A pooled investment vehicle where the holder owns units in a fund managed by a third party."@en ;
+    skos:notation "INVEST_UNIT_TRUST" ;
+    skos:scopeNote "Covers UK unit trusts, OEICs, US mutual funds, and equivalent pooled investment vehicles."@en .
+
+mrlx:InvestmentAccountType_Bonds a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Bond portfolio"@en ;
+    skos:definition "A portfolio of fixed income instruments such as government bonds, corporate bonds, or gilts."@en ;
+    skos:notation "INVEST_BONDS" ;
+    skos:scopeNote "Use for direct bond holdings. Bond funds or ETFs are better classified under Stocks and shares account or Unit trust."@en .
+
+mrlx:InvestmentAccountType_Other a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Other investment account"@en ;
+    skos:definition "An investment account that does not fit any other investment account subtype."@en ;
+    skos:notation "INVEST_OTHER" .
 
 
 # ===========================================================================
@@ -598,59 +662,74 @@ mrl:defaultCurrency a owl:ObjectProperty ;
     rdfs:domain mrl:Jurisdiction ;
     rdfs:range mrl:Currency .
 
+mrl:costOfLivingIndex a owl:DatatypeProperty ;
+    rdfs:label "cost of living index"@en ;
+    rdfs:comment "Approximate cost of living relative to the United Kingdom (GB = 1.00). Used by the projection engine to scale spending when the user plans to retire in a different jurisdiction. Values above 1.00 indicate a more expensive country; below 1.00 a cheaper one. Figures are indicative and based on broad cross-country comparisons — users should adjust their budget lines directly for greater precision."@en ;
+    rdfs:domain mrl:Jurisdiction ;
+    rdfs:range xsd:decimal .
+
 mrl:Jurisdiction_GB a mrl:Jurisdiction ;
     rdfs:label "United Kingdom"@en ;
     mrl:jurisdictionCode "GB" ;
     mrl:jurisdictionName "United Kingdom"@en ;
-    mrl:defaultCurrency mrl:Currency_GBP .
+    mrl:defaultCurrency mrl:Currency_GBP ;
+    mrl:costOfLivingIndex "1.00"^^xsd:decimal .
 
 mrl:Jurisdiction_US a mrl:Jurisdiction ;
     rdfs:label "United States"@en ;
     mrl:jurisdictionCode "US" ;
     mrl:jurisdictionName "United States"@en ;
-    mrl:defaultCurrency mrl:Currency_USD .
+    mrl:defaultCurrency mrl:Currency_USD ;
+    mrl:costOfLivingIndex "1.05"^^xsd:decimal .
 
 mrl:Jurisdiction_EU a mrl:Jurisdiction ;
     rdfs:label "European Union"@en ;
     mrl:jurisdictionCode "EU" ;
     mrl:jurisdictionName "European Union"@en ;
-    mrl:defaultCurrency mrl:Currency_EUR .
+    mrl:defaultCurrency mrl:Currency_EUR ;
+    mrl:costOfLivingIndex "0.88"^^xsd:decimal .
 
 mrl:Jurisdiction_AU a mrl:Jurisdiction ;
     rdfs:label "Australia"@en ;
     mrl:jurisdictionCode "AU" ;
     mrl:jurisdictionName "Australia"@en ;
-    mrl:defaultCurrency mrl:Currency_AUD .
+    mrl:defaultCurrency mrl:Currency_AUD ;
+    mrl:costOfLivingIndex "0.92"^^xsd:decimal .
 
 mrl:Jurisdiction_CA a mrl:Jurisdiction ;
     rdfs:label "Canada"@en ;
     mrl:jurisdictionCode "CA" ;
     mrl:jurisdictionName "Canada"@en ;
-    mrl:defaultCurrency mrl:Currency_CAD .
+    mrl:defaultCurrency mrl:Currency_CAD ;
+    mrl:costOfLivingIndex "0.90"^^xsd:decimal .
 
 mrl:Jurisdiction_NZ a mrl:Jurisdiction ;
     rdfs:label "New Zealand"@en ;
     mrl:jurisdictionCode "NZ" ;
     mrl:jurisdictionName "New Zealand"@en ;
-    mrl:defaultCurrency mrl:Currency_NZD .
+    mrl:defaultCurrency mrl:Currency_NZD ;
+    mrl:costOfLivingIndex "0.88"^^xsd:decimal .
 
 mrl:Jurisdiction_CH a mrl:Jurisdiction ;
     rdfs:label "Switzerland"@en ;
     mrl:jurisdictionCode "CH" ;
     mrl:jurisdictionName "Switzerland"@en ;
-    mrl:defaultCurrency mrl:Currency_CHF .
+    mrl:defaultCurrency mrl:Currency_CHF ;
+    mrl:costOfLivingIndex "1.38"^^xsd:decimal .
 
 mrl:Jurisdiction_SG a mrl:Jurisdiction ;
     rdfs:label "Singapore"@en ;
     mrl:jurisdictionCode "SG" ;
     mrl:jurisdictionName "Singapore"@en ;
-    mrl:defaultCurrency mrl:Currency_SGD .
+    mrl:defaultCurrency mrl:Currency_SGD ;
+    mrl:costOfLivingIndex "1.08"^^xsd:decimal .
 
 mrl:Jurisdiction_ZA a mrl:Jurisdiction ;
     rdfs:label "South Africa"@en ;
     mrl:jurisdictionCode "ZA" ;
     mrl:jurisdictionName "South Africa"@en ;
-    mrl:defaultCurrency mrl:Currency_ZAR .
+    mrl:defaultCurrency mrl:Currency_ZAR ;
+    mrl:costOfLivingIndex "0.52"^^xsd:decimal .
 
 
 # ===========================================================================
@@ -705,6 +784,12 @@ mrl:baseCurrency a owl:ObjectProperty ;
 mrl:residesIn a owl:ObjectProperty ;
     rdfs:label "resides in"@en ;
     rdfs:comment "Points to a mrl:Jurisdiction individual."@en ;
+    rdfs:domain mrl:Person ;
+    rdfs:range mrl:Jurisdiction .
+
+mrl:plansToRetireIn a owl:ObjectProperty ;
+    rdfs:label "plans to retire in"@en ;
+    rdfs:comment "The jurisdiction the person intends to retire in, if different from their current residence. If absent or identical to mrl:residesIn, the projection applies no cost-of-living adjustment. If set, the projection engine applies the ratio of the retirement jurisdiction's mrl:costOfLivingIndex to the current jurisdiction's from the retirement year onwards."@en ;
     rdfs:domain mrl:Person ;
     rdfs:range mrl:Jurisdiction .
 
@@ -875,17 +960,82 @@ mrl:annualInterestRate a owl:DatatypeProperty ;
 mrl:InvestmentAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
     rdfs:label "Investment account"@en ;
-    rdfs:comment "Stocks, funds, bonds, or other investment holdings. Post-MVP."@en .
+    rdfs:comment "Stocks, funds, bonds, or other investment holdings. Uses mrlx:InvestmentAccountType for classification."@en .
+
+mrl:annualGrowthRate a owl:DatatypeProperty ;
+    rdfs:label "annual growth rate"@en ;
+    rdfs:comment "Expected annual capital appreciation of the investment as a percentage, e.g. 7.0 for 7%. Does not include dividend or income return — that is captured in mrl:annualDividendRate. The projection engine compounds the account balance at this rate each year."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:annualDividendRate a owl:DatatypeProperty ;
+    rdfs:label "annual dividend rate"@en ;
+    rdfs:comment "Expected annual income yield from the investment as a percentage, e.g. 3.5 for a 3.5% dividend yield. If mrl:reinvestDividends is true, this amount is added to the balance each year. If false, it is treated as annual income for the projection."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:reinvestDividends a owl:DatatypeProperty ;
+    rdfs:label "reinvest dividends"@en ;
+    rdfs:comment "If true, dividend income is reinvested into the account (compounding the balance). If false, dividends are treated as annual income in the projection and paid into the cash pool."@en ;
+    rdfs:domain mrl:InvestmentAccount ;
+    rdfs:range xsd:boolean .
 
 mrl:PensionAccount a owl:Class ;
     rdfs:subClassOf mrl:Account ;
     rdfs:label "Pension account"@en ;
     rdfs:comment "Defined contribution or defined benefit pension. Post-MVP."@en .
 
+mrl:CreditCardAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Credit card account"@en ;
+    rdfs:comment "A revolving credit account associated with a payment card. The balance represents a liability — the amount currently owed to the card issuer. Included in net worth calculations as a negative asset."@en .
+
+mrl:creditLimit a owl:DatatypeProperty ;
+    rdfs:label "credit limit"@en ;
+    rdfs:comment "The maximum borrowing limit on this credit card account, in the account's currency."@en ;
+    rdfs:domain mrl:CreditCardAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:statementDay a owl:DatatypeProperty ;
+    rdfs:label "statement day"@en ;
+    rdfs:comment "The day of the month on which the card statement is generated (1–31). Optional — used for reconciliation and payment reminders."@en ;
+    rdfs:domain mrl:CreditCardAccount ;
+    rdfs:range xsd:integer .
+
+mrl:isLiability a owl:DatatypeProperty ;
+    rdfs:label "is liability"@en ;
+    rdfs:comment "True if this account's balance is a liability (e.g. credit card debt, mortgage). Liability balances are subtracted from total assets when calculating net worth. Defaults to false (asset) if absent."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:boolean .
+
 mrl:PropertyAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
     rdfs:label "Property asset"@en ;
-    rdfs:comment "Real estate holdings. Post-MVP."@en .
+    rdfs:comment "A real property (residential, commercial, or land) held as an asset. Value is maintained via point-in-time valuation events rather than transaction aggregation. mrl:accountBalance stores the current estimated value in the account currency."@en .
+
+mrl:propertyAddress a owl:DatatypeProperty ;
+    rdfs:label "property address"@en ;
+    rdfs:comment "Free-text postal address of the property."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:string .
+
+mrl:purchasePrice a owl:DatatypeProperty ;
+    rdfs:label "purchase price"@en ;
+    rdfs:comment "The original purchase price of the property in the account currency. Used for gain/loss calculation."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:decimal .
+
+mrl:purchaseDate a owl:DatatypeProperty ;
+    rdfs:label "purchase date"@en ;
+    rdfs:comment "The date on which the property was acquired (ISO 8601 date)."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:date .
+
+mrl:isMortgaged a owl:DatatypeProperty ;
+    rdfs:label "is mortgaged"@en ;
+    rdfs:comment "True if there is an outstanding mortgage on this property. When true, a corresponding liability account should be maintained to correctly reflect net equity."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:boolean .
 
 mrl:OtherAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
@@ -1063,3 +1213,413 @@ mrl:projectionOwner a owl:ObjectProperty ;
     rdfs:label "projection owner"@en ;
     rdfs:domain mrl:ProjectionSettings ;
     rdfs:range mrl:Person .
+
+mrl:monteCarloProfile a owl:ObjectProperty ;
+    rdfs:label "Monte Carlo profile"@en ;
+    rdfs:comment "Points to a mrlx:MonteCarloProfile_* SKOS individual. Determines the volatility parameters used in Monte Carlo simulations. Defaults to mrlx:MonteCarloProfile_Moderate if not set."@en ;
+    rdfs:domain mrl:ProjectionSettings ;
+    rdfs:range skos:Concept .
+
+
+# ===========================================================================
+# MONTE CARLO PROFILE — SKOS CONCEPT SCHEME
+#
+# Named volatility profiles for the Monte Carlo retirement simulation.
+# Each profile specifies:
+#   mrlx:returnVolatility    — std dev of annual returns (percentage points)
+#   mrlx:inflationVolatility — std dev of annual inflation (percentage points)
+#
+# Values represent one standard deviation. In each simulated year, returns
+# and inflation are drawn from N(deterministic_rate, volatility).
+# GB = 1.00 is the base for cost-of-living; these profiles are independent.
+# ===========================================================================
+
+mrlx:returnVolatility a owl:DatatypeProperty ;
+    rdfs:label "return volatility"@en ;
+    rdfs:comment "Standard deviation of annual investment and savings returns as percentage points, e.g. 6.0 means returns are drawn from N(weighted_rate, 6%). Used by the Monte Carlo engine."@en ;
+    rdfs:range xsd:decimal .
+
+mrlx:inflationVolatility a owl:DatatypeProperty ;
+    rdfs:label "inflation volatility"@en ;
+    rdfs:comment "Standard deviation of annual inflation as percentage points, e.g. 1.5 means inflation is drawn from N(inflation_rate, 1.5%). Used by the Monte Carlo engine."@en ;
+    rdfs:range xsd:decimal .
+
+mrlx:MonteCarloProfileScheme a skos:ConceptScheme ;
+    rdfs:label "Monte Carlo Profile Scheme"@en ;
+    skos:prefLabel "Monte Carlo Profile Scheme"@en ;
+    skos:definition "A set of named volatility profiles for the Monte Carlo retirement projection. Each profile pairs a return volatility with an inflation volatility to characterise a market environment."@en ;
+    skos:hasTopConcept
+        mrlx:MonteCarloProfile_Conservative ,
+        mrlx:MonteCarloProfile_Moderate ,
+        mrlx:MonteCarloProfile_Aggressive .
+
+mrlx:MonteCarloProfile_Conservative a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Conservative"@en ;
+    skos:definition "Low volatility scenario representing a mostly cash and bond portfolio with stable inflation. Suitable for risk-averse users or those close to retirement."@en ;
+    skos:notation "MC_CONSERVATIVE" ;
+    mrlx:returnVolatility "3.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "0.8"^^xsd:decimal .
+
+mrlx:MonteCarloProfile_Moderate a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Moderate"@en ;
+    skos:definition "Medium volatility scenario representing a balanced portfolio with typical inflation variability. A reasonable default for most users."@en ;
+    skos:notation "MC_MODERATE" ;
+    mrlx:returnVolatility "6.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "1.5"^^xsd:decimal .
+
+mrlx:MonteCarloProfile_Aggressive a skos:Concept ;
+    skos:inScheme mrlx:MonteCarloProfileScheme ;
+    skos:topConceptOf mrlx:MonteCarloProfileScheme ;
+    skos:prefLabel "Aggressive"@en ;
+    skos:definition "High volatility scenario representing an equity-heavy portfolio with significant inflation uncertainty. Suitable for users with a long time horizon or high risk tolerance."@en ;
+    skos:notation "MC_AGGRESSIVE" ;
+    mrlx:returnVolatility "10.0"^^xsd:decimal ;
+    mrlx:inflationVolatility "2.5"^^xsd:decimal .
+
+
+# ===========================================================================
+# CREDIT CARD ACCOUNT TYPE — SKOS concepts (added v0.9.1, ADR-010)
+#
+# A new top concept in mrlx:AccountTypeScheme, alongside CashAccountType
+# and InvestmentAccountType. Credit card account types classify instances
+# of mrl:CreditCardAccount.
+#
+# Hierarchy:
+#   CreditCardAccountType (top concept)
+#     └── Standard
+#     └── ChargeCard
+# ===========================================================================
+
+mrlx:CreditCardAccountType a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:topConceptOf mrlx:AccountTypeScheme ;
+    skos:prefLabel "Credit card account"@en ;
+    skos:definition "The parent concept for credit card account types. Credit card balances are liabilities."@en ;
+    skos:notation "CC" ;
+    skos:scopeNote "Covers revolving credit cards and charge cards. Does not include personal loans, overdrafts, or mortgages, which are modelled as separate liability account types in a future release."@en .
+
+mrlx:CreditCardAccountType_Standard a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CreditCardAccountType ;
+    skos:prefLabel "Standard credit card"@en ;
+    skos:definition "A revolving credit card with a set credit limit. The minimum payment is required each month; any unpaid balance carries interest."@en ;
+    skos:notation "CC_STANDARD" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers Visa, Mastercard, Amex (revolving), and equivalent revolving credit products worldwide."@en .
+
+mrlx:CreditCardAccountType_ChargeCard a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CreditCardAccountType ;
+    skos:prefLabel "Charge card"@en ;
+    skos:definition "A payment card where the full balance must be paid each month. No revolving credit facility; no interest charged on the balance."@en ;
+    skos:notation "CC_CHARGE" ;
+    skos:scopeNote "Covers traditional charge card products such as American Express charge cards. Distinct from revolving credit cards in that no balance can be carried forward."@en .
+
+# Implements: ADR-011, ADR-012, ADR-013
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# SECTION 1 — New object properties on mrl:Account
+# ---------------------------------------------------------------------------
+
+mrl:accountJurisdiction
+    a                   owl:ObjectProperty ;
+    rdfs:label          "account jurisdiction"@en ;
+    rdfs:comment        "The jurisdiction in which this account is domiciled. Informational; drives UI guidance on typical tax treatment. Does not trigger automatic rate lookup." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          mrl:Jurisdiction ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:taxTreatment
+    a                   owl:ObjectProperty ;
+    rdfs:label          "tax treatment"@en ;
+    rdfs:comment        "Structural tax treatment type for this account at point of withdrawal. Drives UI prompts and documentation. See mrlx:TaxTreatmentScheme." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          mrlx:TaxTreatmentType ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 2 — New object properties on mrl:ProjectionSettings
+# ---------------------------------------------------------------------------
+
+mrl:drawdownStrategy
+    a                   owl:ObjectProperty ;
+    rdfs:label          "drawdown strategy"@en ;
+    rdfs:comment        "Strategy for distributing annual drawdown shortfall across eligible accounts. See mrlx:DrawdownStrategyScheme." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          mrlx:DrawdownStrategyType ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:surplusStrategy
+    a                   owl:ObjectProperty ;
+    rdfs:label          "surplus strategy"@en ;
+    rdfs:comment        "What to do when projected spending is below budget in a given year. See mrlx:SurplusStrategyScheme." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          mrlx:SurplusStrategyType ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:spendingAccount
+    a                   owl:ObjectProperty ;
+    rdfs:label          "spending account"@en ;
+    rdfs:comment        "The account into which all drawdown cash is deposited before being spent against the budget. Typically a current or checking account." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:surplusAccount
+    a                   owl:ObjectProperty ;
+    rdfs:label          "surplus account"@en ;
+    rdfs:comment        "The account that receives swept surplus when actual spending is below budget and the SweepToAccount strategy is selected." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 3 — New object properties on mrl:LifeEvent
+# ---------------------------------------------------------------------------
+
+mrl:fundedByAccount
+    a                   owl:ObjectProperty ;
+    rdfs:label          "funded by account"@en ;
+    rdfs:comment        "For expenditure life events: the specific account from which the cost is drawn. If absent, normal drawdown strategy applies." ;
+    rdfs:domain         mrl:LifeEvent ;
+    rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:receivedByAccount
+    a                   owl:ObjectProperty ;
+    rdfs:label          "received by account"@en ;
+    rdfs:comment        "For receipt or windfall life events: the specific account that receives the funds. If absent, surplus strategy applies." ;
+    rdfs:domain         mrl:LifeEvent ;
+    rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 4 — New datatype properties on mrl:Account
+# ---------------------------------------------------------------------------
+
+mrl:drawdownMinAge
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "drawdown minimum age"@en ;
+    rdfs:comment        "Minimum age at which this account may be drawn down. Decimal to support fractional ages (e.g. 59.5 for US 401(k), 57.0 for UK pension post-2028)." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:drawdownMaxAge
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "drawdown maximum age"@en ;
+    rdfs:comment        "Optional maximum age after which this account may no longer be drawn, or must be fully drawn." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:drawdownEarliestDate
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "drawdown earliest date"@en ;
+    rdfs:comment        "Fixed-term start date before which the account cannot be accessed. Takes precedence over drawdownMinAge when set (e.g. a savings bond maturing on a specific date)." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:date ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:drawdownLatestDate
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "drawdown latest date"@en ;
+    rdfs:comment        "Maturity or expiry date after which the account should be drawn or closed (e.g. a fixed-term bond that must be cashed at maturity)." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:date ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:drawdownRatio
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "drawdown ratio"@en ;
+    rdfs:comment        "Proportion of the annual shortfall to draw from this account under the Proportional strategy. Values across eligible accounts are normalised to sum to 1.0 each year." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:effectiveWithdrawalTaxRate
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "effective withdrawal tax rate"@en ;
+    rdfs:comment        "Expected effective tax rate at point of withdrawal from this account, after any applicable tax treaty relief. User-specified. For a UK ISA this is 0; for a US 401(k) held by a UK resident this may be 0–25% depending on treaty position." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:annualTaxFreeWithdrawal
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "annual tax-free withdrawal"@en ;
+    rdfs:comment        "Amount that can be withdrawn from this account per year before effectiveWithdrawalTaxRate applies. Resets each projection year. Handles instruments such as the UK pension 25% PCLS equivalent spread as an annual allowance." ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 5 — New datatype properties on mrl:ProjectionSettings
+# ---------------------------------------------------------------------------
+
+mrl:annualPersonalAllowance
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "annual personal allowance"@en ;
+    rdfs:comment        "Total annual income threshold in the person's country of residence before income tax applies. Covers income from all accounts and income sources in aggregate." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:residenceIncomeTaxRate
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "residence income tax rate"@en ;
+    rdfs:comment        "Marginal income tax rate applied above the annualPersonalAllowance in the person's country of residence." ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 6 — New datatype property on mrl:Jurisdiction
+# ---------------------------------------------------------------------------
+
+mrl:standardPersonalAllowance
+    a                   owl:DatatypeProperty ;
+    rdfs:label          "standard personal allowance"@en ;
+    rdfs:comment        "Reference personal allowance for this jurisdiction. Used as a default starting point in the settings UI; the user overrides the live figure in ProjectionSettings as rates change annually." ;
+    rdfs:domain         mrl:Jurisdiction ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 7 — New SKOS type stubs (range declarations for object properties)
+# ---------------------------------------------------------------------------
+
+mrlx:TaxTreatmentType
+    a               owl:Class ;
+    rdfs:label      "Tax Treatment Type"@en ;
+    rdfs:subClassOf skos:Concept .
+
+mrlx:DrawdownStrategyType
+    a               owl:Class ;
+    rdfs:label      "Drawdown Strategy Type"@en ;
+    rdfs:subClassOf skos:Concept .
+
+mrlx:SurplusStrategyType
+    a               owl:Class ;
+    rdfs:label      "Surplus Strategy Type"@en ;
+    rdfs:subClassOf skos:Concept .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 8 — mrlx:TaxTreatmentScheme
+# ---------------------------------------------------------------------------
+
+mrlx:TaxTreatmentScheme
+    a                   skos:ConceptScheme ;
+    skos:prefLabel      "Tax Treatment Scheme"@en ;
+    rdfs:comment        "Structural tax treatment types for accounts at point of withdrawal. Drives UI guidance and documentation. Effective rates are always user-specified; this application does not encode jurisdiction tax law." .
+
+mrlx:TaxTreatment_PreTaxWholeWithdrawal
+    a                   skos:Concept , mrlx:TaxTreatmentType ;
+    skos:inScheme       mrlx:TaxTreatmentScheme ;
+    skos:topConceptOf   mrlx:TaxTreatmentScheme ;
+    skos:prefLabel      "Pre-tax (whole withdrawal taxable)"@en ;
+    rdfs:comment        "Contributions were made pre-tax; the full withdrawal amount is taxable income. Examples: 401(k), Traditional IRA, SIPP, workplace defined-contribution pension." .
+
+mrlx:TaxTreatment_PostTaxGainsOnly
+    a                   skos:Concept , mrlx:TaxTreatmentType ;
+    skos:inScheme       mrlx:TaxTreatmentScheme ;
+    skos:topConceptOf   mrlx:TaxTreatmentScheme ;
+    skos:prefLabel      "Post-tax (gains only taxable)"@en ;
+    rdfs:comment        "Contributions were made post-tax; only the gains portion of a withdrawal is taxable. Cost basis tracking is handled by the sister application (My Financial Life). This application uses an effective rate approximation set by the user. Examples: GIA, general brokerage account." .
+
+mrlx:TaxTreatment_PostTaxTaxFreeWithdrawal
+    a                   skos:Concept , mrlx:TaxTreatmentType ;
+    skos:inScheme       mrlx:TaxTreatmentScheme ;
+    skos:topConceptOf   mrlx:TaxTreatmentScheme ;
+    skos:prefLabel      "Post-tax (withdrawals tax-free)"@en ;
+    rdfs:comment        "Contributions were made post-tax; withdrawals are fully exempt from tax. Examples: ISA (cash and stocks and shares), Roth IRA, KiwiSaver after qualifying age." .
+
+mrlx:TaxTreatment_TaxFree
+    a                   skos:Concept , mrlx:TaxTreatmentType ;
+    skos:inScheme       mrlx:TaxTreatmentScheme ;
+    skos:topConceptOf   mrlx:TaxTreatmentScheme ;
+    skos:prefLabel      "Tax-free"@en ;
+    rdfs:comment        "No tax applies at any stage. Examples: Premium bonds, NS&I accounts, cash savings held below the relevant threshold." .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 9 — mrlx:DrawdownStrategyScheme
+# ---------------------------------------------------------------------------
+
+mrlx:DrawdownStrategyScheme
+    a                   skos:ConceptScheme ;
+    skos:prefLabel      "Drawdown Strategy Scheme"@en ;
+    rdfs:comment        "Strategies for distributing the annual drawdown shortfall across eligible accounts." .
+
+mrlx:DrawdownStrategy_Waterfall
+    a                   skos:Concept , mrlx:DrawdownStrategyType ;
+    skos:inScheme       mrlx:DrawdownStrategyScheme ;
+    skos:topConceptOf   mrlx:DrawdownStrategyScheme ;
+    skos:prefLabel      "Waterfall"@en ;
+    rdfs:comment        "Drain the lowest-priority-numbered eligible account until exhausted, then move to the next. Suitable for tax-sequencing strategies such as drawing a GIA before an ISA before a pension." .
+
+mrlx:DrawdownStrategy_Proportional
+    a                   skos:Concept , mrlx:DrawdownStrategyType ;
+    skos:inScheme       mrlx:DrawdownStrategyScheme ;
+    skos:topConceptOf   mrlx:DrawdownStrategyScheme ;
+    skos:prefLabel      "Proportional"@en ;
+    rdfs:comment        "Draw from all eligible accounts simultaneously according to their drawdownRatio values. Ratios are normalised across eligible accounts each year so they always sum to 1.0. Suitable for maintaining a target allocation across account types." .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 10 — mrlx:SurplusStrategyScheme
+# ---------------------------------------------------------------------------
+
+mrlx:SurplusStrategyScheme
+    a                   skos:ConceptScheme ;
+    skos:prefLabel      "Surplus Strategy Scheme"@en ;
+    rdfs:comment        "Strategies for handling years where projected spending is below the annual budget total." .
+
+mrlx:SurplusStrategy_SweepToAccount
+    a                   skos:Concept , mrlx:SurplusStrategyType ;
+    skos:inScheme       mrlx:SurplusStrategyScheme ;
+    skos:topConceptOf   mrlx:SurplusStrategyScheme ;
+    skos:prefLabel      "Sweep to account"@en ;
+    rdfs:comment        "Unspent drawdown is swept into the designated surplusAccount, building a liquid cash buffer. If surplusAccount is not set, the surplus remains in the spending account." .
+
+mrlx:SurplusStrategy_ReduceDrawdown
+    a                   skos:Concept , mrlx:SurplusStrategyType ;
+    skos:inScheme       mrlx:SurplusStrategyScheme ;
+    skos:topConceptOf   mrlx:SurplusStrategyScheme ;
+    skos:prefLabel      "Reduce drawdown"@en ;
+    rdfs:comment        "Each eligible account's drawdown is reduced proportionally. Undrawn amounts remain invested in their source accounts, continuing to earn returns. Financially preferable when investment accounts are earning above cash rates." .
+
+
+# ---------------------------------------------------------------------------
+# SECTION 11 — Reference data additions to existing Jurisdiction individuals
+#
+# Add mrl:standardPersonalAllowance to whichever Jurisdiction individuals
+# are defined in your TTL. Examples below; add others as needed.
+# Values are in each jurisdiction's local currency.
+# These are reference/approximate values — the user overrides the live
+# figure each year in ProjectionSettings > annualPersonalAllowance.
+# ---------------------------------------------------------------------------
+
+mrl:Jurisdiction_GB
+    mrl:standardPersonalAllowance  12570.0 .    # GBP — UK personal allowance 2024/25
+
+mrl:Jurisdiction_US
+    mrl:standardPersonalAllowance  14600.0 .    # USD — US standard deduction 2024 (single filer)
+
+mrl:Jurisdiction_NZ
+    mrl:standardPersonalAllowance  14000.0 .    # NZD — NZ no-notification rate threshold 2024
+
+mrl:Jurisdiction_AU
+    mrl:standardPersonalAllowance  18200.0 .    # AUD — Australia tax-free threshold 2024/25

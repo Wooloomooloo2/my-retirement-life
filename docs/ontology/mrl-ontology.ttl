@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "0.9.0" .
+    owl:versionInfo "0.9.1" .
 
 
 # ===========================================================================
@@ -134,7 +134,8 @@ mrlx:AccountTypeScheme a skos:ConceptScheme ;
     skos:definition "A controlled vocabulary of account types used to classify mrl:Account individuals."@en ;
     skos:hasTopConcept
         mrlx:CashAccountType ,
-        mrlx:InvestmentAccountType .
+        mrlx:InvestmentAccountType ,
+        mrlx:CreditCardAccountType .
 
 
 # --- CashAccountType top concept ---
@@ -984,10 +985,57 @@ mrl:PensionAccount a owl:Class ;
     rdfs:label "Pension account"@en ;
     rdfs:comment "Defined contribution or defined benefit pension. Post-MVP."@en .
 
+mrl:CreditCardAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Credit card account"@en ;
+    rdfs:comment "A revolving credit account associated with a payment card. The balance represents a liability — the amount currently owed to the card issuer. Included in net worth calculations as a negative asset."@en .
+
+mrl:creditLimit a owl:DatatypeProperty ;
+    rdfs:label "credit limit"@en ;
+    rdfs:comment "The maximum borrowing limit on this credit card account, in the account's currency."@en ;
+    rdfs:domain mrl:CreditCardAccount ;
+    rdfs:range xsd:decimal .
+
+mrl:statementDay a owl:DatatypeProperty ;
+    rdfs:label "statement day"@en ;
+    rdfs:comment "The day of the month on which the card statement is generated (1–31). Optional — used for reconciliation and payment reminders."@en ;
+    rdfs:domain mrl:CreditCardAccount ;
+    rdfs:range xsd:integer .
+
+mrl:isLiability a owl:DatatypeProperty ;
+    rdfs:label "is liability"@en ;
+    rdfs:comment "True if this account's balance is a liability (e.g. credit card debt, mortgage). Liability balances are subtracted from total assets when calculating net worth. Defaults to false (asset) if absent."@en ;
+    rdfs:domain mrl:Account ;
+    rdfs:range xsd:boolean .
+
 mrl:PropertyAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
     rdfs:label "Property asset"@en ;
-    rdfs:comment "Real estate holdings. Post-MVP."@en .
+    rdfs:comment "A real property (residential, commercial, or land) held as an asset. Value is maintained via point-in-time valuation events rather than transaction aggregation. mrl:accountBalance stores the current estimated value in the account currency."@en .
+
+mrl:propertyAddress a owl:DatatypeProperty ;
+    rdfs:label "property address"@en ;
+    rdfs:comment "Free-text postal address of the property."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:string .
+
+mrl:purchasePrice a owl:DatatypeProperty ;
+    rdfs:label "purchase price"@en ;
+    rdfs:comment "The original purchase price of the property in the account currency. Used for gain/loss calculation."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:decimal .
+
+mrl:purchaseDate a owl:DatatypeProperty ;
+    rdfs:label "purchase date"@en ;
+    rdfs:comment "The date on which the property was acquired (ISO 8601 date)."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:date .
+
+mrl:isMortgaged a owl:DatatypeProperty ;
+    rdfs:label "is mortgaged"@en ;
+    rdfs:comment "True if there is an outstanding mortgage on this property. When true, a corresponding liability account should be maintained to correctly reflect net equity."@en ;
+    rdfs:domain mrl:PropertyAsset ;
+    rdfs:range xsd:boolean .
 
 mrl:OtherAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
@@ -1231,3 +1279,41 @@ mrlx:MonteCarloProfile_Aggressive a skos:Concept ;
     skos:notation "MC_AGGRESSIVE" ;
     mrlx:returnVolatility "10.0"^^xsd:decimal ;
     mrlx:inflationVolatility "2.5"^^xsd:decimal .
+
+
+# ===========================================================================
+# CREDIT CARD ACCOUNT TYPE — SKOS concepts (added v0.9.1, ADR-010)
+#
+# A new top concept in mrlx:AccountTypeScheme, alongside CashAccountType
+# and InvestmentAccountType. Credit card account types classify instances
+# of mrl:CreditCardAccount.
+#
+# Hierarchy:
+#   CreditCardAccountType (top concept)
+#     └── Standard
+#     └── ChargeCard
+# ===========================================================================
+
+mrlx:CreditCardAccountType a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:topConceptOf mrlx:AccountTypeScheme ;
+    skos:prefLabel "Credit card account"@en ;
+    skos:definition "The parent concept for credit card account types. Credit card balances are liabilities."@en ;
+    skos:notation "CC" ;
+    skos:scopeNote "Covers revolving credit cards and charge cards. Does not include personal loans, overdrafts, or mortgages, which are modelled as separate liability account types in a future release."@en .
+
+mrlx:CreditCardAccountType_Standard a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CreditCardAccountType ;
+    skos:prefLabel "Standard credit card"@en ;
+    skos:definition "A revolving credit card with a set credit limit. The minimum payment is required each month; any unpaid balance carries interest."@en ;
+    skos:notation "CC_STANDARD" ;
+    skos:scopeNote "Jurisdiction-neutral. Covers Visa, Mastercard, Amex (revolving), and equivalent revolving credit products worldwide."@en .
+
+mrlx:CreditCardAccountType_ChargeCard a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:CreditCardAccountType ;
+    skos:prefLabel "Charge card"@en ;
+    skos:definition "A payment card where the full balance must be paid each month. No revolving credit facility; no interest charged on the balance."@en ;
+    skos:notation "CC_CHARGE" ;
+    skos:scopeNote "Covers traditional charge card products such as American Express charge cards. Distinct from revolving credit cards in that no balance can be carried forward."@en .

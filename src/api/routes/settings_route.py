@@ -23,7 +23,7 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
-APP_VERSION = "0.1.0-mvp"
+APP_VERSION = "0.2.0"
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +74,7 @@ def export_all_data() -> dict:
             "lifeExpectancy": _int_val(person, "lifeExpectancy"),
             "baseCurrency": _local(person, "baseCurrency"),
             "jurisdiction": _local(person, "residesIn"),
+            "plansToRetireIn": _local(person, "plansToRetireIn"),
         }
 
     # Income sources
@@ -132,6 +133,8 @@ def export_all_data() -> dict:
             "lineType": _local(iri, "budgetLineType"),
             "changeRate": _float_val(iri, "annualChangeRate"),
             "loanEndYear": _int_val(iri, "loanEndYear"),
+            "budgetStartYear": _int_val(iri, "budgetStartYear"),
+            "budgetEndYear": _int_val(iri, "budgetEndYear"),
         })
     budget_lines.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
@@ -160,7 +163,32 @@ def export_all_data() -> dict:
     if ps_check:
         projection_settings = {
             "inflationRate": _float_val(ps, "inflationRate", 2.5),
+            "monteCarloProfile": _local(ps, "monteCarloProfile"),
         }
+
+    # Investment accounts
+    investment_accounts = []
+    type_node = og.NamedNode(f"{MRL}InvestmentAccount")
+    for q in store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH):
+        iri = q.subject
+        n = str(iri.value).split("InvestmentAccount_")[-1]
+        investment_accounts.append({
+            "n": n,
+            "name": _val(iri, "accountName"),
+            "balance": _float_val(iri, "accountBalance"),
+            "balanceDate": _val(iri, "balanceDate"),
+            "currency": _local(iri, "accountCurrency"),
+            "growthRate": _float_val(iri, "annualGrowthRate"),
+            "dividendRate": _float_val(iri, "annualDividendRate"),
+            "reinvestDividends": _val(iri, "reinvestDividends", "true"),
+            "jurisdiction": _local(iri, "accountJurisdiction"),
+            "accountType": _local(iri, "accountType"),
+            "exchangeRate": _float_val(iri, "exchangeRateToBase", 1.0),
+            "exchangeRateDate": _val(iri, "exchangeRateDate"),
+            "notes": _val(iri, "accountNotes"),
+        })
+    investment_accounts.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
     return {
         "version": APP_VERSION,
@@ -170,6 +198,7 @@ def export_all_data() -> dict:
             "profile": profile,
             "income_sources": income_sources,
             "accounts": accounts,
+            "investment_accounts": investment_accounts,
             "budget_lines": budget_lines,
             "life_events": life_events,
             "projection_settings": projection_settings,
@@ -221,6 +250,12 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                     }}
                 }}
             """)
+            if profile.get("plansToRetireIn"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{person_iri}> mrl:plansToRetireIn mrl:{profile['plansToRetireIn']} . }} }}
+                """)
 
         # Restore income sources
         for src in data.get("income_sources", []):
@@ -317,6 +352,56 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                     INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
                         <{line_iri}> mrl:loanEndYear "{line['loanEndYear']}"^^xsd:integer . }} }}
                 """)
+            if line.get("budgetStartYear"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{line_iri}> mrl:budgetStartYear "{line['budgetStartYear']}"^^xsd:integer . }} }}
+                """)
+            if line.get("budgetEndYear"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{line_iri}> mrl:budgetEndYear "{line['budgetEndYear']}"^^xsd:integer . }} }}
+                """)
+
+        # Restore investment accounts
+        for inv in data.get("investment_accounts", []):
+            n = inv.get("n", "1")
+            inv_iri = f"{MRL}InvestmentAccount_{n}"
+            store.update(f"""
+                PREFIX mrl:  <{MRL}>
+                PREFIX mrlx: <{MRL_EXT}>
+                PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+                INSERT DATA {{
+                    GRAPH <{DATA_GRAPH.value}> {{
+                        <{inv_iri}> a mrl:InvestmentAccount ;
+                            mrl:accountName "{inv.get('name', '')}" ;
+                            mrl:accountBalance "{inv.get('balance', 0)}"^^xsd:decimal ;
+                            mrl:balanceDate "{inv.get('balanceDate', date.today().isoformat())}"^^xsd:date ;
+                            mrl:accountCurrency mrl:{inv.get('currency', 'Currency_GBP')} ;
+                            mrl:annualGrowthRate "{inv.get('growthRate', 0)}"^^xsd:decimal ;
+                            mrl:annualDividendRate "{inv.get('dividendRate', 0)}"^^xsd:decimal ;
+                            mrl:reinvestDividends "{inv.get('reinvestDividends', 'true')}"^^xsd:boolean ;
+                            mrl:accountJurisdiction mrl:{inv.get('jurisdiction', 'Jurisdiction_GB')} ;
+                            mrl:accountType mrlx:{inv.get('accountType', 'InvestmentAccountType_StocksShares')} ;
+                            mrl:ownedBy <{person_iri}> .
+                    }}
+                }}
+            """)
+            if inv.get("exchangeRate") and float(inv.get("exchangeRate", 1.0)) != 1.0:
+                store.update(f"""
+                    PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{inv_iri}> mrl:exchangeRateToBase "{inv['exchangeRate']}"^^xsd:decimal ;
+                                    mrl:exchangeRateDate "{inv.get('exchangeRateDate', date.today().isoformat())}"^^xsd:date . }} }}
+                """)
+            if inv.get("notes"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{inv_iri}> mrl:accountNotes "{inv['notes']}" . }} }}
+                """)
 
         # Restore life events
         for event in data.get("life_events", []):
@@ -355,6 +440,13 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                         mrl:inflationRate "{ps_data.get('inflationRate', 2.5)}"^^xsd:decimal ;
                         mrl:projectionOwner <{person_iri}> . }} }}
             """)
+            if ps_data.get("monteCarloProfile"):
+                store.update(f"""
+                    PREFIX mrl:  <{MRL}>
+                    PREFIX mrlx: <{MRL_EXT}>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{ps_iri}> mrl:monteCarloProfile mrlx:{ps_data['monteCarloProfile']} . }} }}
+                """)
 
         return True, "Data restored successfully."
 

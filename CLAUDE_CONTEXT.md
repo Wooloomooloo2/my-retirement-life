@@ -4,7 +4,7 @@ This document is read at the start of each new Claude conversation to provide
 full project context without needing the entire chat history.
 
 **Last updated:** 2026-05-17
-**Current version:** v0.2 complete
+**Current version:** v0.2 complete (post-session patch)
 
 ---
 
@@ -41,9 +41,9 @@ my-retirement-life/
 ├── requirements.txt                 # Includes numpy (added v0.2)
 ├── .env.example
 ├── docs/
-│   ├── adr/                         # Architecture Decision Records (ADR-001 to ADR-009)
+│   ├── adr/                         # Architecture Decision Records (ADR-001 to ADR-010)
 │   ├── ontology/
-│   │   ├── mrl-ontology.ttl         # THE ONTOLOGY — source of truth, v0.9.0
+│   │   ├── mrl-ontology.ttl         # THE ONTOLOGY — source of truth, v0.9.1
 │   │   └── README.md
 │   └── requirements/
 │       ├── mvp.md
@@ -135,7 +135,7 @@ Always use `pathlib.Path` — never string concatenation or hardcoded separators
 
 ---
 
-## Ontology summary (v0.9.0)
+## Ontology summary (v0.9.1)
 
 **Namespaces:**
 - `mrl:` = `https://myretirementlife.app/ontology#`
@@ -144,7 +144,7 @@ Always use `pathlib.Path` — never string concatenation or hardcoded separators
 **Key classes:**
 - `mrl:Person` — single user (Person_1)
 - `mrl:IncomeSource` — multiple, with start/end years
-- `mrl:Account` → `mrl:CashAccount` (MVP), `mrl:InvestmentAccount` (v0.2)
+- `mrl:Account` → `mrl:CashAccount` (MVP), `mrl:InvestmentAccount` (v0.2), `mrl:CreditCardAccount` (v0.9.1), `mrl:PropertyAsset` (v0.9.1, promoted from stub)
 - `mrl:BudgetLine` — with frequency, growth rate, and optional start/end years
 - `mrl:LifeEvent`
 - `mrl:ProjectionSettings` — inflation rate + Monte Carlo profile
@@ -157,14 +157,20 @@ Always use `pathlib.Path` — never string concatenation or hardcoded separators
 - `mrl:annualGrowthRate`, `mrl:annualDividendRate`, `mrl:reinvestDividends` — on `mrl:InvestmentAccount`
 - `mrl:monteCarloProfile` — on `mrl:ProjectionSettings`
 
+**Key properties added in v0.9.1 (ADR-010, sister app support):**
+- `mrl:isLiability` — boolean on `mrl:Account`; true for credit card and other liability accounts
+- `mrl:creditLimit`, `mrl:statementDay` — on `mrl:CreditCardAccount`
+- `mrl:propertyAddress`, `mrl:purchasePrice`, `mrl:purchaseDate`, `mrl:isMortgaged` — on `mrl:PropertyAsset`
+
 **Key mrlx: SKOS schemes:**
 - `mrlx:IncomeSourceTypeScheme` — Employment, Property, Retirement (subtypes), Investment (subtypes), etc.
-- `mrlx:AccountTypeScheme` — CashAccountType subtypes + InvestmentAccountType subtypes (v0.2)
+- `mrlx:AccountTypeScheme` — CashAccountType subtypes + InvestmentAccountType subtypes (v0.2) + CreditCardAccountType subtypes (v0.9.1)
 - `mrlx:FrequencyTypeScheme` — Weekly×52, Fortnightly×26, TwiceMonthly×24, Monthly×12, Quarterly×4, Annually×1
 - `mrlx:BudgetLineType` — Mandatory, Discretionary, Loan
 - `mrlx:LifeEventType` — LargeExpenditure, Windfall, etc.
 - `mrlx:EmploymentStatus` — Employed, SelfEmployed, NotWorking, Retired
 - `mrlx:MonteCarloProfileScheme` — Conservative (σ=3%/0.8%), Moderate (σ=6%/1.5%), Aggressive (σ=10%/2.5%) — v0.2
+- `mrlx:CreditCardAccountType` — Standard, ChargeCard (v0.9.1)
 
 ---
 
@@ -222,7 +228,7 @@ The persistent banner in `base.html` guides first-time users through:
 
 ---
 
-## What was just completed (v0.2)
+## What was completed in v0.2
 
 1. ✅ Budget start/stop dates — `mrl:budgetStartYear`, `mrl:budgetEndYear` on BudgetLine
 2. ✅ Retirement jurisdiction — `mrl:plansToRetireIn`, `mrl:costOfLivingIndex`, COL adjustment in projection
@@ -233,6 +239,13 @@ The persistent banner in `base.html` guides first-time users through:
 7. ✅ Sidebar investments active state fixed
 8. ✅ ADR-009 updated to Implemented with implementation notes
 9. ✅ Ontology README updated to v0.9.0
+
+## What was completed post-v0.2 (2026-05-17 session)
+
+1. ✅ ADR README.md recreated — full index and summaries for ADR-001 to ADR-010
+2. ✅ Ontology updated to v0.9.1 (ADR-010) — `mrl:CreditCardAccount`, `mrl:PropertyAsset` promoted, `mrl:isLiability`, `mrlx:CreditCardAccountType` SKOS concepts; both TTL copies updated
+3. ✅ Backup/restore bug fixed — `settings_route.py` now correctly exports and restores investment accounts, retirement jurisdiction (`plansToRetireIn`), budget start/end dates, and Monte Carlo profile; `APP_VERSION` updated to `"0.2.0"`
+4. ✅ ADR-010 accepted — sister app (My Finance Life) ontology sharing strategy documented
 
 ---
 
@@ -263,3 +276,4 @@ No ADR exists for v0.3 yet. Likely candidates based on ADR consequences and futu
 | 007 | Quad patterns for reads, SPARQL UPDATE for writes | Implemented |
 | 008 | Multiple income sources with start/end dates in MVP | Implemented |
 | 009 | Investment accounts as pots; Monte Carlo with named profiles | Implemented |
+| 010 | Sister app (MFL) loads and extends MRL ontology as shared foundation | Accepted |

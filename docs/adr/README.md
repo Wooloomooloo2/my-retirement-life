@@ -29,6 +29,10 @@ ADRs are written at the time a decision is made and are not retrospective docume
 | [ADR-007](ADR-007-data-access-patterns.md) | Data access patterns — quad patterns vs SPARQL | 2026-05-11 | Accepted |
 | [ADR-008](ADR-008-multiple-income-sources.md) | Multiple income sources with independent start/end dates in MVP | 2026-05-14 | Accepted |
 | [ADR-009](ADR-009-investment-accounts-and-monte-carlo.md) | Investment account model and Monte Carlo simulation design | 2026-05-16 | Implemented |
+| [ADR-010](ADR-010-sister-app-ontology-sharing-strategy.md) | Sister app ontology sharing strategy | 2026-05-17 | Accepted |
+| [ADR-011](ADR-011-per-account-drawdown-eligibility-ordering-and-surplus.md) | Per-account drawdown eligibility, ordering, and surplus handling | 2026-05-17 | Accepted |
+| [ADR-012](ADR-012-per-account-balance-tracking-and-monte-carlo-scope.md) | Per-account balance tracking and revised Monte Carlo scope | 2026-05-17 | Accepted |
+| [ADR-013](ADR-013-generic-tax-treatment-model.md) | Generic tax treatment model for accounts and withdrawals | 2026-05-17 | Accepted |
 
 ---
 
@@ -60,6 +64,9 @@ Extends the MVP from a single Employment income source to **multiple income sour
 
 ### ADR-009 — Investment account model and Monte Carlo simulation design
 Adds **investment accounts** modelled as aggregate pots (current balance, annual growth rate %, annual dividend rate %, reinvest dividends flag) rather than individual holdings. Introduces **Monte Carlo simulation** with three named profiles — Conservative, Moderate, and Aggressive — each defining a standard deviation for annual returns and inflation; 500 simulations are run per projection. Profile parameters are stored as `mrlx:` individuals in the ontology TTL, adjustable without code changes. Also adds `mrl:plansToRetireIn` on `mrl:Person` for cost-of-living adjustment from the retirement year onward. `numpy` is added as a dependency for random number generation and percentile calculation.
+
+### ADR-010 — Sister app ontology sharing strategy
+Establishes how the companion application **My Finance Life (MFL)** — a Quicken-like personal finance and transaction tracker built on the identical tech stack — relates to the MRL ontology. MFL loads `mrl-ontology.ttl` as a read-only bundled dependency and defines its own extension ontology (`mfl-ontology.ttl`) for finance-specific concepts (`mfl:Transaction`, `mfl:Payee`, etc.), reusing `mrl:Account`, `mrl:CashAccount`, `mrl:InvestmentAccount`, `mrl:Currency`, `mrl:Person` and others directly. Extraction to a neutral `mrl-core` namespace is explicitly deferred until both applications are stable. As a consequence, the MRL ontology was updated to v0.9.1 with four backward-compatible additions to support MFL: `mrl:CreditCardAccount` (new subclass of `mrl:Account`), `mrl:PropertyAsset` (promoted from stub to active class), `mrl:isLiability` (boolean property on `mrl:Account`), and `mrlx:CreditCardAccountType` with subtypes `Standard` and `ChargeCard`.
 
 ---
 
