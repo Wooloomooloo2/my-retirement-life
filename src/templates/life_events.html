@@ -44,7 +44,21 @@
                     {% for event in events %}
                     <tr class="hover {% if edit_event and edit_event.n == event.n %}bg-base-200{% endif %}">
                         <td class="font-medium text-base-content/60">{{ event.year }}</td>
-                        <td class="font-medium">{{ event.name }}</td>
+                        <td>
+                            <span class="font-medium">{{ event.name }}</span>
+                            {% if event.fundedByAccount %}
+                            <span class="block text-xs text-base-content/40 mt-0.5">
+                                <i class="ti ti-corner-down-right text-xs"></i>
+                                from {{ proj_data.account_names[event.fundedByAccount] if proj_data and event.fundedByAccount in proj_data.account_names else event.fundedByAccount }}
+                            </span>
+                            {% endif %}
+                            {% if event.receivedByAccount %}
+                            <span class="block text-xs text-base-content/40 mt-0.5">
+                                <i class="ti ti-corner-down-right text-xs"></i>
+                                into {{ proj_data.account_names[event.receivedByAccount] if proj_data and event.receivedByAccount in proj_data.account_names else event.receivedByAccount }}
+                            </span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if event.eventType == 'LifeEventType_Windfall' %}
                                 <span class="badge badge-success badge-sm badge-outline">{{ event.eventTypeLabel }}</span>
@@ -128,11 +142,12 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Year</span>
                     </label>
-                    <input type="number" name="lifeEventYear" required
+                    <input type="number" name="lifeEventYear" id="lifeEventYear" required
                         min="2024" max="2100"
                         value="{{ edit_event.year if edit_event else '' }}"
                         placeholder="e.g. 2028"
-                        class="input input-bordered input-sm w-full" />
+                        class="input input-bordered input-sm w-full"
+                        oninput="updateBalanceHints()" />
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40">Calendar year the event occurs</span>
                     </label>
@@ -142,11 +157,12 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
                     </label>
-                    <input type="number" name="lifeEventAmount" required
+                    <input type="number" name="lifeEventAmount" id="lifeEventAmount" required
                         step="1"
                         value="{{ edit_event.amount if edit_event else '' }}"
                         placeholder="e.g. 15000"
-                        class="input input-bordered input-sm w-full" />
+                        class="input input-bordered input-sm w-full"
+                        oninput="updateBalanceHints()" />
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40">Positive = cost, negative = receipt (windfall)</span>
                     </label>
@@ -164,6 +180,73 @@
 
             </div>
 
+            <!-- ============================================================
+                 Account routing (ADR-011)
+                 Only shown when projection data is available.
+                 Shows projected account balance at the event year so the user
+                 can see whether the account can cover the cost.
+                 ============================================================ -->
+            {% if proj_data %}
+            <div class="border border-base-200 rounded-lg p-4 mb-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
+                    <i class="ti ti-arrows-exchange text-base-content/30"></i>
+                    Account routing <span class="font-normal normal-case">(optional — leave blank to use the general drawdown pool)</span>
+                </p>
+
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+
+                    <!-- Funded by account (for costs / expenditures) -->
+                    <div class="form-control">
+                        <label class="label py-0.5">
+                            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Funded by account</span>
+                        </label>
+                        <select name="fundedByAccount" id="fundedByAccount"
+                                class="select select-bordered select-sm w-full"
+                                onchange="updateBalanceHints()">
+                            <option value="">— draw from general pool —</option>
+                            {% for acc in proj_data.accounts %}
+                            <option value="{{ acc.label }}"
+                                {% if edit_event and edit_event.fundedByAccount == acc.label %}selected{% endif %}>
+                                {{ acc.name }}
+                                {% if acc.account_class == 'InvestmentAccount' %}(investment){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <label class="label py-0.5">
+                            <span class="label-text-alt text-base-content/40">For expenditure events — the account the cost is drawn from</span>
+                        </label>
+                        <!-- Live balance hint — updated by JS -->
+                        <div id="funded-by-hint" class="text-xs px-1 min-h-[1.25rem]"></div>
+                    </div>
+
+                    <!-- Received by account (for windfalls / receipts) -->
+                    <div class="form-control">
+                        <label class="label py-0.5">
+                            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Received by account</span>
+                        </label>
+                        <select name="receivedByAccount" id="receivedByAccount"
+                                class="select select-bordered select-sm w-full"
+                                onchange="updateBalanceHints()">
+                            <option value="">— add to general pool —</option>
+                            {% for acc in proj_data.accounts %}
+                            <option value="{{ acc.label }}"
+                                {% if edit_event and edit_event.receivedByAccount == acc.label %}selected{% endif %}>
+                                {{ acc.name }}
+                                {% if acc.account_class == 'InvestmentAccount' %}(investment){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <label class="label py-0.5">
+                            <span class="label-text-alt text-base-content/40">For windfall / receipt events — the account the funds land in</span>
+                        </label>
+                        <!-- Live balance hint — updated by JS -->
+                        <div id="received-by-hint" class="text-xs px-1 min-h-[1.25rem]"></div>
+                    </div>
+
+                </div>
+            </div>
+            {% endif %}
+
             <div class="flex justify-between items-center">
                 {% if edit_event %}
                 <a href="/life-events" class="btn btn-ghost btn-sm">Cancel</a>
@@ -180,4 +263,85 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{% if proj_data %}
+<script>
+// Per-account projected balances from the deterministic engine.
+// Indexed from current_year: balances[label][0] = end of current_year balance,
+// balances[label][1] = end of (current_year + 1), etc.
+const accountBalances = {{ proj_data.account_balances | tojson }};
+const accountNames    = {{ proj_data.account_names    | tojson }};
+const projStartYear   = {{ proj_data.current_year }};
+const projEndYear     = {{ proj_data.end_year }};
+
+function fmtGBP(v) {
+    return '£' + Math.round(Math.abs(v)).toLocaleString('en-GB');
+}
+
+function updateBalanceHints() {
+    const yearInput   = document.getElementById('lifeEventYear');
+    const amountInput = document.getElementById('lifeEventAmount');
+    const fundedSel   = document.getElementById('fundedByAccount');
+    const receivedSel = document.getElementById('receivedByAccount');
+    const fundedHint  = document.getElementById('funded-by-hint');
+    const receivedHint= document.getElementById('received-by-hint');
+
+    if (!yearInput) return;
+
+    const year   = parseInt(yearInput.value);
+    const amount = parseFloat(amountInput ? amountInput.value : 0) || 0;
+    const idx    = year - projStartYear;
+    const inRange = !isNaN(year) && idx >= 0 && idx < (projEndYear - projStartYear + 1);
+
+    // --- Funded-by hint ---
+    if (fundedHint) {
+        const label = fundedSel ? fundedSel.value : '';
+        if (label && inRange && accountBalances[label] !== undefined) {
+            const bal = accountBalances[label][idx] || 0;
+            if (amount > 0 && bal <= 0) {
+                // Account is exhausted by this year
+                fundedHint.innerHTML =
+                    `<span class="text-error font-medium">⚠ This account is projected to be exhausted by ${year}</span>`;
+            } else if (amount > 0 && bal < amount) {
+                // Can't fully cover — show shortfall
+                const shortfall = amount - bal;
+                fundedHint.innerHTML =
+                    `<span class="text-warning">⚠ Projected balance in ${year}: ${fmtGBP(bal)} — ` +
+                    `${fmtGBP(shortfall)} short of this cost</span>`;
+            } else if (amount > 0) {
+                // Covered — show balance with checkmark
+                fundedHint.innerHTML =
+                    `<span class="text-success">✓ Projected balance in ${year}: ${fmtGBP(bal)} — covers this cost</span>`;
+            } else {
+                // No amount yet — just show the balance
+                fundedHint.innerHTML =
+                    `<span class="text-base-content/50">Projected balance in ${year}: ${fmtGBP(bal)}</span>`;
+            }
+        } else if (label && !inRange && !isNaN(year)) {
+            fundedHint.innerHTML =
+                `<span class="text-base-content/30">Year ${year} is outside the projection range (${projStartYear}–${projEndYear})</span>`;
+        } else {
+            fundedHint.innerHTML = '';
+        }
+    }
+
+    // --- Received-by hint ---
+    if (receivedHint) {
+        const label = receivedSel ? receivedSel.value : '';
+        if (label && inRange && accountBalances[label] !== undefined) {
+            const bal = accountBalances[label][idx] || 0;
+            receivedHint.innerHTML =
+                `<span class="text-base-content/50">Projected balance in ${year}: ${fmtGBP(bal)}</span>`;
+        } else {
+            receivedHint.innerHTML = '';
+        }
+    }
+}
+
+// Run on load so hints appear immediately when editing an existing event
+document.addEventListener('DOMContentLoaded', updateBalanceHints);
+</script>
+{% endif %}
 {% endblock %}

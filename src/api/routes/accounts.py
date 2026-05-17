@@ -6,6 +6,12 @@ POST /accounts              — create a new account
 GET  /accounts/{n}/edit     — load edit form for account N (HTMX partial)
 POST /accounts/{n}/edit     — save edits to account N
 POST /accounts/{n}/delete   — delete account N
+
+Changes (ADR-011, ADR-013):
+  get_all_accounts() now reads drawdown eligibility properties and tax fields.
+  save_account() now accepts and persists all new optional fields.
+  Route handlers pass new form params through to save_account().
+  All new fields are optional — existing accounts saved without them are unaffected.
 """
 from datetime import date
 from fastapi import APIRouter, Request, Form
@@ -20,6 +26,8 @@ from src.store.graph import store, MRL, DATA_GRAPH
 router = APIRouter()
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+MRL_EXT  = "https://myretirementlife.app/ontology/ext#"
+ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +35,9 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 # ---------------------------------------------------------------------------
 
 def get_all_accounts() -> list:
-    """Return all CashAccount instances from the data graph."""
+    """Return all CashAccount instances from the data graph, including
+    drawdown eligibility (ADR-011) and tax treatment (ADR-013) fields.
+    """
     type_node = og.NamedNode(f"{MRL}CashAccount")
     quads = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
     accounts = []
@@ -36,7 +46,8 @@ def get_all_accounts() -> list:
         n = str(iri.value).split("CashAccount_")[-1]
 
         def get_val(prop):
-            qs = list(store.store.quads_for_pattern(iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+            qs = list(store.store.quads_for_pattern(
+                iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
             return str(qs[0].object.value) if qs else ""
 
         def get_local(prop):
@@ -44,20 +55,32 @@ def get_all_accounts() -> list:
             return v.split("#")[-1] if "#" in v else v
 
         accounts.append({
-            "n": n,
-            "iri": str(iri.value),
-            "name": get_val("accountName"),
-            "balance": get_val("accountBalance"),
-            "balanceDate": get_val("balanceDate"),
-            "currency": get_local("accountCurrency"),
-            "currencyCode": _currency_code(get_local("accountCurrency")),
-            "currencySymbol": _currency_symbol(get_local("accountCurrency")),
-            "interestRate": get_val("annualInterestRate"),
-            "jurisdiction": get_local("accountJurisdiction"),
-            "accountType": get_local("accountType"),
-            "exchangeRate": get_val("exchangeRateToBase"),
+            # Existing fields
+            "n":                n,
+            "iri":              str(iri.value),
+            "name":             get_val("accountName"),
+            "balance":          get_val("accountBalance"),
+            "balanceDate":      get_val("balanceDate"),
+            "currency":         get_local("accountCurrency"),
+            "currencyCode":     _currency_code(get_local("accountCurrency")),
+            "currencySymbol":   _currency_symbol(get_local("accountCurrency")),
+            "interestRate":     get_val("annualInterestRate"),
+            "jurisdiction":     get_local("accountJurisdiction"),
+            "accountType":      get_local("accountType"),
+            "exchangeRate":     get_val("exchangeRateToBase"),
             "exchangeRateDate": get_val("exchangeRateDate"),
-            "notes": get_val("accountNotes"),
+            "notes":            get_val("accountNotes"),
+            # ADR-011: drawdown eligibility and ordering
+            "drawdownPriority":     get_val("drawdownPriority"),
+            "drawdownRatio":        get_val("drawdownRatio"),
+            "drawdownMinAge":       get_val("drawdownMinAge"),
+            "drawdownMaxAge":       get_val("drawdownMaxAge"),
+            "drawdownEarliestDate": get_val("drawdownEarliestDate"),
+            "drawdownLatestDate":   get_val("drawdownLatestDate"),
+            # ADR-013: tax treatment
+            "taxTreatment":                  get_local("taxTreatment"),
+            "effectiveWithdrawalTaxRate":    get_val("effectiveWithdrawalTaxRate"),
+            "annualTaxFreeWithdrawal":       get_val("annualTaxFreeWithdrawal"),
         })
     accounts.sort(key=lambda a: int(a["n"]) if a["n"].isdigit() else 0)
     return accounts
@@ -68,8 +91,7 @@ def _currency_code(local: str) -> str:
         return ""
     iri = og.NamedNode(f"{MRL}{local}")
     qs = list(store.store.quads_for_pattern(
-        iri, og.NamedNode(f"{MRL}currencyCode"), None,
-        og.NamedNode("https://myretirementlife.app/ontology/graph")))
+        iri, og.NamedNode(f"{MRL}currencyCode"), None, ONTOLOGY_GRAPH))
     return str(qs[0].object.value) if qs else local
 
 
@@ -78,8 +100,7 @@ def _currency_symbol(local: str) -> str:
         return ""
     iri = og.NamedNode(f"{MRL}{local}")
     qs = list(store.store.quads_for_pattern(
-        iri, og.NamedNode(f"{MRL}currencySymbol"), None,
-        og.NamedNode("https://myretirementlife.app/ontology/graph")))
+        iri, og.NamedNode(f"{MRL}currencySymbol"), None, ONTOLOGY_GRAPH))
     return str(qs[0].object.value) if qs else ""
 
 
@@ -101,10 +122,10 @@ def get_currencies() -> list:
     for r in results:
         try:
             currencies.append({
-                "iri": str(r["iri"].value),
+                "iri":   str(r["iri"].value),
                 "local": str(r["iri"].value).split("#")[-1],
-                "code": str(r["code"].value),
-                "name": str(r["name"].value),
+                "code":  str(r["code"].value),
+                "name":  str(r["name"].value),
             })
         except Exception:
             pass
@@ -129,24 +150,49 @@ def get_jurisdictions() -> list:
     for r in results:
         try:
             jurisdictions.append({
-                "iri": str(r["iri"].value),
+                "iri":   str(r["iri"].value),
                 "local": str(r["iri"].value).split("#")[-1],
-                "code": str(r["code"].value),
-                "name": str(r["name"].value),
+                "code":  str(r["code"].value),
+                "name":  str(r["name"].value),
             })
         except Exception:
             pass
     return jurisdictions
 
 
-def save_account(n: int, name: str, balance: float, balance_date: str,
-                 currency_local: str, interest_rate: float,
-                 jurisdiction_local: str, account_type: str,
-                 exchange_rate: float, exchange_rate_date: str, notes: str) -> None:
-    """Write or overwrite a CashAccount_N instance in the data graph."""
-    account_iri = f"{MRL}CashAccount_{n}"
-    person_iri = f"{MRL}Person_1"
+def save_account(
+    n: int,
+    name: str,
+    balance: float,
+    balance_date: str,
+    currency_local: str,
+    interest_rate: float,
+    jurisdiction_local: str,
+    account_type: str,
+    exchange_rate: float,
+    exchange_rate_date: str,
+    notes: str,
+    # ADR-011: drawdown eligibility and ordering (all optional)
+    drawdown_priority: str      = "",
+    drawdown_ratio: str         = "",
+    drawdown_min_age: str       = "",
+    drawdown_max_age: str       = "",
+    drawdown_earliest_date: str = "",
+    drawdown_latest_date: str   = "",
+    # ADR-013: tax treatment (all optional)
+    tax_treatment: str                  = "",
+    effective_withdrawal_tax_rate: str  = "",
+    annual_tax_free_withdrawal: str     = "",
+) -> None:
+    """Write or overwrite a CashAccount_N instance in the data graph.
 
+    All drawdown and tax fields are optional. Absent or blank values are not
+    persisted — the projection engine treats absent properties as unrestricted.
+    """
+    account_iri = f"{MRL}CashAccount_{n}"
+    person_iri  = f"{MRL}Person_1"
+
+    # Wipe the existing instance first
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -155,47 +201,100 @@ def save_account(n: int, name: str, balance: float, balance_date: str,
         }}
     """)
 
+    # --- Build required triple block ---
+    # All required fields go into a single INSERT DATA block.
+    # Optional fields are appended only when present and valid.
+    triples = f"""
+        <{account_iri}> a mrl:CashAccount ;
+            mrl:accountName        "{name}" ;
+            mrl:accountBalance     "{balance}"^^xsd:decimal ;
+            mrl:balanceDate        "{balance_date}"^^xsd:date ;
+            mrl:accountCurrency    mrl:{currency_local} ;
+            mrl:annualInterestRate "{interest_rate}"^^xsd:decimal ;
+            mrl:accountJurisdiction mrl:{jurisdiction_local} ;
+            mrl:accountType        mrlx:{account_type} ;
+            mrl:ownedBy            <{person_iri}> .
+    """
+
+    # --- Exchange rate (existing optional block) ---
+    if exchange_rate and float(exchange_rate) != 1.0:
+        triples += f"""
+        <{account_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
+                        mrl:exchangeRateDate   "{exchange_rate_date}"^^xsd:date .
+        """
+
+    # --- Notes ---
+    if notes and notes.strip():
+        safe_notes = notes.replace('"', '\\"')
+        triples += f'\n        <{account_iri}> mrl:accountNotes "{safe_notes}" .'
+
+    # --- ADR-011: drawdown eligibility and ordering ---
+    if drawdown_priority.strip():
+        try:
+            p = int(drawdown_priority.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownPriority "{p}"^^xsd:integer .'
+        except ValueError:
+            pass
+
+    if drawdown_ratio.strip():
+        try:
+            r = float(drawdown_ratio.strip())
+            if 0.0 <= r <= 1.0:
+                triples += f'\n        <{account_iri}> mrl:drawdownRatio "{r}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_min_age.strip():
+        try:
+            a = float(drawdown_min_age.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownMinAge "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_max_age.strip():
+        try:
+            a = float(drawdown_max_age.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownMaxAge "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_earliest_date.strip():
+        triples += f'\n        <{account_iri}> mrl:drawdownEarliestDate "{drawdown_earliest_date.strip()}"^^xsd:date .'
+
+    if drawdown_latest_date.strip():
+        triples += f'\n        <{account_iri}> mrl:drawdownLatestDate "{drawdown_latest_date.strip()}"^^xsd:date .'
+
+    # --- ADR-013: tax treatment ---
+    # taxTreatment is an object property pointing to a mrlx: individual
+    if tax_treatment.strip():
+        triples += f'\n        <{account_iri}> mrl:taxTreatment mrlx:{tax_treatment.strip()} .'
+
+    if effective_withdrawal_tax_rate.strip():
+        try:
+            rate = float(effective_withdrawal_tax_rate.strip())
+            if 0.0 <= rate <= 1.0:
+                triples += f'\n        <{account_iri}> mrl:effectiveWithdrawalTaxRate "{rate}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if annual_tax_free_withdrawal.strip():
+        try:
+            amt = float(annual_tax_free_withdrawal.strip())
+            if amt >= 0:
+                triples += f'\n        <{account_iri}> mrl:annualTaxFreeWithdrawal "{amt}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
     store.update(f"""
         PREFIX mrl:  <{MRL}>
-        PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
+        PREFIX mrlx: <{MRL_EXT}>
         PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-
         INSERT DATA {{
             GRAPH <{DATA_GRAPH.value}> {{
-                <{account_iri}> a mrl:CashAccount ;
-                    mrl:accountName "{name}" ;
-                    mrl:accountBalance "{balance}"^^xsd:decimal ;
-                    mrl:balanceDate "{balance_date}"^^xsd:date ;
-                    mrl:accountCurrency mrl:{currency_local} ;
-                    mrl:annualInterestRate "{interest_rate}"^^xsd:decimal ;
-                    mrl:accountJurisdiction mrl:{jurisdiction_local} ;
-                    mrl:accountType mrlx:{account_type} ;
-                    mrl:ownedBy <{person_iri}> .
+                {triples}
             }}
         }}
     """)
-
-    if exchange_rate and float(exchange_rate) != 1.0:
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{account_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
-                                    mrl:exchangeRateDate "{exchange_rate_date}"^^xsd:date .
-                }}
-            }}
-        """)
-
-    if notes.strip():
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{account_iri}> mrl:accountNotes "{notes}" .
-                }}
-            }}
-        """)
 
 
 # ---------------------------------------------------------------------------
@@ -204,20 +303,20 @@ def save_account(n: int, name: str, balance: float, balance_date: str,
 
 @router.get("/accounts", response_class=HTMLResponse)
 async def accounts_page(request: Request):
-    accounts = get_all_accounts()
-    currencies = get_currencies()
+    accounts      = get_all_accounts()
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
-    today = date.today().isoformat()
+    today         = date.today().isoformat()
     return templates.TemplateResponse(
         request=request,
         name="accounts.html",
         context={
-            "app_name": settings.app_name,
-            "active": "accounts",
-            "accounts": accounts,
-            "currencies": currencies,
+            "app_name":     settings.app_name,
+            "active":       "accounts",
+            "accounts":     accounts,
+            "currencies":   currencies,
             "jurisdictions": jurisdictions,
-            "today": today,
+            "today":        today,
             "edit_account": None,
         }
     )
@@ -226,44 +325,65 @@ async def accounts_page(request: Request):
 @router.post("/accounts", response_class=HTMLResponse)
 async def add_account(
     request: Request,
-    accountName: str = Form(...),
-    accountBalance: float = Form(...),
-    balanceDate: str = Form(...),
-    accountCurrency: str = Form(...),
-    annualInterestRate: float = Form(0.0),
-    accountJurisdiction: str = Form(...),
-    accountType: str = Form("CashAccountType_Current"),
-    exchangeRateToBase: float = Form(1.0),
-    exchangeRateDate: str = Form(""),
-    accountNotes: str = Form(""),
+    # Existing required fields
+    accountName:         str   = Form(...),
+    accountBalance:      float = Form(...),
+    balanceDate:         str   = Form(...),
+    accountCurrency:     str   = Form(...),
+    annualInterestRate:  float = Form(0.0),
+    accountJurisdiction: str   = Form(...),
+    accountType:         str   = Form("CashAccountType_Current"),
+    exchangeRateToBase:  float = Form(1.0),
+    exchangeRateDate:    str   = Form(""),
+    accountNotes:        str   = Form(""),
+    # ADR-011: drawdown eligibility (all optional)
+    drawdownPriority:     str  = Form(""),
+    drawdownRatio:        str  = Form(""),
+    drawdownMinAge:       str  = Form(""),
+    drawdownMaxAge:       str  = Form(""),
+    drawdownEarliestDate: str  = Form(""),
+    drawdownLatestDate:   str  = Form(""),
+    # ADR-013: tax treatment (all optional)
+    taxTreatment:                str = Form(""),
+    effectiveWithdrawalTaxRate:  str = Form(""),
+    annualTaxFreeWithdrawal:     str = Form(""),
 ):
-    # Get next N
     existing = get_all_accounts()
-    next_n = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
+    next_n   = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
     if not exchangeRateDate:
-        from datetime import date as _date
-        exchangeRateDate = _date.today().isoformat()
+        exchangeRateDate = date.today().isoformat()
 
-    save_account(next_n, accountName, accountBalance, balanceDate,
-                 accountCurrency, annualInterestRate, accountJurisdiction,
-                 accountType, exchangeRateToBase, exchangeRateDate, accountNotes)
+    save_account(
+        next_n, accountName, accountBalance, balanceDate,
+        accountCurrency, annualInterestRate, accountJurisdiction,
+        accountType, exchangeRateToBase, exchangeRateDate, accountNotes,
+        drawdown_priority=drawdownPriority,
+        drawdown_ratio=drawdownRatio,
+        drawdown_min_age=drawdownMinAge,
+        drawdown_max_age=drawdownMaxAge,
+        drawdown_earliest_date=drawdownEarliestDate,
+        drawdown_latest_date=drawdownLatestDate,
+        tax_treatment=taxTreatment,
+        effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
+        annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
+    )
 
-    accounts = get_all_accounts()
-    currencies = get_currencies()
+    accounts      = get_all_accounts()
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
-    today = date.today().isoformat()
+    today         = date.today().isoformat()
     return templates.TemplateResponse(
         request=request,
         name="accounts.html",
         context={
-            "app_name": settings.app_name,
-            "active": "accounts",
-            "accounts": accounts,
-            "currencies": currencies,
+            "app_name":     settings.app_name,
+            "active":       "accounts",
+            "accounts":     accounts,
+            "currencies":   currencies,
             "jurisdictions": jurisdictions,
-            "today": today,
+            "today":        today,
             "edit_account": None,
-            "saved": True,
+            "saved":        True,
         }
     )
 
@@ -271,21 +391,21 @@ async def add_account(
 @router.get("/accounts/{n}/edit", response_class=HTMLResponse)
 async def edit_account_form(request: Request, n: int):
     """Return the form pre-filled for editing — loaded inline via HTMX."""
-    accounts = get_all_accounts()
-    account = next((a for a in accounts if a["n"] == str(n)), None)
-    currencies = get_currencies()
+    accounts      = get_all_accounts()
+    account       = next((a for a in accounts if a["n"] == str(n)), None)
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
-    today = date.today().isoformat()
+    today         = date.today().isoformat()
     return templates.TemplateResponse(
         request=request,
         name="accounts.html",
         context={
-            "app_name": settings.app_name,
-            "active": "accounts",
-            "accounts": accounts,
-            "currencies": currencies,
+            "app_name":     settings.app_name,
+            "active":       "accounts",
+            "accounts":     accounts,
+            "currencies":   currencies,
             "jurisdictions": jurisdictions,
-            "today": today,
+            "today":        today,
             "edit_account": account,
         }
     )
@@ -295,40 +415,63 @@ async def edit_account_form(request: Request, n: int):
 async def save_edit_account(
     request: Request,
     n: int,
-    accountName: str = Form(...),
-    accountBalance: float = Form(...),
-    balanceDate: str = Form(...),
-    accountCurrency: str = Form(...),
-    annualInterestRate: float = Form(0.0),
-    accountJurisdiction: str = Form(...),
-    accountType: str = Form("CashAccountType_Current"),
-    exchangeRateToBase: float = Form(1.0),
-    exchangeRateDate: str = Form(""),
-    accountNotes: str = Form(""),
+    # Existing required fields
+    accountName:         str   = Form(...),
+    accountBalance:      float = Form(...),
+    balanceDate:         str   = Form(...),
+    accountCurrency:     str   = Form(...),
+    annualInterestRate:  float = Form(0.0),
+    accountJurisdiction: str   = Form(...),
+    accountType:         str   = Form("CashAccountType_Current"),
+    exchangeRateToBase:  float = Form(1.0),
+    exchangeRateDate:    str   = Form(""),
+    accountNotes:        str   = Form(""),
+    # ADR-011: drawdown eligibility (all optional)
+    drawdownPriority:     str  = Form(""),
+    drawdownRatio:        str  = Form(""),
+    drawdownMinAge:       str  = Form(""),
+    drawdownMaxAge:       str  = Form(""),
+    drawdownEarliestDate: str  = Form(""),
+    drawdownLatestDate:   str  = Form(""),
+    # ADR-013: tax treatment (all optional)
+    taxTreatment:                str = Form(""),
+    effectiveWithdrawalTaxRate:  str = Form(""),
+    annualTaxFreeWithdrawal:     str = Form(""),
 ):
     if not exchangeRateDate:
-        from datetime import date as _date
-        exchangeRateDate = _date.today().isoformat()
-    save_account(n, accountName, accountBalance, balanceDate,
-                 accountCurrency, annualInterestRate, accountJurisdiction,
-                 accountType, exchangeRateToBase, exchangeRateDate, accountNotes)
+        exchangeRateDate = date.today().isoformat()
 
-    accounts = get_all_accounts()
-    currencies = get_currencies()
+    save_account(
+        n, accountName, accountBalance, balanceDate,
+        accountCurrency, annualInterestRate, accountJurisdiction,
+        accountType, exchangeRateToBase, exchangeRateDate, accountNotes,
+        drawdown_priority=drawdownPriority,
+        drawdown_ratio=drawdownRatio,
+        drawdown_min_age=drawdownMinAge,
+        drawdown_max_age=drawdownMaxAge,
+        drawdown_earliest_date=drawdownEarliestDate,
+        drawdown_latest_date=drawdownLatestDate,
+        tax_treatment=taxTreatment,
+        effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
+        annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
+    )
+
+    accounts      = get_all_accounts()
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
-    today = date.today().isoformat()
+    today         = date.today().isoformat()
     return templates.TemplateResponse(
         request=request,
         name="accounts.html",
         context={
-            "app_name": settings.app_name,
-            "active": "accounts",
-            "accounts": accounts,
-            "currencies": currencies,
+            "app_name":     settings.app_name,
+            "active":       "accounts",
+            "accounts":     accounts,
+            "currencies":   currencies,
             "jurisdictions": jurisdictions,
-            "today": today,
+            "today":        today,
             "edit_account": None,
-            "saved": True,
+            "saved":        True,
         }
     )
 
@@ -343,21 +486,21 @@ async def delete_account(request: Request, n: int):
             }}
         }}
     """)
-    accounts = get_all_accounts()
-    currencies = get_currencies()
+    accounts      = get_all_accounts()
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
-    today = date.today().isoformat()
+    today         = date.today().isoformat()
     return templates.TemplateResponse(
         request=request,
         name="accounts.html",
         context={
-            "app_name": settings.app_name,
-            "active": "accounts",
-            "accounts": accounts,
-            "currencies": currencies,
+            "app_name":     settings.app_name,
+            "active":       "accounts",
+            "accounts":     accounts,
+            "currencies":   currencies,
             "jurisdictions": jurisdictions,
-            "today": today,
+            "today":        today,
             "edit_account": None,
-            "deleted": True,
+            "deleted":      True,
         }
     )

@@ -39,6 +39,8 @@
                         <th>Interest rate</th>
                         <th>Currency</th>
                         <th>FX rate</th>
+                        <th>Draw priority</th>
+                        <th>Tax treatment</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -61,6 +63,21 @@
                                 {% endif %}
                             {% else %}—{% endif %}
                         </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.drawdownPriority %}
+                                <span class="badge badge-outline badge-sm">{{ account.drawdownPriority }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.taxTreatment %}
+                                {% set tt = account.taxTreatment.replace("TaxTreatment_", "") %}
+                                {% if tt == "PostTaxTaxFreeWithdrawal" %}<span class="badge badge-success badge-sm">Tax-free</span>
+                                {% elif tt == "TaxFree" %}<span class="badge badge-success badge-sm">Tax-free</span>
+                                {% elif tt == "PreTaxWholeWithdrawal" %}<span class="badge badge-warning badge-sm">Pre-tax</span>
+                                {% elif tt == "PostTaxGainsOnly" %}<span class="badge badge-ghost badge-sm">Gains only</span>
+                                {% else %}<span class="badge badge-ghost badge-sm">{{ tt }}</span>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
                                 <a href="/accounts/{{ account.n }}/edit"
@@ -81,9 +98,9 @@
                 <tfoot>
                     <tr class="font-medium border-t border-base-200">
                         <td>Total</td>
-                        <td colspan="5" class="text-base-content/60 text-xs">
+                        <td colspan="8" class="text-base-content/60 text-xs">
                             {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
-                            all contribute equally to retirement drawdown
+                            drawdown priority and tax treatment set per account below
                         </td>
                     </tr>
                 </tfoot>
@@ -104,6 +121,7 @@
         <form method="post"
               action="{% if edit_account %}/accounts/{{ edit_account.n }}/edit{% else %}/accounts{% endif %}">
 
+            <!-- Core account fields (unchanged) -->
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
                 <div class="form-control">
@@ -121,11 +139,11 @@
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
                     </label>
                     <select name="accountType" class="select select-bordered select-sm w-full">
-                        <option value="CashAccountType_Current" {% if edit_account and edit_account.accountType == "CashAccountType_Current" %}selected{% elif not edit_account %}selected{% endif %}>Current account</option>
-                        <option value="CashAccountType_Savings" {% if edit_account and edit_account.accountType == "CashAccountType_Savings" %}selected{% endif %}>Savings account</option>
-                        <option value="CashAccountType_FixedTerm" {% if edit_account and edit_account.accountType == "CashAccountType_FixedTerm" %}selected{% endif %}>Fixed term deposit</option>
-                        <option value="CashAccountType_TaxAdvantaged" {% if edit_account and edit_account.accountType == "CashAccountType_TaxAdvantaged" %}selected{% endif %}>Tax-advantaged account</option>
-                        <option value="CashAccountType_Other" {% if edit_account and edit_account.accountType == "CashAccountType_Other" %}selected{% endif %}>Other</option>
+                        <option value="CashAccountType_Current"      {% if edit_account and edit_account.accountType == "CashAccountType_Current"      %}selected{% elif not edit_account %}selected{% endif %}>Current account</option>
+                        <option value="CashAccountType_Savings"      {% if edit_account and edit_account.accountType == "CashAccountType_Savings"      %}selected{% endif %}>Savings account</option>
+                        <option value="CashAccountType_FixedTerm"    {% if edit_account and edit_account.accountType == "CashAccountType_FixedTerm"    %}selected{% endif %}>Fixed term deposit</option>
+                        <option value="CashAccountType_TaxAdvantaged"{% if edit_account and edit_account.accountType == "CashAccountType_TaxAdvantaged"%}selected{% endif %}>Tax-advantaged account</option>
+                        <option value="CashAccountType_Other"        {% if edit_account and edit_account.accountType == "CashAccountType_Other"        %}selected{% endif %}>Other</option>
                     </select>
                 </div>
 
@@ -232,6 +250,198 @@
 
             </div>
 
+            <!-- ============================================================
+                 Tax & Drawdown section (ADR-011, ADR-013)
+                 Collapsible — opens automatically when editing an account
+                 that already has any of these fields set.
+                 ============================================================ -->
+            {% set has_drawdown_tax = edit_account and (
+                edit_account.drawdownPriority or edit_account.taxTreatment or
+                edit_account.effectiveWithdrawalTaxRate or edit_account.drawdownMinAge or
+                edit_account.drawdownEarliestDate
+            ) %}
+
+            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4">
+                <input type="checkbox" {% if has_drawdown_tax %}checked{% endif %} />
+                <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
+                    <i class="ti ti-shield-lock text-base-content/40" aria-hidden="true"></i>
+                    Tax &amp; Drawdown settings
+                    <span class="text-xs font-normal text-base-content/40">(optional — for retirement drawdown modelling)</span>
+                </div>
+                <div class="collapse-content">
+                    <div class="pt-3">
+
+                        <!-- Drawdown ordering -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3 mt-1">
+                            Drawdown ordering (ADR-011)
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Drawdown priority</span>
+                                </label>
+                                <input type="number" name="drawdownPriority" min="1" step="1"
+                                    value="{{ edit_account.drawdownPriority if edit_account and edit_account.drawdownPriority else '' }}"
+                                    placeholder="e.g. 1, 2, 3…"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Lower number = drawn first. Leave blank for lowest priority.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Drawdown ratio (0.0 – 1.0)</span>
+                                </label>
+                                <input type="number" name="drawdownRatio" min="0" max="1" step="0.01"
+                                    value="{{ edit_account.drawdownRatio if edit_account and edit_account.drawdownRatio else '' }}"
+                                    placeholder="e.g. 0.5 for 50%"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Used for Proportional strategy. Ratios are normalised automatically across eligible accounts.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <!-- Drawdown eligibility -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
+                            Access restrictions (leave blank for no restriction)
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Minimum access age</span>
+                                </label>
+                                <input type="number" name="drawdownMinAge" min="0" max="100" step="0.5"
+                                    value="{{ edit_account.drawdownMinAge if edit_account and edit_account.drawdownMinAge else '' }}"
+                                    placeholder="e.g. 57.0"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Decimal supported, e.g. 59.5 for US 401(k), 57.0 for UK pension post-2028.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Maximum access age</span>
+                                </label>
+                                <input type="number" name="drawdownMaxAge" min="0" max="120" step="0.5"
+                                    value="{{ edit_account.drawdownMaxAge if edit_account and edit_account.drawdownMaxAge else '' }}"
+                                    placeholder="e.g. 75.0"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Earliest access date</span>
+                                </label>
+                                <input type="date" name="drawdownEarliestDate"
+                                    value="{{ edit_account.drawdownEarliestDate if edit_account and edit_account.drawdownEarliestDate else '' }}"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">For fixed-term accounts that mature on a specific date. Takes precedence over minimum age.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Latest access date</span>
+                                </label>
+                                <input type="date" name="drawdownLatestDate"
+                                    value="{{ edit_account.drawdownLatestDate if edit_account and edit_account.drawdownLatestDate else '' }}"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Date after which the account must be drawn or closed.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <!-- Tax treatment -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
+                            Tax treatment (ADR-013)
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Tax treatment type</span>
+                                </label>
+                                <select name="taxTreatment" class="select select-bordered select-sm w-full">
+                                    <option value="">Not set (no tax modelled for this account)</option>
+                                    <option value="TaxTreatment_TaxFree"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_TaxFree" %}selected{% endif %}>
+                                        Tax-free — no tax at any stage (e.g. Premium Bonds, NS&amp;I)
+                                    </option>
+                                    <option value="TaxTreatment_PostTaxTaxFreeWithdrawal"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxTaxFreeWithdrawal" %}selected{% endif %}>
+                                        Post-tax, withdrawals tax-free (e.g. UK Cash ISA, Roth IRA)
+                                    </option>
+                                    <option value="TaxTreatment_PostTaxGainsOnly"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxGainsOnly" %}selected{% endif %}>
+                                        Post-tax, gains only taxable (e.g. GIA, general brokerage)
+                                    </option>
+                                    <option value="TaxTreatment_PreTaxWholeWithdrawal"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PreTaxWholeWithdrawal" %}selected{% endif %}>
+                                        Pre-tax, whole withdrawal taxable (e.g. SIPP, 401(k), pension pot)
+                                    </option>
+                                </select>
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Informational — drives UI guidance. Actual tax calculation uses the rates below.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                                        Effective withdrawal tax rate
+                                        <span class="tooltip tooltip-right ml-1" data-tip="Enter the rate you expect to pay on withdrawals from this account, after any tax treaty relief. For cross-border accounts, consult a tax adviser to confirm the applicable rate.">
+                                            <i class="ti ti-info-circle text-base-content/30 cursor-help"></i>
+                                        </span>
+                                    </span>
+                                </label>
+                                <input type="number" name="effectiveWithdrawalTaxRate"
+                                    min="0" max="1" step="0.01"
+                                    value="{{ edit_account.effectiveWithdrawalTaxRate if edit_account and edit_account.effectiveWithdrawalTaxRate else '' }}"
+                                    placeholder="e.g. 0.20 for 20%"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Decimal (0–1). 0 = tax-free. For a UK ISA: 0. Leave blank to skip source-country tax for this account.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual tax-free withdrawal</span>
+                                </label>
+                                <input type="number" name="annualTaxFreeWithdrawal"
+                                    min="0" step="1"
+                                    value="{{ edit_account.annualTaxFreeWithdrawal if edit_account and edit_account.annualTaxFreeWithdrawal else '' }}"
+                                    placeholder="e.g. 6000"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Amount withdrawable each year before the effective rate applies. Resets each year. Use for pension PCLS equivalent or annual allowances.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <div class="alert alert-warning text-xs mt-4">
+                            <i class="ti ti-alert-triangle"></i>
+                            <span>Tax figures are planning estimates only and do not constitute tax advice.
+                            If you have accounts in multiple countries, the rates applicable to your situation
+                            depend on bilateral tax treaties and your personal circumstances — consult a qualified
+                            tax adviser before making drawdown decisions.</span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <!-- end Tax & Drawdown -->
+
             <div class="flex justify-between items-center">
                 {% if edit_account %}
                 <a href="/accounts" class="btn btn-ghost btn-sm">Cancel</a>
@@ -250,19 +460,16 @@
 
 {% block scripts %}
 <script>
-    // Get person base currency from profile - we pass it via data attribute
-    // For now we detect by checking if selected currency dropdown value contains base currency
     function toggleFxFields() {
         const currencySelect = document.querySelector('select[name="accountCurrency"]');
         if (!currencySelect) return;
         const selected = currencySelect.options[currencySelect.selectedIndex];
         const code = selected ? selected.text.split(' — ')[0] : '';
-        // Show FX fields for any non-GBP currency (TODO: make dynamic based on user base currency)
         const isBase = code === 'GBP';
         const fxField = document.getElementById('fx-rate-field');
         const fxDateField = document.getElementById('fx-date-field');
-        if (fxField) fxField.style.display = isBase ? 'none' : 'block';
-        if (fxDateField) fxDateField.style.display = isBase ? 'none' : 'block';
+        if (fxField)     fxField.style.display     = isBase ? 'none' : 'block';
+        if (fxDateField) fxDateField.style.display  = isBase ? 'none' : 'block';
     }
 
     const currSel = document.querySelector('select[name="accountCurrency"]');

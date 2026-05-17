@@ -40,7 +40,8 @@
                         <th>Dividend yield</th>
                         <th>Dividends</th>
                         <th>Currency</th>
-                        <th>FX rate</th>
+                        <th>Draw priority</th>
+                        <th>Tax treatment</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -48,7 +49,7 @@
                     {% for account in accounts %}
                     <tr class="hover {% if edit_account and edit_account.n == account.n %}bg-base-200{% endif %}">
                         <td class="font-medium">{{ account.name }}</td>
-                        <td><span class="badge badge-ghost badge-sm">{{ account.accountTypeLabel }}</span></td>
+                        <td><span class="badge badge-ghost badge-sm">{{ account.accountTypeShort }}</span></td>
                         <td>{{ account.currencySymbol }}{{ "{:,.2f}".format(account.balance | float) }}</td>
                         <td class="text-base-content/60 text-xs">{{ account.balanceDate }}</td>
                         <td>
@@ -76,12 +77,22 @@
                             <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
                         </td>
                         <td class="text-xs text-base-content/50">
-                            {% if account.exchangeRate and account.exchangeRate != '1.0' %}
-                                {{ account.exchangeRate }}
-                                {% if account.exchangeRateDate %}
-                                <span class="block text-base-content/30">{{ account.exchangeRateDate }}</span>
+                            {% if account.drawdownPriority %}
+                                <span class="badge badge-outline badge-sm">{{ account.drawdownPriority }}</span>
+                                {% if account.drawdownMinAge %}
+                                <span class="block text-base-content/30">min age {{ account.drawdownMinAge }}</span>
                                 {% endif %}
                             {% else %}—{% endif %}
+                        </td>
+                        <td class="text-xs">
+                            {% if account.taxTreatment %}
+                                {% set tt = account.taxTreatment.replace("TaxTreatment_", "") %}
+                                {% if tt == "PostTaxTaxFreeWithdrawal" %}<span class="badge badge-success badge-sm">Tax-free</span>
+                                {% elif tt == "TaxFree" %}<span class="badge badge-success badge-sm">Tax-free</span>
+                                {% elif tt == "PreTaxWholeWithdrawal" %}<span class="badge badge-warning badge-sm">Pre-tax</span>
+                                {% elif tt == "PostTaxGainsOnly" %}<span class="badge badge-ghost badge-sm">Gains only</span>
+                                {% else %}<span class="badge badge-ghost badge-sm">{{ tt }}</span>{% endif %}
+                            {% else %}<span class="text-base-content/30">—</span>{% endif %}
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
@@ -103,9 +114,9 @@
                 <tfoot>
                     <tr class="font-medium border-t border-base-200">
                         <td>Total</td>
-                        <td colspan="7" class="text-base-content/60 text-xs">
+                        <td colspan="9" class="text-base-content/60 text-xs">
                             {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
-                            included in retirement projection
+                            included in retirement projection with investment-specific return volatility
                         </td>
                     </tr>
                 </tfoot>
@@ -126,6 +137,7 @@
         <form method="post"
               action="{% if edit_account %}/investments/{{ edit_account.n }}/edit{% else %}/investments{% endif %}">
 
+            <!-- Core investment account fields (unchanged) -->
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
                 <!-- Name -->
@@ -144,7 +156,9 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
                     </label>
-                    <select name="accountType" class="select select-bordered select-sm w-full">
+                    <select name="accountType" id="accountType"
+                            class="select select-bordered select-sm w-full"
+                            onchange="onAccountTypeChange()">
                         {% for key, label in account_types.items() %}
                         <option value="{{ key }}"
                             {% if edit_account and edit_account.accountType == key %}selected
@@ -248,7 +262,7 @@
                     </label>
                 </div>
 
-                <!-- Reinvest dividends (full width, inline toggle style) -->
+                <!-- Reinvest dividends -->
                 <div class="form-control col-span-2">
                     <label class="label cursor-pointer justify-start gap-3 py-1">
                         <input type="checkbox" name="reinvestDividends" value="true"
@@ -261,7 +275,7 @@
                     </label>
                 </div>
 
-                <!-- FX rate (shown for non-GBP) -->
+                <!-- FX rate -->
                 <div class="form-control" id="fx-rate-field" style="display:none">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Exchange rate to base currency</span>
@@ -298,6 +312,216 @@
 
             </div>
 
+            <!-- ============================================================
+                 Tax & Drawdown section (ADR-011, ADR-013)
+                 Opens automatically when editing an account that already has
+                 any of these fields set, or when the account type suggests
+                 restricted access (pension).
+                 ============================================================ -->
+            {% set has_drawdown_tax = edit_account and (
+                edit_account.drawdownPriority or edit_account.taxTreatment or
+                edit_account.effectiveWithdrawalTaxRate or edit_account.drawdownMinAge or
+                edit_account.drawdownEarliestDate
+            ) %}
+
+            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4"
+                 id="drawdown-tax-collapse">
+                <input type="checkbox" id="drawdown-tax-toggle"
+                       {% if has_drawdown_tax %}checked{% endif %} />
+                <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
+                    <i class="ti ti-shield-lock text-base-content/40" aria-hidden="true"></i>
+                    Tax &amp; Drawdown settings
+                    <span class="text-xs font-normal text-base-content/40">(optional — for retirement drawdown modelling)</span>
+                </div>
+                <div class="collapse-content">
+                    <div class="pt-3">
+
+                        <!-- Drawdown ordering -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3 mt-1">
+                            Drawdown ordering (ADR-011)
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Drawdown priority</span>
+                                </label>
+                                <input type="number" name="drawdownPriority" min="1" step="1"
+                                    value="{{ edit_account.drawdownPriority if edit_account and edit_account.drawdownPriority else '' }}"
+                                    placeholder="e.g. 1, 2, 3…"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Lower number = drawn first. Leave blank for lowest priority.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Drawdown ratio (0.0 – 1.0)</span>
+                                </label>
+                                <input type="number" name="drawdownRatio" min="0" max="1" step="0.01"
+                                    value="{{ edit_account.drawdownRatio if edit_account and edit_account.drawdownRatio else '' }}"
+                                    placeholder="e.g. 0.6 for 60%"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Used for Proportional strategy. Normalised automatically across eligible accounts each year.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <!-- Drawdown eligibility -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
+                            Access restrictions <span class="font-normal normal-case">(leave blank for no restriction)</span>
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Minimum access age</span>
+                                </label>
+                                <input type="number" name="drawdownMinAge"
+                                    id="drawdownMinAge"
+                                    min="0" max="100" step="0.5"
+                                    value="{{ edit_account.drawdownMinAge if edit_account and edit_account.drawdownMinAge else '' }}"
+                                    placeholder="e.g. 57.0"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40" id="min-age-hint">
+                                        Decimal supported — e.g. 57.0 (UK pension post-2028), 59.5 (US 401k).
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Maximum access age</span>
+                                </label>
+                                <input type="number" name="drawdownMaxAge" min="0" max="120" step="0.5"
+                                    value="{{ edit_account.drawdownMaxAge if edit_account and edit_account.drawdownMaxAge else '' }}"
+                                    placeholder="e.g. 75.0"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Earliest access date</span>
+                                </label>
+                                <input type="date" name="drawdownEarliestDate"
+                                    value="{{ edit_account.drawdownEarliestDate if edit_account and edit_account.drawdownEarliestDate else '' }}"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">For fixed-term bonds or locked-in investments. Takes precedence over minimum age.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Latest access date</span>
+                                </label>
+                                <input type="date" name="drawdownLatestDate"
+                                    value="{{ edit_account.drawdownLatestDate if edit_account and edit_account.drawdownLatestDate else '' }}"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Date after which this account must be drawn or closed.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <!-- Tax treatment -->
+                        <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
+                            Tax treatment (ADR-013)
+                        </p>
+
+                        <!-- Account-type hint banner -->
+                        <div id="tax-type-hint" class="alert alert-info text-xs mb-3" style="display:none">
+                            <i class="ti ti-bulb"></i>
+                            <span id="tax-type-hint-text"></span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Tax treatment type</span>
+                                </label>
+                                <select name="taxTreatment" id="taxTreatment"
+                                        class="select select-bordered select-sm w-full">
+                                    <option value="">Not set (no tax modelled for this account)</option>
+                                    <option value="TaxTreatment_TaxFree"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_TaxFree" %}selected{% endif %}>
+                                        Tax-free — no tax at any stage (e.g. Premium Bonds, NS&amp;I)
+                                    </option>
+                                    <option value="TaxTreatment_PostTaxTaxFreeWithdrawal"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxTaxFreeWithdrawal" %}selected{% endif %}>
+                                        Post-tax, withdrawals tax-free (e.g. Stocks &amp; Shares ISA, Roth IRA, TFSA)
+                                    </option>
+                                    <option value="TaxTreatment_PostTaxGainsOnly"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxGainsOnly" %}selected{% endif %}>
+                                        Post-tax, gains only taxable (e.g. general brokerage / GIA, unit trust)
+                                    </option>
+                                    <option value="TaxTreatment_PreTaxWholeWithdrawal"
+                                        {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PreTaxWholeWithdrawal" %}selected{% endif %}>
+                                        Pre-tax, whole withdrawal taxable (e.g. SIPP, 401k, defined-contribution pension)
+                                    </option>
+                                </select>
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Informational — guides UI hints. Actual calculation uses the rates below.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                                        Effective withdrawal tax rate
+                                        <span class="tooltip tooltip-right ml-1"
+                                              data-tip="Enter the rate you expect to pay on withdrawals from this account, after any tax treaty relief. For cross-border accounts, consult a tax adviser to confirm the applicable rate.">
+                                            <i class="ti ti-info-circle text-base-content/30 cursor-help"></i>
+                                        </span>
+                                    </span>
+                                </label>
+                                <input type="number" name="effectiveWithdrawalTaxRate"
+                                    id="effectiveWithdrawalTaxRate"
+                                    min="0" max="1" step="0.01"
+                                    value="{{ edit_account.effectiveWithdrawalTaxRate if edit_account and edit_account.effectiveWithdrawalTaxRate else '' }}"
+                                    placeholder="e.g. 0.20 for 20%"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Decimal (0–1). 0 = tax-free withdrawals. Leave blank to skip source-country tax for this account.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual tax-free withdrawal</span>
+                                </label>
+                                <input type="number" name="annualTaxFreeWithdrawal"
+                                    id="annualTaxFreeWithdrawal"
+                                    min="0" step="1"
+                                    value="{{ edit_account.annualTaxFreeWithdrawal if edit_account and edit_account.annualTaxFreeWithdrawal else '' }}"
+                                    placeholder="e.g. 6000"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Amount withdrawable each year before the effective rate applies. Resets annually. Use for pension PCLS equivalent or annual CGT allowances.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <div class="alert alert-warning text-xs mt-4">
+                            <i class="ti ti-alert-triangle"></i>
+                            <span>Tax figures are planning estimates only and do not constitute tax advice.
+                            If you hold accounts in multiple countries, the rates applicable to your situation
+                            depend on bilateral tax treaties and your personal circumstances — consult a qualified
+                            tax adviser before making drawdown decisions.</span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <!-- end Tax & Drawdown -->
+
             <div class="flex justify-between items-center">
                 {% if edit_account %}
                 <a href="/investments" class="btn btn-ghost btn-sm">Cancel</a>
@@ -318,6 +542,9 @@
 
 {% block scripts %}
 <script>
+    // ---------------------------------------------------------------------------
+    // FX field visibility
+    // ---------------------------------------------------------------------------
     function toggleFxFields() {
         const currencySelect = document.querySelector('select[name="accountCurrency"]');
         if (!currencySelect) return;
@@ -328,26 +555,104 @@
         document.getElementById('fx-date-field').style.display = isBase ? 'none' : 'block';
     }
 
+    // ---------------------------------------------------------------------------
+    // Compound return hint beneath dividend field
+    // ---------------------------------------------------------------------------
     function updateReturnHint() {
-        const growth = parseFloat(document.getElementById('growth-rate-input').value) || 0;
+        const growth   = parseFloat(document.getElementById('growth-rate-input').value) || 0;
         const dividend = parseFloat(document.getElementById('dividend-rate-input').value) || 0;
         const reinvest = document.getElementById('reinvest-checkbox').checked;
-        const hint = document.getElementById('return-hint');
+        const hint     = document.getElementById('return-hint');
         if (growth > 0 || dividend > 0) {
             const total = growth + (reinvest ? dividend : 0);
-            const label = reinvest
+            hint.textContent = reinvest
                 ? `Total compounding return: ${total.toFixed(1)}%/yr`
                 : `Capital growth: ${growth.toFixed(1)}%/yr · Dividends paid as income: ${dividend.toFixed(1)}%/yr`;
-            hint.textContent = label;
         } else {
             hint.textContent = '';
         }
     }
 
-    // Init on load
+    // ---------------------------------------------------------------------------
+    // Account type → tax treatment hint
+    //
+    // When the user selects a pension or ISA type, suggest the appropriate tax
+    // treatment and open the Tax & Drawdown section automatically.
+    // Only fires when the tax treatment field is currently empty (don't override
+    // an existing user choice).
+    // ---------------------------------------------------------------------------
+    const TAX_HINTS = {
+        'InvestmentAccountType_Pension': {
+            treatment: 'TaxTreatment_PreTaxWholeWithdrawal',
+            minAge: '57',
+            hint: 'Pensions are typically pre-tax: the whole withdrawal is taxable income. UK SIPPs are accessible from age 57 (post-2028). Set your expected effective tax rate below.',
+        },
+        'InvestmentAccountType_TaxAdvantaged': {
+            treatment: 'TaxTreatment_PostTaxTaxFreeWithdrawal',
+            minAge: '',
+            hint: 'Tax-advantaged accounts (ISA, Roth IRA, TFSA) are funded with post-tax money and withdrawals are typically tax-free. Effective rate: 0.',
+        },
+        'InvestmentAccountType_StocksShares': {
+            treatment: 'TaxTreatment_PostTaxGainsOnly',
+            minAge: '',
+            hint: 'General stocks & shares accounts are typically taxable on gains only. If held in an ISA wrapper, choose Tax-advantaged instead.',
+        },
+        'InvestmentAccountType_UnitTrust': {
+            treatment: 'TaxTreatment_PostTaxGainsOnly',
+            minAge: '',
+            hint: 'Unit trusts / mutual funds outside a tax wrapper are taxable on gains only.',
+        },
+        'InvestmentAccountType_Bonds': {
+            treatment: 'TaxTreatment_PostTaxGainsOnly',
+            minAge: '',
+            hint: 'Bond portfolios outside a tax wrapper are typically taxable on gains. Government bonds may have different treatment — check your jurisdiction.',
+        },
+    };
+
+    function onAccountTypeChange() {
+        const typeSelect    = document.getElementById('accountType');
+        const taxSelect     = document.getElementById('taxTreatment');
+        const hintBanner    = document.getElementById('tax-type-hint');
+        const hintText      = document.getElementById('tax-type-hint-text');
+        const minAgeInput   = document.getElementById('drawdownMinAge');
+        const collapseInput = document.getElementById('drawdown-tax-toggle');
+
+        const key  = typeSelect ? typeSelect.value : '';
+        const info = TAX_HINTS[key];
+
+        if (!info) {
+            hintBanner.style.display = 'none';
+            return;
+        }
+
+        // Show the hint banner
+        hintText.textContent     = info.hint;
+        hintBanner.style.display = 'flex';
+
+        // Only pre-fill fields that are currently empty
+        if (taxSelect && !taxSelect.value) {
+            taxSelect.value = info.treatment;
+        }
+
+        if (minAgeInput && !minAgeInput.value && info.minAge) {
+            minAgeInput.value = info.minAge;
+        }
+
+        // Open the Tax & Drawdown section if it's closed
+        if (collapseInput && !collapseInput.checked) {
+            collapseInput.checked = true;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Init
+    // ---------------------------------------------------------------------------
     const currSel = document.querySelector('select[name="accountCurrency"]');
     if (currSel) currSel.addEventListener('change', toggleFxFields);
     toggleFxFields();
     updateReturnHint();
+
+    // Run the type hint on load (without overriding existing saved values)
+    onAccountTypeChange();
 </script>
 {% endblock %}

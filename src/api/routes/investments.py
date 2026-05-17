@@ -6,6 +6,12 @@ POST /investments              — create a new investment account
 GET  /investments/{n}/edit     — load edit form for investment account N
 POST /investments/{n}/edit     — save edits to investment account N
 POST /investments/{n}/delete   — delete investment account N
+
+Changes (ADR-011, ADR-013):
+  get_all_investment_accounts() now reads drawdown eligibility and tax fields.
+  save_investment_account() accepts and persists all new optional fields.
+  Route handlers pass new form params through.
+  All new fields are optional — existing accounts are unaffected.
 """
 from datetime import date
 from fastapi import APIRouter, Request, Form
@@ -19,16 +25,27 @@ from src.store.graph import store, MRL, DATA_GRAPH
 
 router = APIRouter()
 
-RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
 INVESTMENT_ACCOUNT_TYPES = {
-    "InvestmentAccountType_StocksShares": "Stocks and shares",
+    "InvestmentAccountType_StocksShares":  "Stocks and shares",
     "InvestmentAccountType_TaxAdvantaged": "Tax-advantaged (ISA / Roth / TFSA)",
-    "InvestmentAccountType_Pension": "Self-directed pension (SIPP / 401k)",
-    "InvestmentAccountType_UnitTrust": "Unit trust / mutual fund",
-    "InvestmentAccountType_Bonds": "Bond portfolio",
-    "InvestmentAccountType_Other": "Other",
+    "InvestmentAccountType_Pension":       "Self-directed pension (SIPP / 401k)",
+    "InvestmentAccountType_UnitTrust":     "Unit trust / mutual fund",
+    "InvestmentAccountType_Bonds":         "Bond portfolio",
+    "InvestmentAccountType_Other":         "Other",
+}
+
+# Abbreviated labels for table display — full labels stay in the form dropdown
+INVESTMENT_ACCOUNT_TYPES_SHORT = {
+    "InvestmentAccountType_StocksShares":  "Stocks & shares",
+    "InvestmentAccountType_TaxAdvantaged": "Tax-advantaged",
+    "InvestmentAccountType_Pension":       "Pension",
+    "InvestmentAccountType_UnitTrust":     "Unit trust",
+    "InvestmentAccountType_Bonds":         "Bonds",
+    "InvestmentAccountType_Other":         "Other",
 }
 
 
@@ -55,7 +72,9 @@ def _currency_symbol(local: str) -> str:
 
 
 def get_all_investment_accounts() -> list:
-    """Return all InvestmentAccount instances from the data graph."""
+    """Return all InvestmentAccount instances from the data graph, including
+    drawdown eligibility (ADR-011) and tax treatment (ADR-013) fields.
+    """
     type_node = og.NamedNode(f"{MRL}InvestmentAccount")
     quads = store.store.quads_for_pattern(
         None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
@@ -78,23 +97,36 @@ def get_all_investment_accounts() -> list:
 
         account_type = get_local("accountType")
         accounts.append({
-            "n": n,
-            "iri": str(iri.value),
-            "name": get_val("accountName"),
-            "balance": get_val("accountBalance"),
-            "balanceDate": get_val("balanceDate"),
-            "currency": get_local("accountCurrency"),
-            "currencyCode": _currency_code(get_local("accountCurrency")),
-            "currencySymbol": _currency_symbol(get_local("accountCurrency")),
-            "growthRate": get_val("annualGrowthRate"),
-            "dividendRate": get_val("annualDividendRate"),
+            # Existing fields
+            "n":               n,
+            "iri":             str(iri.value),
+            "name":            get_val("accountName"),
+            "balance":         get_val("accountBalance"),
+            "balanceDate":     get_val("balanceDate"),
+            "currency":        get_local("accountCurrency"),
+            "currencyCode":    _currency_code(get_local("accountCurrency")),
+            "currencySymbol":  _currency_symbol(get_local("accountCurrency")),
+            "growthRate":      get_val("annualGrowthRate"),
+            "dividendRate":    get_val("annualDividendRate"),
             "reinvestDividends": reinvest,
-            "jurisdiction": get_local("accountJurisdiction"),
-            "accountType": account_type,
+            "jurisdiction":    get_local("accountJurisdiction"),
+            "accountType":      account_type,
             "accountTypeLabel": INVESTMENT_ACCOUNT_TYPES.get(account_type, account_type),
-            "exchangeRate": get_val("exchangeRateToBase"),
+            "accountTypeShort": INVESTMENT_ACCOUNT_TYPES_SHORT.get(account_type, account_type.replace("InvestmentAccountType_", "")),
+            "exchangeRate":    get_val("exchangeRateToBase"),
             "exchangeRateDate": get_val("exchangeRateDate"),
-            "notes": get_val("accountNotes"),
+            "notes":           get_val("accountNotes"),
+            # ADR-011: drawdown eligibility and ordering
+            "drawdownPriority":     get_val("drawdownPriority"),
+            "drawdownRatio":        get_val("drawdownRatio"),
+            "drawdownMinAge":       get_val("drawdownMinAge"),
+            "drawdownMaxAge":       get_val("drawdownMaxAge"),
+            "drawdownEarliestDate": get_val("drawdownEarliestDate"),
+            "drawdownLatestDate":   get_val("drawdownLatestDate"),
+            # ADR-013: tax treatment
+            "taxTreatment":               get_local("taxTreatment"),
+            "effectiveWithdrawalTaxRate": get_val("effectiveWithdrawalTaxRate"),
+            "annualTaxFreeWithdrawal":    get_val("annualTaxFreeWithdrawal"),
         })
     accounts.sort(key=lambda a: int(a["n"]) if a["n"].isdigit() else 0)
     return accounts
@@ -118,10 +150,10 @@ def get_currencies() -> list:
     for r in results:
         try:
             currencies.append({
-                "iri": str(r["iri"].value),
+                "iri":   str(r["iri"].value),
                 "local": str(r["iri"].value).split("#")[-1],
-                "code": str(r["code"].value),
-                "name": str(r["name"].value),
+                "code":  str(r["code"].value),
+                "name":  str(r["name"].value),
             })
         except Exception:
             pass
@@ -146,10 +178,10 @@ def get_jurisdictions() -> list:
     for r in results:
         try:
             jurisdictions.append({
-                "iri": str(r["iri"].value),
+                "iri":   str(r["iri"].value),
                 "local": str(r["iri"].value).split("#")[-1],
-                "code": str(r["code"].value),
-                "name": str(r["name"].value),
+                "code":  str(r["code"].value),
+                "name":  str(r["name"].value),
             })
         except Exception:
             pass
@@ -157,14 +189,38 @@ def get_jurisdictions() -> list:
 
 
 def save_investment_account(
-    n: int, name: str, balance: float, balance_date: str,
-    currency_local: str, growth_rate: float, dividend_rate: float,
-    reinvest_dividends: bool, jurisdiction_local: str, account_type: str,
-    exchange_rate: float, exchange_rate_date: str, notes: str,
+    n: int,
+    name: str,
+    balance: float,
+    balance_date: str,
+    currency_local: str,
+    growth_rate: float,
+    dividend_rate: float,
+    reinvest_dividends: bool,
+    jurisdiction_local: str,
+    account_type: str,
+    exchange_rate: float,
+    exchange_rate_date: str,
+    notes: str,
+    # ADR-011: drawdown eligibility and ordering (all optional)
+    drawdown_priority: str       = "",
+    drawdown_ratio: str          = "",
+    drawdown_min_age: str        = "",
+    drawdown_max_age: str        = "",
+    drawdown_earliest_date: str  = "",
+    drawdown_latest_date: str    = "",
+    # ADR-013: tax treatment (all optional)
+    tax_treatment: str                  = "",
+    effective_withdrawal_tax_rate: str  = "",
+    annual_tax_free_withdrawal: str     = "",
 ) -> None:
-    """Write or overwrite an InvestmentAccount_N instance in the data graph."""
-    account_iri = f"{MRL}InvestmentAccount_{n}"
-    person_iri = f"{MRL}Person_1"
+    """Write or overwrite an InvestmentAccount_N instance in the data graph.
+
+    All drawdown and tax fields are optional. Absent or blank values are not
+    persisted — the projection engine treats absent properties as unrestricted.
+    """
+    account_iri  = f"{MRL}InvestmentAccount_{n}"
+    person_iri   = f"{MRL}Person_1"
     reinvest_str = "true" if reinvest_dividends else "false"
 
     store.update(f"""
@@ -175,64 +231,114 @@ def save_investment_account(
         }}
     """)
 
+    # --- Required fields ---
+    triples = f"""
+        <{account_iri}> a mrl:InvestmentAccount ;
+            mrl:accountName        "{name}" ;
+            mrl:accountBalance     "{balance}"^^xsd:decimal ;
+            mrl:balanceDate        "{balance_date}"^^xsd:date ;
+            mrl:accountCurrency    mrl:{currency_local} ;
+            mrl:annualGrowthRate   "{growth_rate}"^^xsd:decimal ;
+            mrl:annualDividendRate "{dividend_rate}"^^xsd:decimal ;
+            mrl:reinvestDividends  "{reinvest_str}"^^xsd:boolean ;
+            mrl:accountJurisdiction mrl:{jurisdiction_local} ;
+            mrl:accountType        mrlx:{account_type} ;
+            mrl:ownedBy            <{person_iri}> .
+    """
+
+    # --- Exchange rate ---
+    if exchange_rate and float(exchange_rate) != 1.0:
+        triples += f"""
+        <{account_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
+                        mrl:exchangeRateDate   "{exchange_rate_date}"^^xsd:date .
+        """
+
+    # --- Notes ---
+    if notes and notes.strip():
+        safe_notes = notes.replace('"', '\\"')
+        triples += f'\n        <{account_iri}> mrl:accountNotes "{safe_notes}" .'
+
+    # --- ADR-011: drawdown eligibility and ordering ---
+    if drawdown_priority.strip():
+        try:
+            p = int(drawdown_priority.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownPriority "{p}"^^xsd:integer .'
+        except ValueError:
+            pass
+
+    if drawdown_ratio.strip():
+        try:
+            r = float(drawdown_ratio.strip())
+            if 0.0 <= r <= 1.0:
+                triples += f'\n        <{account_iri}> mrl:drawdownRatio "{r}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_min_age.strip():
+        try:
+            a = float(drawdown_min_age.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownMinAge "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_max_age.strip():
+        try:
+            a = float(drawdown_max_age.strip())
+            triples += f'\n        <{account_iri}> mrl:drawdownMaxAge "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if drawdown_earliest_date.strip():
+        triples += f'\n        <{account_iri}> mrl:drawdownEarliestDate "{drawdown_earliest_date.strip()}"^^xsd:date .'
+
+    if drawdown_latest_date.strip():
+        triples += f'\n        <{account_iri}> mrl:drawdownLatestDate "{drawdown_latest_date.strip()}"^^xsd:date .'
+
+    # --- ADR-013: tax treatment ---
+    if tax_treatment.strip():
+        triples += f'\n        <{account_iri}> mrl:taxTreatment mrlx:{tax_treatment.strip()} .'
+
+    if effective_withdrawal_tax_rate.strip():
+        try:
+            rate = float(effective_withdrawal_tax_rate.strip())
+            if 0.0 <= rate <= 1.0:
+                triples += f'\n        <{account_iri}> mrl:effectiveWithdrawalTaxRate "{rate}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if annual_tax_free_withdrawal.strip():
+        try:
+            amt = float(annual_tax_free_withdrawal.strip())
+            if amt >= 0:
+                triples += f'\n        <{account_iri}> mrl:annualTaxFreeWithdrawal "{amt}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
     store.update(f"""
         PREFIX mrl:  <{MRL}>
-        PREFIX mrlx: <https://myretirementlife.app/ontology/ext#>
+        PREFIX mrlx: <{MRL_EXT}>
         PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-
         INSERT DATA {{
             GRAPH <{DATA_GRAPH.value}> {{
-                <{account_iri}> a mrl:InvestmentAccount ;
-                    mrl:accountName "{name}" ;
-                    mrl:accountBalance "{balance}"^^xsd:decimal ;
-                    mrl:balanceDate "{balance_date}"^^xsd:date ;
-                    mrl:accountCurrency mrl:{currency_local} ;
-                    mrl:annualGrowthRate "{growth_rate}"^^xsd:decimal ;
-                    mrl:annualDividendRate "{dividend_rate}"^^xsd:decimal ;
-                    mrl:reinvestDividends "{reinvest_str}"^^xsd:boolean ;
-                    mrl:accountJurisdiction mrl:{jurisdiction_local} ;
-                    mrl:accountType mrlx:{account_type} ;
-                    mrl:ownedBy <{person_iri}> .
+                {triples}
             }}
         }}
     """)
 
-    if exchange_rate and float(exchange_rate) != 1.0:
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{account_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
-                                    mrl:exchangeRateDate "{exchange_rate_date}"^^xsd:date .
-                }}
-            }}
-        """)
-
-    if notes.strip():
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{account_iri}> mrl:accountNotes "{notes}" .
-                }}
-            }}
-        """)
-
 
 def _page_context(request, accounts, edit_account=None, **kwargs):
-    today = date.today().isoformat()
-    currencies = get_currencies()
+    today         = date.today().isoformat()
+    currencies    = get_currencies()
     jurisdictions = get_jurisdictions()
     total_balance = sum(float(a["balance"]) for a in accounts if a["balance"])
     return {
-        "app_name": settings.app_name,
-        "active": "investments",
-        "accounts": accounts,
-        "currencies": currencies,
+        "app_name":      settings.app_name,
+        "active":        "investments",
+        "accounts":      accounts,
+        "currencies":    currencies,
         "jurisdictions": jurisdictions,
-        "today": today,
-        "edit_account": edit_account,
+        "today":         today,
+        "edit_account":  edit_account,
         "total_balance": total_balance,
         "account_types": INVESTMENT_ACCOUNT_TYPES,
         **kwargs,
@@ -256,30 +362,51 @@ async def investments_page(request: Request):
 @router.post("/investments", response_class=HTMLResponse)
 async def add_investment_account(
     request: Request,
-    accountName: str = Form(...),
-    accountBalance: float = Form(...),
-    balanceDate: str = Form(...),
-    accountCurrency: str = Form(...),
-    annualGrowthRate: float = Form(0.0),
-    annualDividendRate: float = Form(0.0),
-    reinvestDividends: Optional[str] = Form(None),
-    accountJurisdiction: str = Form(...),
-    accountType: str = Form("InvestmentAccountType_StocksShares"),
-    exchangeRateToBase: float = Form(1.0),
-    exchangeRateDate: str = Form(""),
-    accountNotes: str = Form(""),
+    # Existing required fields
+    accountName:         str   = Form(...),
+    accountBalance:      float = Form(...),
+    balanceDate:         str   = Form(...),
+    accountCurrency:     str   = Form(...),
+    annualGrowthRate:    float = Form(0.0),
+    annualDividendRate:  float = Form(0.0),
+    reinvestDividends:   Optional[str] = Form(None),
+    accountJurisdiction: str   = Form(...),
+    accountType:         str   = Form("InvestmentAccountType_StocksShares"),
+    exchangeRateToBase:  float = Form(1.0),
+    exchangeRateDate:    str   = Form(""),
+    accountNotes:        str   = Form(""),
+    # ADR-011: drawdown eligibility (all optional)
+    drawdownPriority:     str  = Form(""),
+    drawdownRatio:        str  = Form(""),
+    drawdownMinAge:       str  = Form(""),
+    drawdownMaxAge:       str  = Form(""),
+    drawdownEarliestDate: str  = Form(""),
+    drawdownLatestDate:   str  = Form(""),
+    # ADR-013: tax treatment (all optional)
+    taxTreatment:                str = Form(""),
+    effectiveWithdrawalTaxRate:  str = Form(""),
+    annualTaxFreeWithdrawal:     str = Form(""),
 ):
     existing = get_all_investment_accounts()
-    next_n = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
+    next_n   = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
     if not exchangeRateDate:
         exchangeRateDate = date.today().isoformat()
-    reinvest = reinvestDividends is not None  # checkbox: present = True, absent = False
+    reinvest = reinvestDividends is not None
 
     save_investment_account(
         next_n, accountName, accountBalance, balanceDate,
         accountCurrency, annualGrowthRate, annualDividendRate,
         reinvest, accountJurisdiction, accountType,
         exchangeRateToBase, exchangeRateDate, accountNotes,
+        drawdown_priority=drawdownPriority,
+        drawdown_ratio=drawdownRatio,
+        drawdown_min_age=drawdownMinAge,
+        drawdown_max_age=drawdownMaxAge,
+        drawdown_earliest_date=drawdownEarliestDate,
+        drawdown_latest_date=drawdownLatestDate,
+        tax_treatment=taxTreatment,
+        effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
+        annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
     accounts = get_all_investment_accounts()
     return templates.TemplateResponse(
@@ -292,7 +419,7 @@ async def add_investment_account(
 @router.get("/investments/{n}/edit", response_class=HTMLResponse)
 async def edit_investment_account_form(request: Request, n: int):
     accounts = get_all_investment_accounts()
-    account = next((a for a in accounts if a["n"] == str(n)), None)
+    account  = next((a for a in accounts if a["n"] == str(n)), None)
     return templates.TemplateResponse(
         request=request,
         name="investments.html",
@@ -304,18 +431,30 @@ async def edit_investment_account_form(request: Request, n: int):
 async def save_edit_investment_account(
     request: Request,
     n: int,
-    accountName: str = Form(...),
-    accountBalance: float = Form(...),
-    balanceDate: str = Form(...),
-    accountCurrency: str = Form(...),
-    annualGrowthRate: float = Form(0.0),
-    annualDividendRate: float = Form(0.0),
-    reinvestDividends: Optional[str] = Form(None),
-    accountJurisdiction: str = Form(...),
-    accountType: str = Form("InvestmentAccountType_StocksShares"),
-    exchangeRateToBase: float = Form(1.0),
-    exchangeRateDate: str = Form(""),
-    accountNotes: str = Form(""),
+    # Existing required fields
+    accountName:         str   = Form(...),
+    accountBalance:      float = Form(...),
+    balanceDate:         str   = Form(...),
+    accountCurrency:     str   = Form(...),
+    annualGrowthRate:    float = Form(0.0),
+    annualDividendRate:  float = Form(0.0),
+    reinvestDividends:   Optional[str] = Form(None),
+    accountJurisdiction: str   = Form(...),
+    accountType:         str   = Form("InvestmentAccountType_StocksShares"),
+    exchangeRateToBase:  float = Form(1.0),
+    exchangeRateDate:    str   = Form(""),
+    accountNotes:        str   = Form(""),
+    # ADR-011: drawdown eligibility (all optional)
+    drawdownPriority:     str  = Form(""),
+    drawdownRatio:        str  = Form(""),
+    drawdownMinAge:       str  = Form(""),
+    drawdownMaxAge:       str  = Form(""),
+    drawdownEarliestDate: str  = Form(""),
+    drawdownLatestDate:   str  = Form(""),
+    # ADR-013: tax treatment (all optional)
+    taxTreatment:                str = Form(""),
+    effectiveWithdrawalTaxRate:  str = Form(""),
+    annualTaxFreeWithdrawal:     str = Form(""),
 ):
     if not exchangeRateDate:
         exchangeRateDate = date.today().isoformat()
@@ -326,6 +465,15 @@ async def save_edit_investment_account(
         accountCurrency, annualGrowthRate, annualDividendRate,
         reinvest, accountJurisdiction, accountType,
         exchangeRateToBase, exchangeRateDate, accountNotes,
+        drawdown_priority=drawdownPriority,
+        drawdown_ratio=drawdownRatio,
+        drawdown_min_age=drawdownMinAge,
+        drawdown_max_age=drawdownMaxAge,
+        drawdown_earliest_date=drawdownEarliestDate,
+        drawdown_latest_date=drawdownLatestDate,
+        tax_treatment=taxTreatment,
+        effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
+        annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
     accounts = get_all_investment_accounts()
     return templates.TemplateResponse(
