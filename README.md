@@ -2,7 +2,7 @@
 
 > **Plan your retirement with confidence — wherever you are in the world.**
 
-My Retirement Life is a free, open-source, locally-run retirement planning application for Windows and Linux. It helps you build a complete picture of your financial future, model the impact of life decisions, and find out when — and how comfortably — you can retire.
+My Retirement Life is a free, open-source, locally-run retirement planning application for Windows, macOS, and Linux. It helps you build a complete picture of your financial future, model the impact of life decisions, and find out when — and how comfortably — you can retire.
 
 Unlike cloud-based tools, your data never leaves your machine.
 
@@ -40,7 +40,7 @@ My Retirement Life is built from the ground up to handle the real complexity of 
 
 ## Status
 
-🚧 **Early development** — MVP in progress. See the [MVP outline](docs/requirements/mvp.md) for what's being built first.
+🟢 **Active development** — MVP complete, v0.2 released. See the [MVP outline](docs/requirements/mvp.md) and [architecture decisions](docs/adr/) for what has been built and what is planned next.
 
 ---
 
@@ -48,10 +48,12 @@ My Retirement Life is built from the ground up to handle the real complexity of 
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python + FastAPI |
-| Data store | Oxigraph (RDF triple store) |
-| Frontend | HTMX + Tailwind CSS + DaisyUI |
-| Packaging | PyInstaller (Windows) + AppImage (Linux) |
+| Backend | Python 3.13 + FastAPI |
+| Data store | Oxigraph (RDF triple store, embedded via pyoxigraph) |
+| Templating | Jinja2 (server-rendered HTML) |
+| Frontend | HTMX + Tailwind CSS + DaisyUI + Chart.js |
+| Simulation | NumPy (Monte Carlo projection engine) |
+| Packaging | PyInstaller (Windows, macOS) + AppImage (Linux) |
 
 See [docs/adr/](docs/adr/) for the full architecture decision records.
 
