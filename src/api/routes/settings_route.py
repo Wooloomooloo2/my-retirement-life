@@ -574,30 +574,24 @@ async def settings_page(request: Request):
     ontology_count = ontology_triple_count(store.store)
     data_dir       = str(app_settings.data_dir)
 
-    ps = og.NamedNode(f"{MRL}ProjectionSettings_1")
-    ps_check = list(store.store.quads_for_pattern(ps, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))
-    inflation_rate = 2.5
-    if ps_check:
-        try:
-            qs = list(store.store.quads_for_pattern(
-                ps, og.NamedNode(f"{MRL}inflationRate"), None, DATA_GRAPH))
-            if qs:
-                inflation_rate = float(qs[0].object.value)
-        except Exception:
-            pass
+    try:
+        from src.api.routes.projection import get_projection_settings
+        proj_settings = get_projection_settings()
+    except Exception:
+        proj_settings = None
 
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
         context={
-            "app_name":             app_settings.app_name,
-            "active":               "settings",
-            "app_version":          APP_VERSION,
-            "data_dir":             data_dir,
-            "data_triple_count":    data_count,
+            "app_name":              app_settings.app_name,
+            "active":                "settings",
+            "app_version":           APP_VERSION,
+            "data_dir":              data_dir,
+            "data_triple_count":     data_count,
             "ontology_triple_count": ontology_count,
-            "inflation_rate":       inflation_rate,
-            "today":                date.today().isoformat(),
+            "proj_settings":         proj_settings,
+            "today":                 date.today().isoformat(),
         }
     )
 
@@ -633,15 +627,11 @@ async def import_data(request: Request, backup_file: UploadFile = File(...)):
     data_count     = len(list(store.store.quads_for_pattern(None, None, None, DATA_GRAPH)))
     ontology_count = ontology_triple_count(store.store)
 
-    ps = og.NamedNode(f"{MRL}ProjectionSettings_1")
-    inflation_rate = 2.5
     try:
-        qs = list(store.store.quads_for_pattern(
-            ps, og.NamedNode(f"{MRL}inflationRate"), None, DATA_GRAPH))
-        if qs:
-            inflation_rate = float(qs[0].object.value)
+        from src.api.routes.projection import get_projection_settings
+        proj_settings = get_projection_settings()
     except Exception:
-        pass
+        proj_settings = None
 
     return templates.TemplateResponse(
         request=request,
@@ -653,7 +643,7 @@ async def import_data(request: Request, backup_file: UploadFile = File(...)):
             "data_dir":              str(app_settings.data_dir),
             "data_triple_count":     data_count,
             "ontology_triple_count": ontology_count,
-            "inflation_rate":        inflation_rate,
+            "proj_settings":         proj_settings,
             "today":                 date.today().isoformat(),
             "import_success":        success,
             "import_message":        message,

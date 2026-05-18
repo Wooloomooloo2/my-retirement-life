@@ -483,6 +483,85 @@ async def save_edit_investment_account(
     )
 
 
+@router.get("/investments/{n}/projection", response_class=HTMLResponse)
+async def investment_projection_detail(request: Request, n: int):
+    """Per-account growth-vs-drawdown detail chart (ADR-012)."""
+    from fastapi.responses import RedirectResponse
+    from src.api.routes.projection import run_projection, get_projection_settings
+
+    accounts = get_all_investment_accounts()
+    account  = next((a for a in accounts if a["n"] == str(n)), None)
+    if not account:
+        return RedirectResponse("/investments", status_code=303)
+
+    label = f"InvestmentAccount_{n}"
+    proj_settings = get_projection_settings()
+    projection    = run_projection(proj_settings["inflation_rate"], proj_settings)
+
+    no_data = not projection or label not in projection.get("account_balances", {})
+    if no_data:
+        return templates.TemplateResponse(
+            request=request,
+            name="investment_projection.html",
+            context={
+                "app_name":   settings.app_name,
+                "active":     "investments",
+                "account":    account,
+                "back_url":   "/investments",
+                "back_label": "Back to investments",
+                "no_data":    True,
+            }
+        )
+
+    years        = [y["year"] for y in projection["years"]]
+    balances     = projection["account_balances"][label]
+    withdrawals  = projection["account_withdrawals"][label]
+    returns_data = projection["account_returns"][label]
+
+    # Summary stats
+    total_return    = round(sum(r for r in returns_data if r > 0), 0)
+    total_withdrawn = round(sum(w for w in withdrawals  if w > 0), 0)
+    opening_balance = balances[0] if balances else 0
+    final_balance   = balances[-1] if balances else 0
+    peak_balance    = max(balances) if balances else 0
+
+    # First year where withdrawal exceeds growth (the crossover point)
+    crossover_year = next(
+        (years[i] for i, (r, w) in enumerate(zip(returns_data, withdrawals)) if w > r and w > 0),
+        None
+    )
+    # First year balance reaches zero
+    depletion_year = next(
+        (years[i] for i, b in enumerate(balances) if b <= 0),
+        None
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="investment_projection.html",
+        context={
+            "app_name":        settings.app_name,
+            "active":          "investments",
+            "account":         account,
+            "back_url":        "/investments",
+            "back_label":      "Back to investments",
+            "years":           years,
+            "balances":        balances,
+            "withdrawals":     withdrawals,
+            "returns_data":    returns_data,
+            "total_return":    total_return,
+            "total_withdrawn": total_withdrawn,
+            "opening_balance": opening_balance,
+            "final_balance":   final_balance,
+            "peak_balance":    peak_balance,
+            "crossover_year":  crossover_year,
+            "depletion_year":  depletion_year,
+            "retirement_year": projection["retirement_year"],
+            "no_data":         False,
+        }
+    )
+
+
 @router.post("/investments/{n}/delete", response_class=HTMLResponse)
 async def delete_investment_account(request: Request, n: int):
     account_iri = f"{MRL}InvestmentAccount_{n}"
