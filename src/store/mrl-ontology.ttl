@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.0" .
+    owl:versionInfo "1.0.1" .
 
 
 # ===========================================================================
@@ -136,6 +136,24 @@ mrlx:AccountTypeScheme a skos:ConceptScheme ;
         mrlx:CashAccountType ,
         mrlx:InvestmentAccountType ,
         mrlx:CreditCardAccountType .
+
+mrlx:CreditCardAccountType a skos:Concept ;
+    skos:inScheme  mrlx:AccountTypeScheme ;
+    skos:broader   mrlx:AccountTypeScheme ;
+    skos:prefLabel "Credit Card Account Type"@en ;
+    skos:definition "Top concept for credit card account subtypes."@en .
+
+mrlx:CreditCardAccountType_Standard a skos:Concept ;
+    skos:inScheme  mrlx:AccountTypeScheme ;
+    skos:broader   mrlx:CreditCardAccountType ;
+    skos:prefLabel "Standard"@en ;
+    skos:definition "A standard revolving credit card account."@en .
+
+mrlx:CreditCardAccountType_ChargeCard a skos:Concept ;
+    skos:inScheme  mrlx:AccountTypeScheme ;
+    skos:broader   mrlx:CreditCardAccountType ;
+    skos:prefLabel "Charge Card"@en ;
+    skos:definition "A charge card requiring full payment each month."@en .
 
 
 # --- CashAccountType top concept ---
@@ -962,6 +980,11 @@ mrl:InvestmentAccount a owl:Class ;
     rdfs:label "Investment account"@en ;
     rdfs:comment "Stocks, funds, bonds, or other investment holdings. Uses mrlx:InvestmentAccountType for classification."@en .
 
+mrl:CreditCardAccount a owl:Class ;
+    rdfs:subClassOf mrl:Account ;
+    rdfs:label "Credit Card Account"@en ;
+    rdfs:comment "A credit card account. Balances represent a liability — a negative contribution to net worth. Defined here for use by My Finance Life; MRL UI is deferred to a future release."@en .
+
 mrl:annualGrowthRate a owl:DatatypeProperty ;
     rdfs:label "annual growth rate"@en ;
     rdfs:comment "Expected annual capital appreciation of the investment as a percentage, e.g. 7.0 for 7%. Does not include dividend or income return — that is captured in mrl:annualDividendRate. The projection engine compounds the account balance at this rate each year."@en ;
@@ -1003,16 +1026,15 @@ mrl:statementDay a owl:DatatypeProperty ;
     rdfs:range xsd:integer .
 
 mrl:isLiability a owl:DatatypeProperty ;
-    rdfs:label "is liability"@en ;
-    rdfs:comment "True if this account's balance is a liability (e.g. credit card debt, mortgage). Liability balances are subtracted from total assets when calculating net worth. Defaults to false (asset) if absent."@en ;
     rdfs:domain mrl:Account ;
-    rdfs:range xsd:boolean .
+    rdfs:range  xsd:boolean ;
+    rdfs:label  "is liability"@en ;
+    rdfs:comment "True if this account's balance represents a liability (negative net worth contribution). Defaults to false. Set to true on credit card accounts."@en .
 
 mrl:PropertyAsset a owl:Class ;
     rdfs:subClassOf mrl:Account ;
-    rdfs:label "Property asset"@en ;
-    rdfs:comment "A real property (residential, commercial, or land) held as an asset. Value is maintained via point-in-time valuation events rather than transaction aggregation. mrl:accountBalance stores the current estimated value in the account currency."@en .
-
+    rdfs:label "Property Asset"@en ;
+    rdfs:comment "A property or real estate asset. Activated in v1.0.1 for use by My Finance Life. MRL property UI is deferred to a future release."@en .
 mrl:propertyAddress a owl:DatatypeProperty ;
     rdfs:label "property address"@en ;
     rdfs:comment "Free-text postal address of the property."@en ;
