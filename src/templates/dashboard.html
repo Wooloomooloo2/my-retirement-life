@@ -25,13 +25,14 @@
         </p>
 
         <!-- Progress steps -->
-        <div class="flex items-center justify-center gap-0 mb-6 max-w-lg mx-auto">
+        <div class="flex items-center justify-center gap-0 mb-6 max-w-2xl mx-auto">
             {% set steps = [
                 ('1', 'Profile'),
                 ('2', 'Income'),
                 ('3', 'Accounts'),
-                ('4', 'Budget'),
-                ('5', 'Projection')
+                ('4', 'Investments'),
+                ('5', 'Budget'),
+                ('6', 'Projection')
             ] %}
             {% for num, label in steps %}
             <div class="flex items-center">
@@ -43,7 +44,7 @@
                     <span class="text-xs text-base-content/40 whitespace-nowrap">{{ label }}</span>
                 </div>
                 {% if not loop.last %}
-                <div class="w-8 h-px bg-base-300 mb-4 mx-1"></div>
+                <div class="w-6 h-px bg-base-300 mb-4 mx-1"></div>
                 {% endif %}
             </div>
             {% endfor %}
@@ -65,11 +66,12 @@
         </h3>
 
         {% set checklist = [
-            ('Profile', 'Personal details and retirement goal', '/profile', false),
-            ('Income', 'At least one income source', '/income', false),
-            ('Accounts', 'At least one cash account', '/accounts', false),
-            ('Budget', 'Your spending lines', '/budget', false),
-            ('Projection', 'View your retirement projection', '/projection', false),
+            ('Profile',     'Personal details and retirement goal', '/profile',     false),
+            ('Income',      'At least one income source',           '/income',      false),
+            ('Accounts',    'At least one cash account',            '/accounts',    false),
+            ('Investments', 'At least one investment account',      '/investments', false),
+            ('Budget',      'Your spending lines',                  '/budget',      false),
+            ('Projection',  'View your retirement projection',      '/projection',  false),
         ] %}
 
         {% for title, desc, url, done in checklist %}
@@ -94,8 +96,9 @@
      MAIN DASHBOARD — data exists
      ========================================================= -->
 
-<!-- Setup checklist (shown until all steps complete) -->
-{% set setup_complete = profile and income_count > 0 and account_count > 0 and budget_line_count > 0 %}
+<!-- Setup checklist (shown until all core steps complete) -->
+{% set setup_complete = profile and income_count > 0 and account_count > 0 and investment_count > 0 and budget_line_count > 0 %}
+{% set core_done_count = [profile is not none, income_count > 0, account_count > 0, investment_count > 0, budget_line_count > 0] | select | list | length %}
 {% if not setup_complete %}
 <div class="card bg-base-100 shadow-sm mb-5">
     <div class="card-body p-4">
@@ -103,15 +106,29 @@
             <i class="ti ti-checklist text-base-content/40" aria-hidden="true"></i>
             Setup checklist
             <span class="badge badge-sm badge-ghost ml-auto">
-                {{ [profile is not none, income_count > 0, account_count > 0, budget_line_count > 0] | select | list | length }}/4 done
+                {{ core_done_count }}/5 done
             </span>
         </h3>
 
         {% set items = [
-            (profile is not none, 'Profile', 'Personal details and retirement goal', '/profile'),
-            (income_count > 0, 'Income', income_count ~ ' source' ~ ('s' if income_count != 1 else '') ~ ' added' if income_count > 0 else 'Add at least one income source', '/income'),
-            (account_count > 0, 'Accounts', account_count ~ ' account' ~ ('s' if account_count != 1 else '') ~ ' added' if account_count > 0 else 'Add at least one cash account', '/accounts'),
-            (budget_line_count > 0, 'Budget', budget_line_count ~ ' line' ~ ('s' if budget_line_count != 1 else '') ~ ' added' if budget_line_count > 0 else 'Add your spending lines', '/budget'),
+            (profile is not none,
+             'Profile', 'Personal details and retirement goal', '/profile'),
+            (income_count > 0,
+             'Income',
+             income_count ~ ' source' ~ ('s' if income_count != 1 else '') ~ ' added' if income_count > 0 else 'Add at least one income source',
+             '/income'),
+            (account_count > 0,
+             'Accounts',
+             account_count ~ ' cash account' ~ ('s' if account_count != 1 else '') ~ ' added' if account_count > 0 else 'Add at least one cash account',
+             '/accounts'),
+            (investment_count > 0,
+             'Investments',
+             investment_count ~ ' investment account' ~ ('s' if investment_count != 1 else '') ~ ' added' if investment_count > 0 else 'Add at least one investment account',
+             '/investments'),
+            (budget_line_count > 0,
+             'Budget',
+             budget_line_count ~ ' line' ~ ('s' if budget_line_count != 1 else '') ~ ' added' if budget_line_count > 0 else 'Add your spending lines',
+             '/budget'),
         ] %}
 
         {% set ns = namespace(found_current=false) %}
@@ -137,9 +154,7 @@
                 <p class="text-sm font-medium
                     {% if done %}text-base-content/50 line-through
                     {% elif is_current %}text-primary
-                    {% else %}text-base-content/40{% endif %}">
-                    {{ title }}
-                </p>
+                    {% else %}text-base-content/40{% endif %}">{{ title }}</p>
                 <p class="text-xs text-base-content/40">{{ desc }}</p>
             </div>
             {% if is_current %}
@@ -149,6 +164,27 @@
             {% endif %}
         </a>
         {% endfor %}
+
+    </div>
+</div>
+{% elif not drawdown_configured %}
+<!-- Core setup done — prompt for drawdown preferences (optional, ADR-011) -->
+<div class="card bg-base-100 shadow-sm mb-5 border border-primary/10">
+    <div class="card-body p-4 flex flex-row items-center gap-4">
+        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <i class="ti ti-settings-2 text-primary" aria-hidden="true"></i>
+        </div>
+        <div class="flex-1">
+            <p class="text-sm font-medium">Fine-tune your drawdown preferences</p>
+            <p class="text-xs text-base-content/50 mt-0.5">
+                Designate a spending account, choose a drawdown strategy, and set
+                your personal tax allowance for more accurate projections.
+            </p>
+        </div>
+        <a href="/projection" class="btn btn-sm btn-primary btn-outline gap-1 flex-shrink-0">
+            <i class="ti ti-arrow-right text-xs"></i>
+            Configure
+        </a>
     </div>
 </div>
 {% endif %}

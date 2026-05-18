@@ -703,7 +703,10 @@ def run_projection(
     )
 
     # --- Year-by-year loop ---
-    account_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    # Per-account balance, withdrawal and return history
+    account_history: dict[str, list[float]]            = {acc["label"]: [] for acc in all_accounts}
+    account_withdrawal_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    account_return_history: dict[str, list[float]]     = {acc["label"]: [] for acc in all_accounts}
     projection_years = []
     cumulative_tax   = 0.0
 
@@ -723,11 +726,15 @@ def run_projection(
                 eff = acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
                 balances[acc["label"]] *= (1 + eff / 100)
 
-        # Returns earned this year (for display in the chart tooltip)
+        # Returns earned this year — total for display, and per-account for detail chart
         returns_this_year = sum(
             balances[acc["label"]] - opening_this_year[acc["label"]]
             for acc in all_accounts
         )
+        for acc in all_accounts:
+            account_return_history[acc["label"]].append(
+                round(balances[acc["label"]] - opening_this_year[acc["label"]], 0)
+            )
 
         # 3. Income: active income sources + non-reinvested dividends
         income_amount = 0.0
@@ -793,6 +800,7 @@ def run_projection(
         total_source_tax       = 0.0
         total_taxable_at_source = 0.0
         net_annual_tax          = 0.0
+        year_withdrawals: dict[str, float] = {}   # gross withdrawal per account this year
 
         if pre_net < 0:
             # Shortfall — draw from eligible accounts
@@ -812,6 +820,7 @@ def run_projection(
                 total_taxable_at_source    += (gross_draw - free_used)
                 # Debit account: gross withdrawal + source tax withheld
                 balances[acc_label] = max(0.0, balances[acc_label] - gross_draw - src_tax)
+                year_withdrawals[acc_label] = gross_draw   # record for history
 
             # Residence-level tax (ADR-013 §3)
             res_tax = _compute_residence_tax(
@@ -842,9 +851,12 @@ def run_projection(
 
         cumulative_tax += net_annual_tax
 
-        # 8. Record closing balances per account
+        # 8. Record closing balances and withdrawal amounts per account
         for acc in all_accounts:
             account_history[acc["label"]].append(round(balances[acc["label"]], 0))
+            account_withdrawal_history[acc["label"]].append(
+                round(year_withdrawals.get(acc["label"], 0.0), 0)
+            )
 
         total_balance = sum(balances.values())
 
@@ -904,10 +916,12 @@ def run_projection(
         "confidence_message":        confidence_message,
         "weighted_rate":             round(weighted_rate_pct, 2),
         "col_ratio":                 col_ratio,
-        # ADR-012: per-account balance history for the by-account chart
-        "account_balances":  account_history,
-        "account_names":     {acc["label"]: acc["name"]          for acc in all_accounts},
-        "account_classes":   {acc["label"]: acc["account_class"] for acc in all_accounts},
+        # ADR-012: per-account balance, withdrawal and return history
+        "account_balances":    account_history,
+        "account_withdrawals": account_withdrawal_history,
+        "account_returns":     account_return_history,
+        "account_names":       {acc["label"]: acc["name"]          for acc in all_accounts},
+        "account_classes":     {acc["label"]: acc["account_class"] for acc in all_accounts},
         # ADR-013: tax summary
         "total_tax_paid": round(cumulative_tax, 0),
     }
@@ -1171,7 +1185,7 @@ async def save_settings(
         spending_account_label    = spending_account_label or None,
         surplus_account_label     = surplus_account_label  or None,
         annual_personal_allowance = annual_personal_allowance,
-        residence_income_tax_rate = residence_income_tax_rate,
+        residence_income_tax_rate = residence_income_tax_rate / 100.0,  # form sends %
     )
     return RedirectResponse(url="/projection", status_code=303)
 

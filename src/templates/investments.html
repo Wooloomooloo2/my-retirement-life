@@ -483,12 +483,12 @@
                                 </label>
                                 <input type="number" name="effectiveWithdrawalTaxRate"
                                     id="effectiveWithdrawalTaxRate"
-                                    min="0" max="1" step="0.01"
-                                    value="{{ edit_account.effectiveWithdrawalTaxRate if edit_account and edit_account.effectiveWithdrawalTaxRate else '' }}"
-                                    placeholder="e.g. 0.20 for 20%"
+                                    min="0" max="60" step="0.1"
+                                    value="{{ (edit_account.effectiveWithdrawalTaxRate | float * 100) | round(1) if edit_account and edit_account.effectiveWithdrawalTaxRate else '' }}"
+                                    placeholder="e.g. 20 for 20%"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Decimal (0–1). 0 = tax-free withdrawals. Leave blank to skip source-country tax for this account.</span>
+                                    <span class="label-text-alt text-base-content/40">Percentage (0–60). 0 = tax-free withdrawals. Leave blank to skip source-country tax for this account.</span>
                                 </label>
                             </div>
 

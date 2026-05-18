@@ -300,9 +300,9 @@ def save_investment_account(
 
     if effective_withdrawal_tax_rate.strip():
         try:
-            rate = float(effective_withdrawal_tax_rate.strip())
-            if 0.0 <= rate <= 1.0:
-                triples += f'\n        <{account_iri}> mrl:effectiveWithdrawalTaxRate "{rate}"^^xsd:decimal .'
+            rate_pct = float(effective_withdrawal_tax_rate.strip())
+            if 0.0 <= rate_pct <= 100.0:
+                triples += f'\n        <{account_iri}> mrl:effectiveWithdrawalTaxRate "{rate_pct / 100.0}"^^xsd:decimal .'
         except ValueError:
             pass
 

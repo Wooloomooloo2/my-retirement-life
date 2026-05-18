@@ -115,6 +115,7 @@ def get_dashboard_data() -> dict:
         load_budget_lines as _load_budget_lines,
         load_all_income_sources as _load_income,
     )
+    from src.api.routes.investments import get_all_investment_accounts
     from src.api.routes.profile import get_profile
     import pyoxigraph as og
 
@@ -127,10 +128,14 @@ def get_dashboard_data() -> dict:
     income_sources = _load_income()
     income_count = len(income_sources)
 
-    # Accounts
+    # Cash accounts
     accs = _load_accounts()
     account_count = len(accs)
     total_balance = sum(a["balance"] for a in accs)
+
+    # Investment accounts
+    investments = get_all_investment_accounts()
+    investment_count = len(investments)
 
     # Budget lines
     lines = _load_budget_lines()
@@ -154,20 +159,31 @@ def get_dashboard_data() -> dict:
         except (ValueError, TypeError):
             pass
 
+    # Drawdown settings configured? — true once ProjectionSettings_1 has been explicitly saved
+    drawdown_configured = False
+    try:
+        ps_iri = og.NamedNode(f"{MRL}ProjectionSettings_1")
+        drawdown_configured = len(list(store.store.quads_for_pattern(
+            ps_iri, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))) > 0
+    except Exception:
+        pass
+
     # Projection
     proj_settings = get_projection_settings()
     proj = run_projection(proj_settings["inflation_rate"]) if prof and accs else None
 
     return {
-        "profile": prof,
-        "income_count": income_count,
-        "account_count": account_count,
-        "total_balance": round(total_balance, 0) if total_balance else 0,
-        "budget_line_count": budget_line_count,
-        "annual_spending": round(annual_spending, 0) if annual_spending else 0,
-        "life_event_count": life_event_count,
+        "profile":            prof,
+        "income_count":       income_count,
+        "account_count":      account_count,
+        "investment_count":   investment_count,
+        "total_balance":      round(total_balance, 0) if total_balance else 0,
+        "budget_line_count":  budget_line_count,
+        "annual_spending":    round(annual_spending, 0) if annual_spending else 0,
+        "life_event_count":   life_event_count,
         "years_to_retirement": years_to_retirement,
-        "projection": proj,
+        "drawdown_configured": drawdown_configured,
+        "projection":         proj,
     }
 
 
@@ -230,8 +246,8 @@ async def dashboard(request: Request):
         request=request,
         name="dashboard.html",
         context={
-            "app_name": settings.app_name,
-            "active": "dashboard",
+            "app_name":  settings.app_name,
+            "active":    "dashboard",
             **data,
         }
     )

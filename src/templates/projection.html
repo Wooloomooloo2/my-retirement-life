@@ -109,13 +109,36 @@
         <h3 class="text-sm font-medium flex items-center justify-between pb-3 mb-3 border-b border-base-200">
             <span class="flex items-center gap-2">
                 <i class="ti ti-chart-bar text-base-content/40" aria-hidden="true"></i>
-                Annual cashflow &amp; balance
+                Projection
             </span>
-            <span class="text-xs text-base-content/40 font-normal">
-                Bars = annual spending by type &nbsp;|&nbsp; Line = running balance
-            </span>
+            <div class="tabs tabs-boxed tabs-sm">
+                <button class="tab tab-active" id="tab-overview"
+                        onclick="switchTab('overview')">Overview</button>
+                <button class="tab" id="tab-byaccount"
+                        onclick="switchTab('byaccount')">By Account</button>
+            </div>
         </h3>
-        <canvas id="projectionChart" height="300"></canvas>
+
+        <!-- Overview pane: existing cashflow + balance chart -->
+        <div id="pane-overview" style="position:relative; height:320px">
+            <canvas id="projectionChart"></canvas>
+        </div>
+
+        <!-- By Account pane: stacked area per account -->
+        <div id="pane-byaccount" style="display:none">
+            <!-- Account filter chips — populated by JS on first init -->
+            <div id="byaccount-filter" class="flex flex-wrap gap-1.5 mb-3 items-center"></div>
+            <!-- Fixed-height canvas -->
+            <div style="position:relative; height:320px">
+                <canvas id="byAccountChart"></canvas>
+            </div>
+            <p class="text-xs text-base-content/40 mt-3 text-center">
+                Stacked closing balance per account each year —
+                cash accounts (blue) form the base, investment accounts (green) stack above.
+                ★ = retirement year &nbsp;|&nbsp;
+                <a href="/investments" class="link link-primary">View per-account detail →</a>
+            </p>
+        </div>
     </div>
 </div>
 
@@ -153,7 +176,9 @@
                 </select>
             </form>
         </h3>
-        <canvas id="mcChart" height="260"></canvas>
+        <div style="position:relative; height:260px">
+            <canvas id="mcChart"></canvas>
+        </div>
         <p class="text-xs text-base-content/40 mt-3 text-center">
             Shaded band = 10th–90th percentile range &nbsp;|&nbsp; Line = median (P50) outcome &nbsp;|&nbsp;
             {% if mc.cash_floor and mc.cash_floor | sum > 0 %}
@@ -289,14 +314,14 @@
 
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Marginal income tax rate</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Marginal income tax rate %</span>
                     </label>
-                    <input type="number" name="residence_income_tax_rate" step="0.01" min="0" max="1"
-                        value="{{ proj_settings.residence_income_tax_rate }}"
-                        placeholder="e.g. 0.20 for 20%"
+                    <input type="number" name="residence_income_tax_rate" step="0.1" min="0" max="60"
+                        value="{{ (proj_settings.residence_income_tax_rate * 100) | round(1) }}"
+                        placeholder="e.g. 20"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Rate above personal allowance in your country of residence (decimal, e.g. 0.20)</span>
+                        <span class="label-text-alt text-base-content/40">Rate above personal allowance in your country of residence (e.g. 20 for 20%)</span>
                     </label>
                 </div>
 
@@ -380,6 +405,242 @@ const income         = {{ projection.years | map(attribute='income')            
 const taxPaid        = {{ projection.years | map(attribute='tax_paid')            | list | tojson }};
 const retirementYear = {{ projection.retirement_year }};
 
+// ---------------------------------------------------------------------------
+// Tab switching — Overview / By Account
+// ---------------------------------------------------------------------------
+function switchTab(tab) {
+    document.getElementById('pane-overview').style.display   = tab === 'overview'   ? 'block' : 'none';
+    document.getElementById('pane-byaccount').style.display  = tab === 'byaccount'  ? 'block' : 'none';
+    document.getElementById('tab-overview').classList.toggle('tab-active',   tab === 'overview');
+    document.getElementById('tab-byaccount').classList.toggle('tab-active',  tab === 'byaccount');
+    // Lazy-init the by-account chart on first show; resize on subsequent shows
+    if (tab === 'byaccount') {
+        if (!byAccountChartInstance) initByAccountChart();
+        else byAccountChartInstance.resize();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// By Account stacked area chart — adaptive filter (chips ≤8, dropdown >8)
+// ---------------------------------------------------------------------------
+const accountNames   = {{ projection.account_names   | tojson }};
+const accountClasses = {{ projection.account_classes | tojson }};
+const accountBals    = {{ projection.account_balances | tojson }};
+
+const CASH_PALETTE   = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD'];
+const INVEST_PALETTE = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#0D9488', '#0F766E'];
+const CHIP_THRESHOLD = 8;   // use chips below this; dropdown at or above
+
+let byAccountChartInstance = null;
+
+function initByAccountChart() {
+    const sortedLabels = Object.keys(accountNames).sort((a, b) => {
+        const aC = accountClasses[a] === 'CashAccount';
+        const bC = accountClasses[b] === 'CashAccount';
+        return (aC === bC) ? 0 : aC ? -1 : 1;
+    });
+
+    let ci = 0, ii = 0;
+    const datasets = sortedLabels.map(label => {
+        const isCash = accountClasses[label] === 'CashAccount';
+        const hex    = isCash
+            ? CASH_PALETTE[ci++   % CASH_PALETTE.length]
+            : INVEST_PALETTE[ii++ % INVEST_PALETTE.length];
+        return {
+            label:            accountNames[label],
+            data:             accountBals[label],
+            backgroundColor:  hex + 'BF',
+            borderColor:      hex,
+            borderWidth:      1.5,
+            fill:             true,
+            tension:          0.3,
+            pointRadius:      0,
+            pointHoverRadius: 4,
+        };
+    });
+
+    byAccountChartInstance = new Chart(
+        document.getElementById('byAccountChart').getContext('2d'),
+        {
+            type: 'line',
+            data: { labels: years, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const v = ctx.parsed.y;
+                                return ` ${ctx.dataset.label}: £${Math.abs(Math.round(v)).toLocaleString('en-GB')}`;
+                            },
+                            footer: items => `Total: £${Math.round(items.reduce((s, i) => s + i.parsed.y, 0)).toLocaleString('en-GB')}`,
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: {
+                            font: { size: 10 }, maxTicksLimit: 20,
+                            callback: (_, idx) => {
+                                const y = years[idx];
+                                if (y === retirementYear) return `${y} ★`;
+                                return y % 5 === 0 ? y : '';
+                            }
+                        },
+                        grid: { display: false }
+                    },
+                    y: {
+                        stacked: true,
+                        ticks: { font: { size: 10 }, callback: v => '£' + (v / 1000).toFixed(0) + 'k' },
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        title: { display: true, text: 'Balance (£)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                    }
+                }
+            }
+        }
+    );
+
+    // Build filter UI — chips for small sets, dropdown for large sets
+    const filterEl = document.getElementById('byaccount-filter');
+    filterEl.innerHTML = '';
+    if (datasets.length <= CHIP_THRESHOLD) {
+        _buildChipFilter(filterEl, datasets);
+    } else {
+        _buildDropdownFilter(filterEl, datasets);
+    }
+}
+
+// --- Chip filter (≤ CHIP_THRESHOLD accounts) ---
+function _buildChipFilter(filterEl, datasets) {
+    const allBtn = document.createElement('button');
+    allBtn.className = 'btn btn-xs btn-ghost border border-base-300';
+    allBtn.textContent = 'All';
+    allBtn.onclick = () => {
+        datasets.forEach((_, i) => byAccountChartInstance.setDatasetVisibility(i, true));
+        byAccountChartInstance.update();
+        filterEl.querySelectorAll('[data-chip-idx]').forEach(b => {
+            b.style.opacity = '1'; b.dataset.active = '1';
+        });
+    };
+    filterEl.appendChild(allBtn);
+
+    datasets.forEach((ds, i) => {
+        const chip = document.createElement('button');
+        chip.dataset.chipIdx = i;
+        chip.dataset.active  = '1';
+        chip.className = 'btn btn-xs gap-1.5';
+        chip.style.cssText = `background:${ds.borderColor}22;border:1.5px solid ${ds.borderColor};color:inherit;`;
+        chip.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.borderColor}"></span><span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ds.label}</span>`;
+        chip.onclick = function () {
+            const on = this.dataset.active === '1';
+            byAccountChartInstance.setDatasetVisibility(i, !on);
+            byAccountChartInstance.update();
+            this.dataset.active = on ? '0' : '1';
+            this.style.opacity  = on ? '0.35' : '1';
+        };
+        filterEl.appendChild(chip);
+    });
+}
+
+// --- Dropdown filter (> CHIP_THRESHOLD accounts) ---
+function _buildDropdownFilter(filterEl, datasets) {
+    let dropdownOpen = false;
+    const checkboxes = [];
+
+    // Wrapper (positions the panel)
+    const wrap = document.createElement('div');
+    wrap.style.position = 'relative';
+    wrap.style.display  = 'inline-block';
+
+    // Toggle button
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-xs btn-ghost border border-base-300 gap-1';
+    btn.innerHTML  = '<i class="ti ti-filter text-xs"></i><span id="ba-filter-lbl">All ' + datasets.length + ' accounts</span><i class="ti ti-chevron-down text-xs"></i>';
+    btn.onclick = (e) => {
+        e.stopPropagation();
+        dropdownOpen = !dropdownOpen;
+        panel.style.display = dropdownOpen ? 'block' : 'none';
+    };
+
+    // Dropdown panel
+    const panel = document.createElement('div');
+    panel.style.cssText = 'display:none;position:absolute;left:0;top:28px;z-index:50;min-width:220px;' +
+        'background:var(--fallback-b1,oklch(var(--b1)));border:1px solid oklch(var(--b3));' +
+        'border-radius:var(--rounded-box,0.5rem);box-shadow:0 4px 16px rgba(0,0,0,0.12);padding:10px;';
+
+    // All / None row
+    const ctrl = document.createElement('div');
+    ctrl.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid oklch(var(--b3))';
+    ['All', 'None'].forEach((label, sel) => {
+        const b = document.createElement('button');
+        b.className = 'btn btn-xs btn-ghost flex-1';
+        b.textContent = label;
+        b.onclick = () => {
+            checkboxes.forEach((cb, i) => {
+                cb.checked = sel === 0;
+                byAccountChartInstance.setDatasetVisibility(i, sel === 0);
+            });
+            byAccountChartInstance.update();
+            _updateDropdownLabel(datasets.length);
+        };
+        ctrl.appendChild(b);
+    });
+    panel.appendChild(ctrl);
+
+    // Scrollable account list
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:224px;overflow-y:auto;padding-right:2px;';
+
+    datasets.forEach((ds, i) => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:3px 4px;border-radius:4px;';
+        row.onmouseenter = () => row.style.background = 'oklch(var(--b2))';
+        row.onmouseleave = () => row.style.background = '';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = true;
+        cb.className = 'checkbox checkbox-xs';
+        cb.style.accentColor = ds.borderColor;
+        cb.onchange = () => {
+            byAccountChartInstance.setDatasetVisibility(i, cb.checked);
+            byAccountChartInstance.update();
+            _updateDropdownLabel(datasets.length);
+        };
+        checkboxes.push(cb);
+
+        const swatch = document.createElement('span');
+        swatch.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.borderColor};flex-shrink:0`;
+
+        const lbl = document.createElement('span');
+        lbl.style.cssText = 'font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;';
+        lbl.textContent = ds.label;
+
+        row.appendChild(cb); row.appendChild(swatch); row.appendChild(lbl);
+        list.appendChild(row);
+    });
+    panel.appendChild(list);
+
+    // Close on outside click
+    document.addEventListener('click', () => {
+        if (dropdownOpen) { dropdownOpen = false; panel.style.display = 'none'; }
+    });
+
+    wrap.appendChild(btn); wrap.appendChild(panel);
+    filterEl.appendChild(wrap);
+}
+
+function _updateDropdownLabel(total) {
+    const visible = Array.from(document.querySelectorAll('#byaccount-filter input[type=checkbox]'))
+        .filter(c => c.checked).length;
+    const lbl = document.getElementById('ba-filter-lbl');
+    if (lbl) lbl.textContent = visible === total ? `All ${total} accounts` : `${visible} of ${total} accounts`;
+    if (byAccountChartInstance) byAccountChartInstance.update();
+}
+
 const ctx = document.getElementById('projectionChart').getContext('2d');
 const retirementIdx = years.indexOf(retirementYear);
 
@@ -462,6 +723,7 @@ new Chart(ctx, {
     data: { labels: years, datasets },
     options: {
         responsive: true,
+        maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
             legend: {
@@ -593,6 +855,7 @@ new Chart(mcCtx, {
     },
     options: {
         responsive: true,
+        maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
             legend: {
