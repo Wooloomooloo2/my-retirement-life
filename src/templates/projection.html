@@ -240,6 +240,19 @@
                 </p>
             </div>
             {% endif %}
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Surplus income goes to</p>
+                <p class="font-medium {% if not surplus_dest_configured %}text-warning{% endif %}">
+                    {{ surplus_dest_name }}
+                </p>
+                <p class="text-xs text-base-content/40 mt-0.5">
+                    {% if surplus_dest_configured %}
+                        Configured spending account
+                    {% else %}
+                        Auto-detected — set a <a href="#settings" class="underline">spending account</a> to be explicit
+                    {% endif %}
+                </p>
+            </div>
         </div>
     </div>
 </div>

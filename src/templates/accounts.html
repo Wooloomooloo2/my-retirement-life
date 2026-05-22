@@ -20,6 +20,22 @@
 </div>
 {% endif %}
 
+{% if not accounts %}
+<div class="alert alert-info mb-6">
+    <i class="ti ti-lightbulb"></i>
+    <div>
+        <p class="font-medium">Tip: add your main current account first</p>
+        <p class="text-sm mt-0.5">
+            Without a spending account configured in Projection Settings, unspent income
+            accumulates in your first <strong>Current account</strong> type account each year.
+            Add your everyday current/checking account here first, then savings accounts,
+            ISAs and investments. You can also set an explicit spending account in
+            Projection Settings at any time.
+        </p>
+    </div>
+</div>
+{% endif %}
+
 <!-- Existing accounts list -->
 {% if accounts %}
 <div class="card bg-base-100 shadow-sm mb-6">
@@ -41,6 +57,7 @@
                         <th>FX rate</th>
                         <th>Draw priority</th>
                         <th>Tax treatment</th>
+                        <th>Contribution</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -76,6 +93,11 @@
                                 {% elif tt == "PreTaxWholeWithdrawal" %}<span class="badge badge-warning badge-sm">Pre-tax</span>
                                 {% elif tt == "PostTaxGainsOnly" %}<span class="badge badge-ghost badge-sm">Gains only</span>
                                 {% else %}<span class="badge badge-ghost badge-sm">{{ tt }}</span>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.contribution %}
+                                <span class="badge badge-info badge-sm badge-outline">£{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
                             {% else %}—{% endif %}
                         </td>
                         <td class="text-right">
@@ -460,6 +482,151 @@
             </div>
 
         </form>
+
+        <!-- ============================================================
+             Contributions section (ADR-015)
+             Separate <form> — must be outside the account <form> above.
+             Only shown when editing an existing account (new accounts are
+             redirected to edit after creation so this section appears).
+             ============================================================ -->
+        {% if edit_account %}
+        {% set contrib = edit_account.contribution %}
+
+        {% if contribution_saved %}
+        <div class="alert alert-success mt-4">
+            <i class="ti ti-circle-check"></i>
+            <span>Contribution saved.</span>
+        </div>
+        {% endif %}
+        {% if contribution_deleted %}
+        <div class="alert alert-info mt-4">
+            <i class="ti ti-trash"></i>
+            <span>Contribution removed.</span>
+        </div>
+        {% endif %}
+
+        <div class="collapse collapse-arrow border border-base-200 rounded-lg mt-4">
+            <input type="checkbox" {% if contrib %}checked{% endif %} />
+            <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
+                <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
+                Regular contribution
+                <span class="text-xs font-normal text-base-content/40">(optional — credits this account and deducts from cashflow)</span>
+                {% if contrib %}
+                <span class="badge badge-info badge-sm ml-auto">£{{ "{:,.0f}".format(contrib.annualAmount) }}/yr</span>
+                {% endif %}
+            </div>
+            <div class="collapse-content">
+                <div class="pt-3">
+                    <p class="text-xs text-base-content/40 mb-4">
+                        A regular contribution credits this account's balance each year and counts as
+                        spending in the cashflow — funded by income or drawdown from other accounts.
+                        Default window: current year up to and including your target retirement year.
+                    </p>
+
+                    <form method="post" action="/accounts/{{ edit_account.n }}/contribution">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount per period</span>
+                                </label>
+                                <input type="number" name="contributionAmount" required
+                                    min="0" step="0.01"
+                                    value="{{ contrib.amount if contrib else '' }}"
+                                    placeholder="e.g. 500"
+                                    class="input input-bordered input-sm w-full"
+                                    id="contrib-amount-ca" oninput="updateContribAnnual('ca')" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
+                                </label>
+                                <select name="contributionFrequency"
+                                        class="select select-bordered select-sm w-full"
+                                        id="contrib-freq-ca" onchange="updateContribAnnual('ca')">
+                                    <option value="FrequencyType_Monthly"     {% if not contrib or contrib.frequency == 'FrequencyType_Monthly' %}selected{% endif %}>Monthly</option>
+                                    <option value="FrequencyType_Annually"    {% if contrib and contrib.frequency == 'FrequencyType_Annually' %}selected{% endif %}>Annually</option>
+                                    <option value="FrequencyType_Weekly"      {% if contrib and contrib.frequency == 'FrequencyType_Weekly' %}selected{% endif %}>Weekly</option>
+                                    <option value="FrequencyType_Fortnightly" {% if contrib and contrib.frequency == 'FrequencyType_Fortnightly' %}selected{% endif %}>Fortnightly</option>
+                                    <option value="FrequencyType_TwiceMonthly"{% if contrib and contrib.frequency == 'FrequencyType_TwiceMonthly' %}selected{% endif %}>Twice monthly</option>
+                                    <option value="FrequencyType_Quarterly"   {% if contrib and contrib.frequency == 'FrequencyType_Quarterly' %}selected{% endif %}>Quarterly</option>
+                                </select>
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40" id="contrib-annual-hint-ca"></span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionStartYear"
+                                    min="2020" max="2100"
+                                    value="{{ contrib.startYear if contrib and contrib.startYear else '' }}"
+                                    placeholder="Default: current year"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionEndYear"
+                                    min="2020" max="2100"
+                                    value="{{ contrib.endYear if contrib and contrib.endYear else '' }}"
+                                    placeholder="Default: retirement year"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Note <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="text" name="contributionNote"
+                                    value="{{ contrib.note if contrib else '' }}"
+                                    placeholder="e.g. Monthly ISA contribution"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate % <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionGrowthRate"
+                                    step="0.1" min="-100" max="100"
+                                    value="{{ contrib.growthRate if contrib and contrib.growthRate else '0' }}"
+                                    placeholder="0"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Positive = increases year-on-year (e.g. salary-linked), negative = tapers off. 0 = fixed.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            {% if contrib %}
+                            <form method="post" action="/accounts/{{ edit_account.n }}/contribution/delete"
+                                  onsubmit="return confirm('Remove the contribution from this account?')">
+                                <button type="submit" class="btn btn-ghost btn-sm text-error gap-1">
+                                    <i class="ti ti-trash text-xs"></i> Remove contribution
+                                </button>
+                            </form>
+                            {% else %}
+                            <span></span>
+                            {% endif %}
+                            <button type="submit" class="btn btn-info btn-sm gap-1">
+                                <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                                {% if contrib %}Update contribution{% else %}Add contribution{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- end Contributions -->
+        {% endif %}
     </div>
 </div>
 
@@ -482,6 +649,26 @@
         currSel.addEventListener('change', toggleFxFields);
         toggleFxFields();
     }
+
+    // Contribution annual equivalent hint
+    const CONTRIB_MULTIPLIERS = {
+        FrequencyType_Weekly: 52, FrequencyType_Fortnightly: 26,
+        FrequencyType_TwiceMonthly: 24, FrequencyType_Monthly: 12,
+        FrequencyType_Quarterly: 4, FrequencyType_Annually: 1,
+    };
+    function updateContribAnnual(suffix) {
+        const amt  = parseFloat(document.getElementById(`contrib-amount-${suffix}`)?.value) || 0;
+        const freq = document.getElementById(`contrib-freq-${suffix}`)?.value || 'FrequencyType_Monthly';
+        const hint = document.getElementById(`contrib-annual-hint-${suffix}`);
+        if (!hint) return;
+        const annual = amt * (CONTRIB_MULTIPLIERS[freq] || 12);
+        hint.textContent = amt > 0
+            ? `Annual equivalent: £${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
+            : '';
+    }
+    // Run on load to populate hint if editing an existing contribution
+    updateContribAnnual('ca');
+    updateContribAnnual('ci');
 </script>
 {% endblock %}
 

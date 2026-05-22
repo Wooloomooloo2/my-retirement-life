@@ -246,6 +246,7 @@ def load_all_accounts() -> list:
                 "label":         label,
                 "name":          _val(iri, "accountName", label),
                 "account_class": account_class,
+                "account_type_local": _local(iri, "accountType"),
                 "balance":       base_balance,
                 "balance_date":  balance_date,
                 # Rate fields — zero for inapplicable class
@@ -380,6 +381,59 @@ def load_life_events() -> list:
             "received_by_account": received_by,
         })
     return events
+
+
+# ---------------------------------------------------------------------------
+# Account contributions (ADR-015)
+# ---------------------------------------------------------------------------
+
+def load_all_contributions() -> dict:
+    """Return all AccountContribution instances keyed by account label.
+
+    Each value is a dict with:
+        annual_amount — contribution amount × frequency multiplier
+        start_year    — int or None (defaults to current_year in engine)
+        end_year      — int or None (defaults to retirement_year in engine)
+
+    Only accounts that have a contribution are included.
+    """
+    type_node = og.NamedNode(f"{MRL}AccountContribution")
+    quads     = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    contributions: dict = {}
+
+    for q in quads:
+        c_iri = q.subject
+
+        # Find the account this contribution belongs to
+        owner_qs = list(store.store.quads_for_pattern(
+            c_iri, og.NamedNode(f"{MRL}contributionOwner"), None, DATA_GRAPH))
+        if not owner_qs:
+            continue
+        account_label = _iri_local(str(owner_qs[0].object.value))
+
+        freq       = _local(c_iri, "contributionFrequency")
+        multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
+        amount     = _float(c_iri, "contributionAmount")
+
+        start_raw = _val(c_iri, "contributionStartYear", "")
+        end_raw   = _val(c_iri, "contributionEndYear",   "")
+        try:
+            start_year = int(start_raw) if start_raw else None
+        except ValueError:
+            start_year = None
+        try:
+            end_year = int(end_raw) if end_raw else None
+        except ValueError:
+            end_year = None
+
+        contributions[account_label] = {
+            "annual_amount": amount * multiplier,
+            "start_year":    start_year,
+            "end_year":      end_year,
+            "growth_rate":   _float(c_iri, "contributionGrowthRate"),   # ADR-015 v1.1
+        }
+
+    return contributions
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +701,7 @@ def run_projection(
     all_accounts   = load_all_accounts()
     budget_lines   = load_budget_lines()
     life_events    = load_life_events()
+    contributions  = load_all_contributions()   # ADR-015
     col_ratio      = load_col_ratio()
 
     if not all_accounts:
@@ -703,12 +758,14 @@ def run_projection(
     )
 
     # --- Year-by-year loop ---
-    # Per-account balance, withdrawal and return history
-    account_history: dict[str, list[float]]            = {acc["label"]: [] for acc in all_accounts}
-    account_withdrawal_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
-    account_return_history: dict[str, list[float]]     = {acc["label"]: [] for acc in all_accounts}
-    projection_years = []
-    cumulative_tax   = 0.0
+    # Per-account balance, withdrawal, return and contribution history
+    account_history: dict[str, list[float]]             = {acc["label"]: [] for acc in all_accounts}
+    account_withdrawal_history: dict[str, list[float]]  = {acc["label"]: [] for acc in all_accounts}
+    account_return_history: dict[str, list[float]]      = {acc["label"]: [] for acc in all_accounts}
+    account_contribution_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}  # ADR-015
+    projection_years    = []
+    cumulative_tax      = 0.0
+    cumulative_contributions = 0.0   # ADR-015
 
     for year in range(current_year, end_year + 1):
         years_from_start = year - current_year
@@ -735,6 +792,30 @@ def run_projection(
             account_return_history[acc["label"]].append(
                 round(balances[acc["label"]] - opening_this_year[acc["label"]], 0)
             )
+
+        # 2b. Apply contributions (ADR-015)
+        # Credits each account's balance; the matching cashflow cost is deducted
+        # from pre_net below so that drawdown covers any funding shortfall.
+        # Default active window: current_year … retirement_year (inclusive).
+        year_contribution_spending = 0.0
+        for acc in all_accounts:
+            contrib = contributions.get(acc["label"])
+            contrib_this_year = 0.0
+            if contrib:
+                c_start = contrib["start_year"] if contrib["start_year"] else current_year
+                c_end   = contrib["end_year"]   if contrib["end_year"]   else retirement_year
+                if c_start <= year <= c_end:
+                    base   = contrib["annual_amount"]
+                    g_rate = contrib.get("growth_rate", 0.0)
+                    years_active = year - c_start   # 0 in first active year
+                    contrib_this_year = (
+                        base * ((1 + g_rate / 100) ** years_active)
+                        if g_rate != 0.0 else base
+                    )
+                    balances[acc["label"]] += contrib_this_year
+                    year_contribution_spending += contrib_this_year
+            account_contribution_history[acc["label"]].append(round(contrib_this_year, 0))
+        cumulative_contributions += year_contribution_spending
 
         # 3. Income: active income sources + non-reinvested dividends
         income_amount = 0.0
@@ -792,8 +873,9 @@ def run_projection(
                     general_receipts += abs(amt)
 
         # 6. Net cashflow before drawdown
+        # Contributions are funded from cashflow (same as mandatory spending).
         total_spending = mandatory + discretionary + loans + general_costs
-        pre_net        = income_amount + general_receipts - total_spending
+        pre_net        = income_amount + general_receipts - total_spending - year_contribution_spending
 
         # 7. Drawdown or surplus
         tax_free_used: dict[str, float] = {acc["label"]: 0.0 for acc in all_accounts}
@@ -841,13 +923,42 @@ def run_projection(
             net_annual_tax = total_source_tax + res_tax
 
         else:
-            # Surplus (ADR-011 §4)
+            # Surplus — income exceeded spending + contributions this year.
+            # Always credit to the spending account (or first cash account as fallback)
+            # so that unspent income accumulates correctly rather than disappearing.
             surplus = pre_net
             if surplus_strategy == "SurplusStrategy_SweepToAccount":
                 target = surplus_acc or spending_acc
-                if target and target in balances:
-                    balances[target] += surplus
-            # ReduceDrawdown: no drawdown was made; money stays invested automatically.
+            else:
+                # ReduceDrawdown: no drawdown was needed; surplus stays in the
+                # income/spending account rather than being redistributed elsewhere.
+                target = spending_acc
+
+            if target and target in balances:
+                balances[target] += surplus
+            else:
+                # No spending account configured.
+                # Priority: Current account → any cash account → any account.
+                # This avoids silently routing surplus into an ISA or investment account
+                # just because it was the first one created.
+                first_current = next(
+                    (a["label"] for a in all_accounts
+                     if a["account_class"] == "CashAccount"
+                     and a.get("account_type_local") == "CashAccountType_Current"),
+                    None
+                )
+                first_cash = next(
+                    (a["label"] for a in all_accounts
+                     if a["account_class"] == "CashAccount"),
+                    None
+                )
+                fallback = (
+                    first_current
+                    or first_cash
+                    or (all_accounts[0]["label"] if all_accounts else None)
+                )
+                if fallback:
+                    balances[fallback] += surplus
 
         cumulative_tax += net_annual_tax
 
@@ -876,7 +987,7 @@ def run_projection(
 
     # --- Confidence scoring (unchanged logic) ---
     runs_out_year = next(
-        (y["year"] for y in projection_years if y["balance"] < 0), None)
+        (y["year"] for y in projection_years if y["balance"] <= 0), None)
     final_balance = projection_years[-1]["balance"] if projection_years else 0
 
     if runs_out_year is None:
@@ -920,10 +1031,13 @@ def run_projection(
         "account_balances":    account_history,
         "account_withdrawals": account_withdrawal_history,
         "account_returns":     account_return_history,
+        "account_contributions": account_contribution_history,    # ADR-015
         "account_names":       {acc["label"]: acc["name"]          for acc in all_accounts},
         "account_classes":     {acc["label"]: acc["account_class"] for acc in all_accounts},
         # ADR-013: tax summary
-        "total_tax_paid": round(cumulative_tax, 0),
+        "total_tax_paid":         round(cumulative_tax, 0),
+        # ADR-015: contribution summary
+        "total_contributions": round(cumulative_contributions, 0),
     }
 
 
@@ -1147,18 +1261,45 @@ async def projection_page(request: Request):
     projection    = run_projection(proj_settings["inflation_rate"], proj_settings)
     mc            = run_monte_carlo(proj_settings["inflation_rate"], proj_settings["mc_profile"])
     all_accounts  = load_all_accounts()
+
+    # Determine where surplus income accumulates — mirrors the engine fallback logic —
+    # so the UI can tell the user clearly rather than leaving it implicit.
+    spending_label = proj_settings.get("spending_account_label")
+    if spending_label:
+        surplus_dest_name = next(
+            (a["name"] for a in all_accounts if a["label"] == spending_label),
+            spending_label
+        )
+        surplus_dest_configured = True
+    else:
+        first_current = next(
+            (a for a in all_accounts
+             if a["account_class"] == "CashAccount"
+             and a.get("account_type_local") == "CashAccountType_Current"),
+            None
+        )
+        first_cash = next(
+            (a for a in all_accounts if a["account_class"] == "CashAccount"),
+            None
+        )
+        fallback = first_current or first_cash or (all_accounts[0] if all_accounts else None)
+        surplus_dest_name = fallback["name"] if fallback else "not configured"
+        surplus_dest_configured = False
+
     return templates.TemplateResponse(
         request=request,
         name="projection.html",
         context={
-            "app_name":       settings.app_name,
-            "active":         "projection",
-            "projection":     projection,
-            "mc":             mc,
-            "mc_profile":     proj_settings["mc_profile"],
-            "inflation_rate": proj_settings["inflation_rate"],
-            "proj_settings":  proj_settings,
-            "all_accounts":   all_accounts,   # for spending/surplus account pickers
+            "app_name":               settings.app_name,
+            "active":                 "projection",
+            "projection":             projection,
+            "mc":                     mc,
+            "mc_profile":             proj_settings["mc_profile"],
+            "inflation_rate":         proj_settings["inflation_rate"],
+            "proj_settings":          proj_settings,
+            "all_accounts":           all_accounts,
+            "surplus_dest_name":      surplus_dest_name,
+            "surplus_dest_configured": surplus_dest_configured,
         }
     )
 

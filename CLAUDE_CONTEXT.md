@@ -1,333 +1,64 @@
-# My Retirement Life — Claude Context Document
+# CLAUDE_CONTEXT — My Retirement Life (MRL)
 
-This document is read at the start of each new Claude conversation to provide
-full project context without needing the entire chat history.
-
-**Last updated:** 2026-05-17
-**Current version:** v1.0.0 ontology complete; v0.3 coding not yet started
+> Drop this file into a new conversation to restore full project context.
+> Keep it updated at the end of each session.
+> Last updated: 2026-05-22
 
 ---
 
-## What this project is
+## Project overview
 
-A local, privacy-first retirement planning application. Users input their
-financial picture (income, savings, spending, life events) and see a year-by-year
-projection of their retirement trajectory with a confidence score.
+**My Retirement Life (MRL)** is a local-first personal retirement planning application.
+The user is a business architect and data modeller — Claude does all coding.
 
-Runs entirely on the user's machine. No cloud, no accounts, no external data.
-Target platforms: Windows, macOS, Linux.
-
-GitHub: https://github.com/Wooloomooloo2/my-retirement-life
-
----
-
-## Tech stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.13 + FastAPI |
-| Data store | Oxigraph (embedded via pyoxigraph) — RDF triple store |
-| Templating | Jinja2 (server-rendered HTML) |
-| Frontend | HTMX + Tailwind CSS + DaisyUI + Chart.js |
-| Packaging (planned) | PyInstaller (Windows .exe), AppImage (Linux), PyInstaller (macOS .app) |
+- **GitHub:** `Wooloomooloo2/my-retirement-life`
+- **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
+- **Platform:** Windows (VS Code), may migrate to Linux
+- **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/`
+- **Ontology:** `mrl-ontology.ttl`, version 1.0.1 + ADR-015 additions (see below)
 
 ---
 
-## Project structure
+## Repository structure
 
 ```
 my-retirement-life/
-├── main.py                          # Entry point — loads ontology, starts uvicorn
-├── requirements.txt                 # Includes numpy (added v0.2)
-├── .env.example
-├── docs/
-│   ├── adr/                         # Architecture Decision Records (ADR-001 to ADR-013)
-│   ├── ontology/
-│   │   ├── mrl-ontology.ttl         # THE ONTOLOGY — source of truth, v1.0.0
-│   │   └── README.md                # Full ontology documentation (rewritten 2026-05-17)
-│   └── requirements/
-│       ├── mvp.md
-│       └── user-stories.md
-└── src/
-    ├── config.py                    # Settings, paths (uses platformdirs)
-    ├── api/
-    │   ├── app.py                   # FastAPI app, routers, exception handlers,
-    │   │                            # Jinja2 globals (user_initials, setup_state)
-    │   ├── templates.py             # Shared Jinja2Templates instance
-    │   └── routes/
-    │       ├── profile.py           # GET/POST /profile
-    │       ├── income.py            # GET/POST /income (CRUD)
-    │       ├── accounts.py          # GET/POST /accounts (CRUD)
-    │       ├── investments.py       # GET/POST /investments (CRUD) — v0.2
-    │       ├── budget.py            # GET/POST /budget (CRUD)
-    │       ├── life_events.py       # GET/POST /life-events (CRUD)
-    │       ├── projection.py        # GET /projection (engine + chart + Monte Carlo)
-    │       └── settings_route.py    # GET/POST /settings (export/import/inflation)
-    ├── store/
-    │   ├── graph.py                 # RetirementStore wrapper, next_iri(), MRL, DATA_GRAPH
-    │   ├── ontology_loader.py       # Loads TTL into Oxigraph on startup
-    │   └── mrl-ontology.ttl         # COPY — do not edit here, edit docs/ontology/
-    └── templates/
-        ├── base.html                # Layout, sidebar, setup banner (calls setup_state())
-        ├── dashboard.html           # First-run wizard + live dashboard
-        ├── profile.html             # Personal details (incl. retirement jurisdiction)
-        ├── income.html              # Multiple income sources with start/end years
-        ├── accounts.html            # Cash accounts with FX rates
-        ├── investments.html         # Investment accounts — v0.2
-        ├── budget.html              # Budget lines with frequency and start/end years
-        ├── life_events.html
-        ├── projection.html          # Stacked chart + confidence score + Monte Carlo
-        ├── settings.html            # Export/import/inflation rate
-        └── error.html               # Friendly 404/500 page
+├── src/
+│   ├── api/
+│   │   ├── app.py                    ← FastAPI app, middleware, dashboard route
+│   │   ├── templates.py              ← Jinja2 templates instance
+│   │   └── routes/
+│   │       ├── profile.py
+│   │       ├── accounts.py           ← Cash accounts CRUD + contribution CRUD
+│   │       ├── investments.py        ← Investment accounts CRUD + contribution CRUD
+│   │       ├── income.py
+│   │       ├── budget.py             ← Includes get_all_contributions_for_budget()
+│   │       ├── life_events.py
+│   │       ├── projection.py         ← Engine + projection settings routes
+│   │       ├── settings_route.py     ← Backup/restore/export (incl. contributions)
+│   │       └── scenarios.py          ← Scenario management routes
+│   ├── store/
+│   │   ├── graph.py                  ← Store singleton, MRL/DATA_GRAPH constants
+│   │   ├── ontology_loader.py
+│   │   └── scenario_manager.py       ← Named scenario file management
+│   └── templates/
+│       ├── base.html
+│       ├── dashboard.html
+│       ├── profile.html
+│       ├── accounts.html             ← Includes contribution collapsible section
+│       ├── investments.html          ← Full rewrite; includes contribution section
+│       ├── investment_projection.html ← Per-account detail chart (incl. contribution bar)
+│       ├── income.html
+│       ├── budget.html               ← Includes read-only contributions section
+│       ├── life_events.html          ← Fixed amount sign UX
+│       ├── projection.html           ← Includes surplus_dest_name in assumptions
+│       ├── settings.html
+│       ├── scenarios.html
+│       └── error.html
+└── docs/
+    └── adr/
+        ├── ADR-010 through ADR-015
 ```
-
----
-
-## Critical conventions — always follow these
-
-### 1. Data access pattern (ADR-007)
-- **Reads of known instances** → `quads_for_pattern` (NOT SPARQL SELECT)
-- **Queries/filtering/aggregation** → SPARQL SELECT
-- **All writes** → SPARQL UPDATE
-
-```python
-# Reading a known instance — always use quad patterns
-def get_val(prop: str) -> str:
-    qs = list(store.store.quads_for_pattern(
-        subject_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
-    return str(qs[0].object.value) if qs else ""
-```
-
-### 2. IRI patterns (ADR-006)
-- Classes: `mrl:CashAccount`
-- Properties: `mrl:accountBalance` (camelCase)
-- Reference individuals: `mrl:Currency_GBP`, `mrl:Jurisdiction_GB`
-- Controlled vocab: `mrlx:BudgetLineType_Mandatory`, `mrlx:FrequencyType_Monthly`
-- User instance data: `mrl:ClassName_N` (e.g. `mrl:Person_1`, `mrl:CashAccount_3`)
-
-### 3. Named graphs
-- `https://myretirementlife.app/ontology/graph` — ontology (read-only at runtime)
-- `https://myretirementlife.app/data/graph` — user data (read/write)
-
-In code: `DATA_GRAPH = og.NamedNode("https://myretirementlife.app/data/graph")`
-In code: `ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")`
-
-### 4. Shared templates
-ALL routes import from `src.api.templates`:
-```python
-from src.api.templates import templates
-# NEVER: templates = Jinja2Templates(directory=...)  in route files
-```
-
-### 5. Jinja2 globals (set in app.py after helpers defined)
-- `user_initials()` — reads Person_1 first/last name, returns initials
-- `setup_state()` — returns dict with setup completion flags for the banner in base.html
-
-### 6. Ontology file locations
-- **Authoritative copy:** `docs/ontology/mrl-ontology.ttl` (edit this one)
-- **Runtime copy:** `src/store/mrl-ontology.ttl` (keep in sync — copy from docs/ontology)
-- After editing TTL: delete the store folder so it reloads fresh on next startup
-- Store location on Windows: `C:\Users\<user>\AppData\Local\MyRetirementLife\`
-- Store location on macOS: `/Users/<user>/Library/Application Support/MyRetirementLife/`
-
-### 7. Cross-platform paths
-Always use `pathlib.Path` — never string concatenation or hardcoded separators.
-
----
-
-## Ontology summary (v1.0.0)
-
-**Namespaces:**
-- `mrl:` = `https://myretirementlife.app/ontology#`
-- `mrlx:` = `https://myretirementlife.app/ontology/ext#`
-
-**Key classes:**
-- `mrl:Person` — single user (Person_1)
-- `mrl:IncomeSource` — multiple, with start/end years
-- `mrl:Account` → `mrl:CashAccount`, `mrl:InvestmentAccount`, `mrl:CreditCardAccount`, `mrl:PropertyAsset`, `mrl:PensionAccount` (post-MVP), `mrl:OtherAsset` (post-MVP)
-- `mrl:BudgetLine` — with frequency, growth rate, and optional start/end years
-- `mrl:BudgetLineSegment` — post-MVP time-segmented growth rates (declared, not implemented)
-- `mrl:LifeEvent`
-- `mrl:ProjectionSettings` — inflation, Monte Carlo profile, drawdown settings, tax settings
-- `mrl:Currency`, `mrl:Jurisdiction` — reference individuals
-
-**Properties on `mrl:Account` (all subtypes) — v1.0.0 additions:**
-- `mrl:drawdownMinAge`, `mrl:drawdownMaxAge` — decimal; eligibility age window
-- `mrl:drawdownEarliestDate`, `mrl:drawdownLatestDate` — xsd:date; fixed-term windows
-- `mrl:drawdownRatio` — decimal; proportion for Proportional strategy
-- `mrl:effectiveWithdrawalTaxRate` — decimal; user-specified rate after treaty relief
-- `mrl:annualTaxFreeWithdrawal` — decimal; annual tax-free withdrawal allowance
-- `mrl:taxTreatment` — → `mrlx:TaxTreatmentType`; structural type for UI guidance
-- `mrl:accountJurisdiction` — → `mrl:Jurisdiction`; already existed pre-v1.0.0
-
-**Properties on `mrl:ProjectionSettings` — v1.0.0 additions:**
-- `mrl:drawdownStrategy` — → `mrlx:DrawdownStrategyType` (Waterfall or Proportional)
-- `mrl:surplusStrategy` — → `mrlx:SurplusStrategyType` (SweepToAccount or ReduceDrawdown)
-- `mrl:spendingAccount` — → `mrl:Account`; drawdown destination account
-- `mrl:surplusAccount` — → `mrl:Account`; surplus sweep destination
-- `mrl:annualPersonalAllowance` — decimal; residence-country income threshold
-- `mrl:residenceIncomeTaxRate` — decimal; marginal rate above allowance
-
-**Properties on `mrl:LifeEvent` — v1.0.0 additions:**
-- `mrl:fundedByAccount` — → `mrl:Account`; account that funds an expenditure event
-- `mrl:receivedByAccount` — → `mrl:Account`; account that receives a windfall
-
-**Properties on `mrl:Jurisdiction` — v1.0.0 additions:**
-- `mrl:standardPersonalAllowance` — decimal; reference allowance in jurisdiction currency
-
-**Key mrlx: SKOS schemes:**
-- `mrlx:IncomeSourceTypeScheme` — Employment, Property, Retirement (subtypes), Investment (subtypes), etc.
-- `mrlx:AccountTypeScheme` — CashAccountType subtypes + InvestmentAccountType subtypes + CreditCardAccountType subtypes
-- `mrlx:FrequencyTypeScheme` — Weekly×52, Fortnightly×26, TwiceMonthly×24, Monthly×12, Quarterly×4, Annually×1
-- `mrlx:BudgetLineType` — Mandatory, Discretionary, Loan
-- `mrlx:LifeEventType` — LargeExpenditure, Windfall, etc.
-- `mrlx:EmploymentStatus` — Employed, SelfEmployed, NotWorking, Retired
-- `mrlx:MonteCarloProfileScheme` — Conservative (σ=3%/0.8%), Moderate (σ=6%/1.5%), Aggressive (σ=10%/2.5%)
-- `mrlx:CreditCardAccountType` — Standard, ChargeCard
-- `mrlx:TaxTreatmentScheme` — PreTaxWholeWithdrawal, PostTaxGainsOnly, PostTaxTaxFreeWithdrawal, TaxFree — v1.0.0
-- `mrlx:DrawdownStrategyScheme` — Waterfall, Proportional — v1.0.0
-- `mrlx:SurplusStrategyScheme` — SweepToAccount, ReduceDrawdown — v1.0.0
-
----
-
-## Projection engine summary
-
-File: `src/api/routes/projection.py`
-
-**Current state (v0.2 — not yet refactored for v0.3):**
-
-Key functions:
-- `load_profile()`
-- `load_all_income_sources()` — returns list with start/end years
-- `load_accounts()` — returns list with FX-adjusted balances (cash only)
-- `load_investment_accounts()` — returns list with growth/dividend/reinvest (v0.2)
-- `load_budget_lines()` — returns list with annual amounts, start/end years
-- `load_life_events()`
-- `load_col_ratio()` — returns retirement_col / current_col from Jurisdiction COL indices
-- `get_projection_settings()` — returns inflation_rate and mc_profile
-- `run_projection(inflation_rate)` — deterministic year-by-year projection
-- `run_monte_carlo(inflation_rate, mc_profile_local, n_sims=500)` — Monte Carlo simulation
-
-**v0.2 engine logic per year (deterministic):**
-1. Sum active income sources (checking start/end year windows)
-2. Add non-reinvested investment dividends as income
-3. Apply weighted average return (cash interest + investment growth) to total balance
-4. Grow each budget line by its rate (or inflation_rate if 0), respecting start/end years
-5. Remove loan lines after their end year
-6. Apply COL ratio to spending from retirement year (if retiring abroad)
-7. Apply life event amounts (costs and receipts separately)
-8. Accumulate balance
-
-**v0.2 Monte Carlo:** 500 simulations on entire blended balance (cash + investments).
-Returns P10/P50/P90 balance arrays and success rate.
-
-**v0.3 target engine architecture (ADR-012 — not yet implemented):**
-- Deterministic engine tracks each account's balance independently per year
-- Monte Carlo runs on investment account pool only; cash accounts are deterministic
-- Total = deterministic cash balance + investment P10/P50/P90
-- Engine return type changes to a structured dict:
-  ```python
-  {
-    "accounts": {"mrl:CashAccount_1": [y0, y1, ...], ...},
-    "total": [y0_total, y1_total, ...],
-    "tax_paid": [y0_tax, y1_tax, ...]
-  }
-  ```
-- Tax applied per ADR-013 logic at point of withdrawal per account
-- Drawdown eligibility filtered per year per ADR-011 rules
-
-**Confidence scoring (unchanged for v0.3):**
-- Green: never runs out
-- Amber: runs out within 5 years of life expectancy
-- Red: runs out before life expectancy
-
----
-
-## Setup wizard (5 steps)
-
-The persistent banner in `base.html` guides first-time users through:
-1. Profile
-2. Income
-3. Accounts (cash)
-4. Investments
-5. Budget
-
-`get_setup_state()` in `app.py` drives this. It imports `get_all_investment_accounts`
-from `investments.py` (not from `projection.py`) for the investments check.
-
----
-
-## What was completed in v0.2
-
-1. ✅ Budget start/stop dates — `mrl:budgetStartYear`, `mrl:budgetEndYear` on BudgetLine
-2. ✅ Retirement jurisdiction — `mrl:plansToRetireIn`, `mrl:costOfLivingIndex`, COL adjustment in projection
-3. ✅ Investment accounts — full CRUD at `/investments`, `mrl:InvestmentAccount` properties, projection engine integration
-4. ✅ Monte Carlo simulation — 500 runs, P10/P50/P90 band chart, named profiles in ontology, profile selector on projection page
-5. ✅ Life event receipts visible as teal bars on projection chart
-6. ✅ Setup wizard updated to 5 steps (investments added)
-7. ✅ Sidebar investments active state fixed
-8. ✅ ADR-009 updated to Implemented with implementation notes
-9. ✅ Ontology README updated to v0.9.0
-
-## What was completed post-v0.2 (2026-05-17 session)
-
-1. ✅ ADR README.md recreated — full index and summaries for ADR-001 to ADR-010
-2. ✅ Ontology updated to v0.9.1 (ADR-010) — `mrl:CreditCardAccount`, `mrl:PropertyAsset` promoted, `mrl:isLiability`, `mrlx:CreditCardAccountType` SKOS concepts
-3. ✅ Backup/restore bug fixed — `settings_route.py` exports/restores investment accounts, retirement jurisdiction, budget start/end dates, Monte Carlo profile; `APP_VERSION` updated to `"0.2.0"`
-4. ✅ ADR-010 accepted — sister app (My Finance Life) ontology sharing strategy documented
-5. ✅ ADR-011 written — per-account drawdown eligibility, ordering, spending account, surplus handling
-6. ✅ ADR-012 written — per-account balance tracking, Monte Carlo restricted to investment accounts
-7. ✅ ADR-013 written — two-layer tax treatment model (account-level + residence-level)
-8. ✅ Ontology updated to v1.0.0 — all v0.3 properties and SKOS schemes added (ADR-011/012/013)
-9. ✅ Ontology README rewritten from scratch covering v1.0.0 in full
-10. ✅ ADR README updated with ADR-011, ADR-012, ADR-013 entries
-
----
-
-## What's next — v0.3 coding phases
-
-### Phase B — UI additions (start here; no engine changes)
-Add new fields to existing pages in collapsible "Tax & Drawdown" sections:
-
-**accounts.html / investments.html:**
-- Drawdown eligibility: min age, max age, earliest date, latest date
-- Drawdown priority (already exists in ontology; expose in UI)
-- Drawdown ratio (for Proportional strategy)
-- Tax treatment selector (mrlx:TaxTreatmentScheme)
-- Effective withdrawal tax rate
-- Annual tax-free withdrawal allowance
-- Spending account / surplus account designation flags
-
-**settings.html:**
-- Drawdown strategy selector (Waterfall / Proportional)
-- Surplus strategy selector (SweepToAccount / ReduceDrawdown)
-- Spending account picker (from user's account list)
-- Surplus account picker (from user's account list)
-- Annual personal allowance
-- Residence income tax rate
-
-**life_events.html:**
-- Funded by account picker (for expenditure events)
-- Received by account picker (for windfall events)
-
-**settings_route.py:**
-- Export/restore all new account-level and projection-settings properties
-
-### Phase C — Per-account projection engine + chart (biggest lift)
-- Refactor `run_projection()` to track per-account balances
-- Restrict `run_monte_carlo()` to investment accounts only; add cash deterministically
-- Update projection chart: Aggregate view (current) + By Account stacked view (new)
-- Add secondary drawdown-vs-growth chart per investment account
-- Update `projection.html` for new result structure and chart mode toggle
-
-### Phase D — Tax model in engine
-- Wire `effectiveWithdrawalTaxRate` and `annualTaxFreeWithdrawal` into drawdown calculations
-- Apply residence-level `annualPersonalAllowance` / `residenceIncomeTaxRate` at year level
-- Surface `tax_paid[year]` in projection chart data table
-
-### Phase E — Life event account association
-- Use `fundedByAccount` / `receivedByAccount` in projection engine
-- Draw expenditure events from named account; deposit windfalls into named account
 
 ---
 
@@ -336,15 +67,297 @@ Add new fields to existing pages in collapsible "Tax & Drawdown" sections:
 | # | Decision | Status |
 |---|---------|--------|
 | 001 | Python + FastAPI + Oxigraph backend | Implemented |
-| 002 | PyInstaller (Windows/macOS) + AppImage (Linux) packaging | Accepted |
+| 002 | PyInstaller/AppImage packaging | Accepted |
 | 003 | HTMX + Tailwind + DaisyUI frontend | Implemented |
 | 004 | Cross-platform portability practices | Implemented |
 | 005 | Ontology loaded from TTL into named graph on startup | Implemented |
 | 006 | Instance IRIs follow mrl:ClassName_N pattern | Implemented |
 | 007 | Quad patterns for reads, SPARQL UPDATE for writes | Implemented |
-| 008 | Multiple income sources with start/end dates in MVP | Implemented |
-| 009 | Investment accounts as pots; Monte Carlo with named profiles | Implemented |
-| 010 | Sister app (MFL) loads and extends MRL ontology as shared foundation | Accepted |
-| 011 | Per-account drawdown eligibility, ordering, spending account, surplus handling | Accepted |
-| 012 | Per-account balance tracking; Monte Carlo restricted to investment accounts | Accepted |
-| 013 | Two-layer tax treatment model (account-level source tax + residence personal allowance) | Accepted |
+| 008 | Multiple income sources with start/end dates | Implemented |
+| 009 | Investment accounts; Monte Carlo with named profiles | Implemented |
+| 010 | Sister app (MFL) loads and extends MRL ontology | Accepted |
+| 011 | Per-account drawdown eligibility, ordering, surplus | Implemented |
+| 012 | Per-account balance tracking; MC restricted to investments | Implemented |
+| 013 | Two-layer tax model (source tax + residence allowance) | Implemented |
+| 014 | Scenario management | Implemented |
+| 015 | Account contributions | **Implemented** |
+
+---
+
+## Projection engine (`projection.py`) key structure
+
+```python
+load_all_accounts()           → list (cash + investment, all ADR-011/012/013 fields
+                                + account_type_local e.g. "CashAccountType_Current")
+load_all_income_sources()
+load_budget_lines()
+load_life_events()
+load_all_contributions()      → {account_label: {annual_amount, start_year, end_year, growth_rate}}
+get_projection_settings() / save_projection_settings()
+
+run_projection(inflation_rate, proj_settings=None)
+    → {
+        "years":                 [{year, income, mandatory, discretionary, balance, tax_paid, ...}],
+        "retirement_year":       int,
+        "total_tax_paid":        float,
+        "total_contributions":   float,          # ADR-015
+        "account_balances":      {label: [y0, y1, ...]},
+        "account_withdrawals":   {label: [w0, w1, ...]},
+        "account_returns":       {label: [r0, r1, ...]},
+        "account_contributions": {label: [c0, c1, ...]},  # ADR-015
+        "account_names":         {label: name},
+        "account_classes":       {label: "CashAccount"|"InvestmentAccount"},
+      }
+
+run_monte_carlo(inflation_rate, proj_settings=None)
+    → {years, p10, p50, p90, cash_floor, retirement_year, success_rate, ...}
+```
+
+### Year loop order (run_projection)
+
+1. Capture `opening_this_year` balances
+2. Apply growth to each account (interest for cash, growth+dividends for investments)
+3. Record per-account returns = closing_after_growth − opening
+4. **Apply contributions** (ADR-015): credit account balance + accumulate `year_contribution_spending`
+5. Sum active income sources + non-reinvested dividends
+6. Sum active budget lines (inflation-adjusted, COL ratio in retirement)
+7. Process life events (cost/receipt; account-specific if fundedBy/receivedBy set)
+8. `pre_net = income + receipts − spending − year_contribution_spending`
+9. If `pre_net < 0`: drawdown via `_apply_drawdown()` + `_compute_source_tax()`; residence tax
+10. If `pre_net >= 0`: **always credit surplus to spending account** (or first current account,
+    or first cash account, or first account — in that priority order). Both ReduceDrawdown and
+    SweepToAccount strategies now credit the surplus rather than discarding it.
+11. Record closing balances, withdrawals, contributions per account
+
+### Confidence scoring
+
+- **Runs out year:** first year where `balance <= 0` (changed from `< 0` — catches the
+  common case where balances are clamped at 0 by `max(0.0, ...)` and never go negative)
+- Green: never runs out
+- Amber: runs out within 5 years of life expectancy
+- Red: runs out before life expectancy
+
+### Surplus routing fallback priority
+
+When no spending account is configured, surplus flows to accounts in this order:
+1. Configured `spending_account` (explicit — always wins)
+2. First `CashAccountType_Current` account (prefers current/checking over savings/ISA)
+3. First cash account of any type
+4. First account of any class (last resort)
+
+### Contribution growth rate (ADR-015)
+
+```python
+# In year loop — compound growth from first active year:
+years_active = year - c_start   # 0 in the first active year
+contrib_this_year = base_annual * ((1 + growth_rate / 100) ** years_active)
+```
+
+---
+
+## Account contributions (ADR-015) — COMPLETE
+
+### Data model
+- `mrl:AccountContribution` class; linked to account via `mrl:contributionOwner`
+- Properties: `contributionAmount`, `contributionFrequency`, `contributionStartYear`,
+  `contributionEndYear`, `contributionNote`, `contributionGrowthRate`, `contributionOwner`
+- IRI pattern: `mrl:AccountContribution_N`
+- One contribution per account in v1.0 UI (data model supports multiples)
+
+### Routes
+- `POST /accounts/{n}/contribution` — save/replace contribution for cash account N
+- `POST /accounts/{n}/contribution/delete` — delete contribution for cash account N
+- `POST /investments/{n}/contribution` — same for investment account N
+- `POST /investments/{n}/contribution/delete` — same
+
+### Engine dual effect
+Credits account balance **and** deducts from cashflow (treated as mandatory spending).
+Default active window: current year → retirement year (inclusive) if start/end not set.
+
+### UI
+- Contribution collapsible section appears **after** the main `</form>` in each account card
+  (separate `<form>` to avoid nested-form HTML invalidity)
+- Only shown when editing (not adding); new accounts redirect to edit after creation
+- Annual equivalent hint updates live as amount/frequency changes
+- Growth rate field: compound growth per year, positive or negative
+- Budget page shows read-only contributions table with annual totals
+
+### Export/restore
+`settings_route.py` exports `account_contributions` list keyed by `ownerLabel`;
+restores with fresh `AccountContribution_N` IRIs. Backward-compatible with pre-ADR-015 backups.
+
+---
+
+## Life events — amount sign convention
+
+- **Stored:** positive = cost (reduces balance), negative = receipt/windfall (increases balance)
+- **UI input:** always enter a positive number; sign badge (+/−) and hint text update based on
+  event type. On submit, JS negates the amount for `LifeEventType_Windfall` automatically.
+- **Table display:** +£ in green for receipts, −£ in red for costs
+- `RECEIPT_TYPES` set in `life_events.html` JS: currently `{'LifeEventType_Windfall'}`
+  — extend this if additional receipt types are added to the ontology
+
+---
+
+## Store / ontology patterns
+
+**Constants in `src/store/graph.py`:**
+```python
+MRL       = "https://myretirementlife.app/ontology#"
+MRL_EXT   = "https://myretirementlife.app/ontology/ext#"
+DATA_GRAPH = NamedNode("https://myretirementlife.app/data/graph")
+```
+
+**IRI naming:** `mrl:ClassName_N` where N = MAX(existing) + 1
+
+**Data access pattern (ADR-007):**
+- Known instances → `quads_for_pattern`
+- Queries/filtering → SPARQL SELECT
+- All writes → SPARQL UPDATE
+
+**Tax rate storage:** decimals in store (0.20), percentages in forms (20). Divide by 100 on save.
+
+**DELETE pattern for contributions:**
+```sparql
+DELETE { GRAPH <data_graph> { ?c ?p ?o . } }
+WHERE  { GRAPH <data_graph> { ?c mrl:contributionOwner <account_iri> ; ?p ?o . } }
+```
+
+---
+
+## app.py Jinja2 globals
+
+- `user_initials` — returns "JS" style initials from Person_1
+- `active_scenario` — returns scenario state dict (`name`, `saved`, `display_name`, `is_named`, `is_clean`)
+- `setup_state` — returns setup checklist completion dict
+
+---
+
+## Projection route context keys
+
+```python
+{
+    "projection":              dict,   # run_projection() result
+    "mc":                      dict,   # run_monte_carlo() result
+    "proj_settings":           dict,
+    "all_accounts":            list,   # includes account_type_local
+    "surplus_dest_name":       str,    # name of account receiving surplus (for UI display)
+    "surplus_dest_configured": bool,   # True if explicitly set in projection settings
+}
+```
+
+---
+
+## Key UX conventions
+
+- **Tax rate fields:** 0–100% in forms, stored as 0–1 decimal in triple store
+- **Chart heights:** always `position:relative; height:Npx` wrapper + `maintainAspectRatio: false`
+- **Form sections:** DaisyUI collapse/collapse-arrow pattern
+- **Contribution sections:** separate `<form>` placed AFTER the main account `</form>`,
+  still inside the same `card-body` div — avoids nested-form HTML invalidity
+- **New account flow:** `POST /accounts` and `POST /investments` redirect to
+  `/accounts/{n}/edit` and `/investments/{n}/edit` after creation, so the contribution
+  section is immediately available
+- **Frequency multipliers:**
+  ```python
+  FREQUENCY_MULTIPLIERS = {
+      "FrequencyType_Weekly": 52, "FrequencyType_Fortnightly": 26,
+      "FrequencyType_TwiceMonthly": 24, "FrequencyType_Monthly": 12,
+      "FrequencyType_Quarterly": 4, "FrequencyType_Annually": 1,
+  }
+  ```
+- **Life event amounts:** always positive in forms; JS negates for receipt types on submit
+- **Account label format:** `CashAccount_N`, `InvestmentAccount_N`, `AccountContribution_N`
+- **Scenario dirty state:** set by HTTP middleware in `app.py`, NOT by route handlers
+
+---
+
+## Ontology additions to apply manually (TTL snippets)
+
+These have been implemented in code but still need adding to both copies of `mrl-ontology.ttl`
+(`docs/ontology/mrl-ontology.ttl` and `src/store/mrl-ontology.ttl`).
+After editing, delete the store folder to force a reload on next startup.
+
+### ADR-015 — Account Contribution class and properties
+
+```turtle
+mrl:AccountContribution a owl:Class ;
+    rdfs:label "Account Contribution"@en ;
+    rdfs:comment "A regular scheduled contribution to an account."@en .
+
+mrl:contributionAmount a owl:DatatypeProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "contribution amount"@en .
+
+mrl:contributionFrequency a owl:ObjectProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:label  "contribution frequency"@en .
+
+mrl:contributionStartYear a owl:DatatypeProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  xsd:integer ;
+    rdfs:label  "contribution start year"@en .
+
+mrl:contributionEndYear a owl:DatatypeProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  xsd:integer ;
+    rdfs:label  "contribution end year"@en .
+
+mrl:contributionNote a owl:DatatypeProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "contribution note"@en .
+
+mrl:contributionGrowthRate a owl:DatatypeProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "contribution annual growth rate"@en .
+
+mrl:contributionOwner a owl:ObjectProperty ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range  mrl:Account ;
+    rdfs:label  "contribution owner"@en .
+
+mrl:hasContribution a owl:ObjectProperty ;
+    rdfs:domain mrl:Account ;
+    rdfs:range  mrl:AccountContribution ;
+    rdfs:label  "has contribution"@en .
+```
+
+---
+
+## Current backlog
+
+### Pre-1.0 polish
+- **Income deposit account UI** — income sources should specify which account receives the
+  income. Engine surplus routing already delivers most of the value (unspent income accumulates
+  in spending/current account). Full per-source routing requires uploading `income.py` and
+  `income.html` for UI changes.
+- Load/Save quick-action buttons in top banner (`base.html` — Claude has not seen this file)
+- `drawdown_configured` dashboard flag fires too early (any settings save, not just spending account)
+- Accounts table overflow on narrower screens
+- **MC model discrepancy:** Monte Carlo shows high success rates even when deterministic engine
+  shows the money running out. MC uses an aggregate pool that doesn't model per-account
+  depletion — known limitation of ADR-012, noted in backlog for future improvement.
+
+### Post-1.0
+- Tax-optimal drawdown ordering (ADR-011 future)
+- Pension commencement lump sum (PCLS) dedicated model
+- Multiple marginal tax bands (ADR-013 future)
+- Per-jurisdiction Monte Carlo profiles (ADR-012 future)
+- Employer contributions (`isEmployerContribution` flag, ADR-015 v1.1)
+- Multiple contributions per account surfaced in UI (ADR-015 v1.1)
+- GIA cost basis from MFL data portability
+- `mrl-core` namespace extraction when MFL is stable
+- MFL sister app
+
+---
+
+## Files Claude has NOT seen (will need uploading when relevant)
+
+- `src/templates/base.html` — needed for: top banner Load/Save buttons, nav indicator
+- `src/api/routes/income.py` — needed for: income deposit account UI
+- `src/templates/income.html` — needed for: income deposit account UI
+- `src/api/routes/life_events.py` — not seen; auto-sign fix is entirely in HTML/JS
+- `mrl-ontology.ttl` — not seen; ontology additions are provided as TTL snippets above

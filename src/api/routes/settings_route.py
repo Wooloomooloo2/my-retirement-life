@@ -163,6 +163,26 @@ def export_all_data() -> dict:
         })
     accounts.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
+    # Account contributions (ADR-015)
+    account_contributions = []
+    for q in store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), og.NamedNode(f"{MRL}AccountContribution"), DATA_GRAPH):
+        iri = q.subject
+        owner_qs = list(store.store.quads_for_pattern(
+            iri, og.NamedNode(f"{MRL}contributionOwner"), None, DATA_GRAPH))
+        owner_label = str(owner_qs[0].object.value).split("#")[-1] if owner_qs else None
+        if not owner_label:
+            continue
+        account_contributions.append({
+            "ownerLabel":  owner_label,
+            "amount":      _float_val(iri, "contributionAmount"),
+            "frequency":   _local(iri, "contributionFrequency"),
+            "startYear":   _int_val(iri, "contributionStartYear"),
+            "endYear":     _int_val(iri, "contributionEndYear"),
+            "note":        _val(iri, "contributionNote"),
+            "growthRate":  _opt_float(iri, "contributionGrowthRate"),
+        })
+
     # Investment accounts
     investment_accounts = []
     for q in store.store.quads_for_pattern(
@@ -261,13 +281,14 @@ def export_all_data() -> dict:
         "exported": date.today().isoformat(),
         "app":      "My Retirement Life",
         "data": {
-            "profile":             profile,
-            "income_sources":      income_sources,
-            "accounts":            accounts,
-            "investment_accounts": investment_accounts,
-            "budget_lines":        budget_lines,
-            "life_events":         life_events,
-            "projection_settings": projection_settings,
+            "profile":               profile,
+            "income_sources":        income_sources,
+            "accounts":              accounts,
+            "account_contributions": account_contributions,   # ADR-015
+            "investment_accounts":   investment_accounts,
+            "budget_lines":          budget_lines,
+            "life_events":           life_events,
+            "projection_settings":   projection_settings,
         }
     }
 
@@ -448,6 +469,42 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 triples += f'\n        <{inv_iri}> mrl:accountNotes "{safe}" .'
 
             triples += _triples_drawdown_tax(inv_iri, inv)
+
+            store.update(f"""
+                PREFIX mrl:  <{MRL}>
+                PREFIX mrlx: <{MRL_EXT}>
+                PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+                INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {triples} }} }}
+            """)
+
+        # --- Account contributions (ADR-015) ---
+        # Contributions are restored by iterating through the ownerLabel, finding a
+        # fresh AccountContribution_N and writing the triples.
+        # Uses a local counter so N values don't collide.
+        contrib_n = 1
+        for contrib in data.get("account_contributions", []):
+            owner_label = contrib.get("ownerLabel")
+            if not owner_label:
+                continue
+            c_iri = f"{MRL}AccountContribution_{contrib_n}"
+            contrib_n += 1
+            freq = contrib.get("frequency", "FrequencyType_Monthly")
+
+            triples = f"""
+        <{c_iri}> a mrl:AccountContribution ;
+            mrl:contributionAmount    "{contrib.get('amount', 0)}"^^xsd:decimal ;
+            mrl:contributionFrequency mrlx:{freq} ;
+            mrl:contributionOwner     <{MRL}{owner_label}> .
+            """
+            if contrib.get("startYear"):
+                triples += f'\n        <{c_iri}> mrl:contributionStartYear "{contrib["startYear"]}"^^xsd:integer .'
+            if contrib.get("endYear"):
+                triples += f'\n        <{c_iri}> mrl:contributionEndYear "{contrib["endYear"]}"^^xsd:integer .'
+            if contrib.get("note"):
+                safe = contrib["note"].replace('"', '\\"')
+                triples += f'\n        <{c_iri}> mrl:contributionNote "{safe}" .'
+            if contrib.get("growthRate") is not None and contrib["growthRate"] != 0.0:
+                triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{contrib["growthRate"]}"^^xsd:decimal .'
 
             store.update(f"""
                 PREFIX mrl:  <{MRL}>

@@ -127,3 +127,40 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
+<!-- =======================================================================
+     Scenario nav indicator — add this near the user avatar/initials in
+     base.html. The active_scenario() global is available on every page.
+
+     When named + clean:   shows scenario name as a link to /scenarios
+     When named + unsaved: shows name + a one-click "Save" button
+     When unnamed:         shows nothing (or a faint "Unsaved session" link)
+     ======================================================================= -->
+
+{% set sc = active_scenario() %}
+{% if sc.is_named %}
+<div class="flex items-center gap-1.5 text-xs">
+    <a href="/scenarios"
+       class="text-base-content/50 hover:text-base-content flex items-center gap-1 truncate max-w-32"
+       title="{{ sc.name }}">
+        <i class="ti ti-file-description text-xs flex-shrink-0"></i>
+        <span class="truncate">{{ sc.name }}</span>
+    </a>
+    {% if not sc.saved %}
+    <form method="post" action="/scenarios/save" class="flex-shrink-0">
+        <button type="submit"
+                class="badge badge-warning badge-xs hover:badge-error transition-colors cursor-pointer border-0 gap-0.5"
+                title="Save '{{ sc.name }}'">
+            <i class="ti ti-device-floppy" style="font-size:9px"></i>
+            Save
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% else %}
+<a href="/scenarios"
+   class="text-xs text-base-content/30 hover:text-base-content/50 flex items-center gap-1"
+   title="No scenario saved — click to save">
+    <i class="ti ti-file-unknown text-xs"></i>
+    <span class="hidden sm:inline">Unsaved</span>
+</a>
+{% endif %}

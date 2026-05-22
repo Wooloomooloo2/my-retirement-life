@@ -2,7 +2,7 @@
 
 {% block title %}Investments — {{ app_name }}{% endblock %}
 {% block page_title %}Investment accounts{% endblock %}
-{% block page_subtitle %}Your stocks, funds, pensions and other investment holdings{% endblock %}
+{% block page_subtitle %}Your investment portfolios and growth assets{% endblock %}
 
 {% block content %}
 
@@ -16,7 +16,7 @@
 {% if deleted %}
 <div class="alert alert-info mb-4">
     <i class="ti ti-trash"></i>
-    <span>Investment account deleted.</span>
+    <span>Account deleted.</span>
 </div>
 {% endif %}
 
@@ -25,8 +25,11 @@
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
         <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
-            <i class="ti ti-chart-line text-base-content/40" aria-hidden="true"></i>
+            <i class="ti ti-chart-bar text-base-content/40" aria-hidden="true"></i>
             Your investment accounts
+            <span class="ml-auto text-base-content/40 text-xs font-normal">
+                Total: £{{ "{:,.0f}".format(total_balance) }}
+            </span>
         </h3>
         <div class="overflow-x-auto">
             <table class="table table-sm w-full">
@@ -36,12 +39,12 @@
                         <th>Type</th>
                         <th>Balance</th>
                         <th>Balance date</th>
-                        <th>Growth rate</th>
-                        <th>Dividend yield</th>
-                        <th>Dividends</th>
-                        <th>Currency</th>
+                        <th>Growth %</th>
+                        <th>Dividend %</th>
+                        <th>Reinvest</th>
                         <th>Draw priority</th>
                         <th>Tax treatment</th>
+                        <th>Contribution</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -52,39 +55,21 @@
                         <td><span class="badge badge-ghost badge-sm">{{ account.accountTypeShort }}</span></td>
                         <td>{{ account.currencySymbol }}{{ "{:,.2f}".format(account.balance | float) }}</td>
                         <td class="text-base-content/60 text-xs">{{ account.balanceDate }}</td>
-                        <td>
-                            {% if account.growthRate and account.growthRate != '0' and account.growthRate != '0.0' %}
-                                <span class="text-success text-xs">+{{ account.growthRate }}%/yr</span>
-                            {% else %}
-                                <span class="text-xs text-base-content/30">—</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if account.dividendRate and account.dividendRate != '0' and account.dividendRate != '0.0' %}
-                                <span class="text-xs text-info">{{ account.dividendRate }}%/yr</span>
-                            {% else %}
-                                <span class="text-xs text-base-content/30">—</span>
-                            {% endif %}
-                        </td>
+                        <td>{{ account.growthRate }}%</td>
+                        <td>{{ account.dividendRate }}%</td>
                         <td>
                             {% if account.reinvestDividends %}
-                                <span class="badge badge-success badge-xs badge-outline">Reinvested</span>
+                                <span class="badge badge-success badge-xs">Yes</span>
                             {% else %}
-                                <span class="badge badge-info badge-xs badge-outline">Paid out</span>
+                                <span class="badge badge-ghost badge-xs">No</span>
                             {% endif %}
-                        </td>
-                        <td>
-                            <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
                         </td>
                         <td class="text-xs text-base-content/50">
                             {% if account.drawdownPriority %}
                                 <span class="badge badge-outline badge-sm">{{ account.drawdownPriority }}</span>
-                                {% if account.drawdownMinAge %}
-                                <span class="block text-base-content/30">min age {{ account.drawdownMinAge }}</span>
-                                {% endif %}
                             {% else %}—{% endif %}
                         </td>
-                        <td class="text-xs">
+                        <td class="text-xs text-base-content/50">
                             {% if account.taxTreatment %}
                                 {% set tt = account.taxTreatment.replace("TaxTreatment_", "") %}
                                 {% if tt == "PostTaxTaxFreeWithdrawal" %}<span class="badge badge-success badge-sm">Tax-free</span>
@@ -92,7 +77,12 @@
                                 {% elif tt == "PreTaxWholeWithdrawal" %}<span class="badge badge-warning badge-sm">Pre-tax</span>
                                 {% elif tt == "PostTaxGainsOnly" %}<span class="badge badge-ghost badge-sm">Gains only</span>
                                 {% else %}<span class="badge badge-ghost badge-sm">{{ tt }}</span>{% endif %}
-                            {% else %}<span class="text-base-content/30">—</span>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-xs text-base-content/50">
+                            {% if account.contribution %}
+                                <span class="badge badge-info badge-sm badge-outline">£{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
+                            {% else %}—{% endif %}
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
@@ -121,7 +111,7 @@
                         <td>Total</td>
                         <td colspan="9" class="text-base-content/60 text-xs">
                             {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
-                            included in retirement projection with investment-specific return volatility
+                            drawdown priority and tax treatment set per account below
                         </td>
                     </tr>
                 </tfoot>
@@ -136,34 +126,30 @@
     <div class="card-body p-4">
         <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
             <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
-            {% if edit_account %}Edit — {{ edit_account.name }}{% else %}Add an investment account{% endif %}
+            {% if edit_account %}Edit account — {{ edit_account.name }}{% else %}Add an investment account{% endif %}
         </h3>
 
         <form method="post"
               action="{% if edit_account %}/investments/{{ edit_account.n }}/edit{% else %}/investments{% endif %}">
 
-            <!-- Core investment account fields (unchanged) -->
+            <!-- Core fields -->
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
-                <!-- Name -->
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account name</span>
                     </label>
                     <input type="text" name="accountName" required
                         value="{{ edit_account.name if edit_account else '' }}"
-                        placeholder="e.g. Vanguard ISA, Fidelity SIPP"
+                        placeholder="e.g. Vanguard SIPP, ISA portfolio"
                         class="input input-bordered input-sm w-full" />
                 </div>
 
-                <!-- Type -->
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
                     </label>
-                    <select name="accountType" id="accountType"
-                            class="select select-bordered select-sm w-full"
-                            onchange="onAccountTypeChange()">
+                    <select name="accountType" class="select select-bordered select-sm w-full">
                         {% for key, label in account_types.items() %}
                         <option value="{{ key }}"
                             {% if edit_account and edit_account.accountType == key %}selected
@@ -174,10 +160,9 @@
                     </select>
                 </div>
 
-                <!-- Balance -->
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Current value</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Current balance</span>
                     </label>
                     <input type="number" name="accountBalance" required min="0" step="0.01"
                         value="{{ edit_account.balance if edit_account else '' }}"
@@ -185,27 +170,21 @@
                         class="input input-bordered input-sm w-full" />
                 </div>
 
-                <!-- Balance date -->
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Value date</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Balance date</span>
                     </label>
                     <input type="date" name="balanceDate" required
                         value="{{ edit_account.balanceDate if edit_account else today }}"
                         class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">When this valuation was recorded</span>
-                    </label>
                 </div>
 
-                <!-- Currency -->
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Currency</span>
                     </label>
                     <select name="accountCurrency" class="select select-bordered select-sm w-full"
                             onchange="toggleFxFields()">
-                        <option value="">Select currency...</option>
                         {% for c in currencies %}
                         <option value="{{ c.local }}"
                             {% if edit_account and edit_account.currency == c.local %}selected
@@ -216,7 +195,6 @@
                     </select>
                 </div>
 
-                <!-- Jurisdiction -->
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Country / jurisdiction</span>
@@ -233,54 +211,44 @@
                     </select>
                 </div>
 
-                <!-- Annual growth rate -->
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate %</span>
                     </label>
-                    <input type="number" name="annualGrowthRate"
-                        step="0.1" min="0" max="50"
-                        value="{{ edit_account.growthRate if edit_account else '7.0' }}"
-                        placeholder="e.g. 7"
-                        class="input input-bordered input-sm w-full"
-                        id="growth-rate-input"
-                        oninput="updateReturnHint()" />
+                    <input type="number" name="annualGrowthRate" min="0" max="100" step="0.1"
+                        value="{{ edit_account.growthRate if edit_account else '0' }}"
+                        placeholder="e.g. 7.0"
+                        class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Expected annual capital appreciation</span>
+                        <span class="label-text-alt text-base-content/40">Capital appreciation only, excluding dividends</span>
                     </label>
                 </div>
 
-                <!-- Dividend rate -->
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual dividend yield %</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual dividend rate %</span>
                     </label>
-                    <input type="number" name="annualDividendRate"
-                        step="0.1" min="0" max="30"
-                        value="{{ edit_account.dividendRate if edit_account else '0.0' }}"
-                        placeholder="e.g. 3.5"
-                        class="input input-bordered input-sm w-full"
-                        id="dividend-rate-input"
-                        oninput="updateReturnHint()" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40" id="return-hint"></span>
-                    </label>
+                    <input type="number" name="annualDividendRate" min="0" max="100" step="0.1"
+                        value="{{ edit_account.dividendRate if edit_account else '0' }}"
+                        placeholder="e.g. 2.5"
+                        class="input input-bordered input-sm w-full" />
                 </div>
 
-                <!-- Reinvest dividends -->
                 <div class="form-control col-span-2">
-                    <label class="label cursor-pointer justify-start gap-3 py-1">
-                        <input type="checkbox" name="reinvestDividends" value="true"
-                            class="checkbox checkbox-sm checkbox-primary"
-                            id="reinvest-checkbox"
-                            {% if edit_account and edit_account.reinvestDividends %}checked
-                            {% elif not edit_account %}checked{% endif %}
-                            onchange="updateReturnHint()" />
-                        <span class="label-text text-sm">Reinvest dividends <span class="text-base-content/40 font-normal">(if unchecked, dividend yield is added to your annual income instead)</span></span>
+                    <label class="label cursor-pointer justify-start gap-3 py-0.5">
+                        <input type="checkbox" name="reinvestDividends" value="true" class="checkbox checkbox-sm"
+                            {% if not edit_account or edit_account.reinvestDividends %}checked{% endif %} />
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                            Reinvest dividends (compounded into account balance)
+                        </span>
+                    </label>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">
+                            Unchecked = dividends paid out as income each year in the projection
+                        </span>
                     </label>
                 </div>
 
-                <!-- FX rate -->
                 <div class="form-control" id="fx-rate-field" style="display:none">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Exchange rate to base currency</span>
@@ -304,35 +272,27 @@
                         class="input input-bordered input-sm w-full" />
                 </div>
 
-                <!-- Notes -->
                 <div class="form-control col-span-2">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Notes <span class="font-normal normal-case">(optional)</span></span>
                     </label>
                     <input type="text" name="accountNotes"
                         value="{{ edit_account.notes if edit_account else '' }}"
-                        placeholder="e.g. Globally diversified index funds, drawdown from age 57"
+                        placeholder="e.g. Global equity index tracker, 100% equities"
                         class="input input-bordered input-sm w-full" />
                 </div>
 
             </div>
 
-            <!-- ============================================================
-                 Tax & Drawdown section (ADR-011, ADR-013)
-                 Opens automatically when editing an account that already has
-                 any of these fields set, or when the account type suggests
-                 restricted access (pension).
-                 ============================================================ -->
+            <!-- Tax & Drawdown section (ADR-011, ADR-013) -->
             {% set has_drawdown_tax = edit_account and (
                 edit_account.drawdownPriority or edit_account.taxTreatment or
                 edit_account.effectiveWithdrawalTaxRate or edit_account.drawdownMinAge or
                 edit_account.drawdownEarliestDate
             ) %}
 
-            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4"
-                 id="drawdown-tax-collapse">
-                <input type="checkbox" id="drawdown-tax-toggle"
-                       {% if has_drawdown_tax %}checked{% endif %} />
+            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4">
+                <input type="checkbox" {% if has_drawdown_tax %}checked{% endif %} />
                 <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
                     <i class="ti ti-shield-lock text-base-content/40" aria-hidden="true"></i>
                     Tax &amp; Drawdown settings
@@ -341,7 +301,6 @@
                 <div class="collapse-content">
                     <div class="pt-3">
 
-                        <!-- Drawdown ordering -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3 mt-1">
                             Drawdown ordering (ADR-011)
                         </p>
@@ -366,18 +325,17 @@
                                 </label>
                                 <input type="number" name="drawdownRatio" min="0" max="1" step="0.01"
                                     value="{{ edit_account.drawdownRatio if edit_account and edit_account.drawdownRatio else '' }}"
-                                    placeholder="e.g. 0.6 for 60%"
+                                    placeholder="e.g. 0.5 for 50%"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Used for Proportional strategy. Normalised automatically across eligible accounts each year.</span>
+                                    <span class="label-text-alt text-base-content/40">Used for Proportional strategy. Normalised automatically across eligible accounts.</span>
                                 </label>
                             </div>
 
                         </div>
 
-                        <!-- Drawdown eligibility -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
-                            Access restrictions <span class="font-normal normal-case">(leave blank for no restriction)</span>
+                            Access restrictions (leave blank for no restriction)
                         </p>
                         <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
 
@@ -385,16 +343,12 @@
                                 <label class="label py-0.5">
                                     <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Minimum access age</span>
                                 </label>
-                                <input type="number" name="drawdownMinAge"
-                                    id="drawdownMinAge"
-                                    min="0" max="100" step="0.5"
+                                <input type="number" name="drawdownMinAge" min="0" max="100" step="0.5"
                                     value="{{ edit_account.drawdownMinAge if edit_account and edit_account.drawdownMinAge else '' }}"
                                     placeholder="e.g. 57.0"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40" id="min-age-hint">
-                                        Decimal supported — e.g. 57.0 (UK pension post-2028), 59.5 (US 401k).
-                                    </span>
+                                    <span class="label-text-alt text-base-content/40">e.g. 57.0 for UK pension post-2028, 59.5 for US 401(k)</span>
                                 </label>
                             </div>
 
@@ -415,9 +369,6 @@
                                 <input type="date" name="drawdownEarliestDate"
                                     value="{{ edit_account.drawdownEarliestDate if edit_account and edit_account.drawdownEarliestDate else '' }}"
                                     class="input input-bordered input-sm w-full" />
-                                <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">For fixed-term bonds or locked-in investments. Takes precedence over minimum age.</span>
-                                </label>
                             </div>
 
                             <div class="form-control">
@@ -428,51 +379,42 @@
                                     value="{{ edit_account.drawdownLatestDate if edit_account and edit_account.drawdownLatestDate else '' }}"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Date after which this account must be drawn or closed.</span>
+                                    <span class="label-text-alt text-base-content/40">Date after which the account must be drawn or closed.</span>
                                 </label>
                             </div>
 
                         </div>
 
-                        <!-- Tax treatment -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
                             Tax treatment (ADR-013)
                         </p>
-
-                        <!-- Account-type hint banner -->
-                        <div id="tax-type-hint" class="alert alert-info text-xs mb-3" style="display:none">
-                            <i class="ti ti-bulb"></i>
-                            <span id="tax-type-hint-text"></span>
-                        </div>
-
                         <div class="grid grid-cols-2 gap-x-4 gap-y-3">
 
                             <div class="form-control col-span-2">
                                 <label class="label py-0.5">
                                     <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Tax treatment type</span>
                                 </label>
-                                <select name="taxTreatment" id="taxTreatment"
-                                        class="select select-bordered select-sm w-full">
+                                <select name="taxTreatment" class="select select-bordered select-sm w-full">
                                     <option value="">Not set (no tax modelled for this account)</option>
                                     <option value="TaxTreatment_TaxFree"
                                         {% if edit_account and edit_account.taxTreatment == "TaxTreatment_TaxFree" %}selected{% endif %}>
-                                        Tax-free — no tax at any stage (e.g. Premium Bonds, NS&amp;I)
+                                        Tax-free — no tax at any stage (e.g. UK S&amp;S ISA)
                                     </option>
                                     <option value="TaxTreatment_PostTaxTaxFreeWithdrawal"
                                         {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxTaxFreeWithdrawal" %}selected{% endif %}>
-                                        Post-tax, withdrawals tax-free (e.g. Stocks &amp; Shares ISA, Roth IRA, TFSA)
+                                        Post-tax, withdrawals tax-free (e.g. Roth IRA, S&amp;S ISA)
                                     </option>
                                     <option value="TaxTreatment_PostTaxGainsOnly"
                                         {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PostTaxGainsOnly" %}selected{% endif %}>
-                                        Post-tax, gains only taxable (e.g. general brokerage / GIA, unit trust)
+                                        Post-tax, gains only taxable (e.g. GIA, general brokerage)
                                     </option>
                                     <option value="TaxTreatment_PreTaxWholeWithdrawal"
                                         {% if edit_account and edit_account.taxTreatment == "TaxTreatment_PreTaxWholeWithdrawal" %}selected{% endif %}>
-                                        Pre-tax, whole withdrawal taxable (e.g. SIPP, 401k, defined-contribution pension)
+                                        Pre-tax, whole withdrawal taxable (e.g. SIPP, 401(k))
                                     </option>
                                 </select>
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Informational — guides UI hints. Actual calculation uses the rates below.</span>
+                                    <span class="label-text-alt text-base-content/40">Informational — drives UI guidance. Actual tax uses the rates below.</span>
                                 </label>
                             </div>
 
@@ -480,20 +422,18 @@
                                 <label class="label py-0.5">
                                     <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
                                         Effective withdrawal tax rate
-                                        <span class="tooltip tooltip-right ml-1"
-                                              data-tip="Enter the rate you expect to pay on withdrawals from this account, after any tax treaty relief. For cross-border accounts, consult a tax adviser to confirm the applicable rate.">
+                                        <span class="tooltip tooltip-right ml-1" data-tip="Rate you expect to pay on withdrawals after any treaty relief.">
                                             <i class="ti ti-info-circle text-base-content/30 cursor-help"></i>
                                         </span>
                                     </span>
                                 </label>
                                 <input type="number" name="effectiveWithdrawalTaxRate"
-                                    id="effectiveWithdrawalTaxRate"
                                     min="0" max="60" step="0.1"
                                     value="{{ (edit_account.effectiveWithdrawalTaxRate | float * 100) | round(1) if edit_account and edit_account.effectiveWithdrawalTaxRate else '' }}"
                                     placeholder="e.g. 20 for 20%"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Percentage (0–60). 0 = tax-free withdrawals. Leave blank to skip source-country tax for this account.</span>
+                                    <span class="label-text-alt text-base-content/40">Percentage (0–60). Leave blank to skip source-country tax for this account.</span>
                                 </label>
                             </div>
 
@@ -502,13 +442,12 @@
                                     <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual tax-free withdrawal</span>
                                 </label>
                                 <input type="number" name="annualTaxFreeWithdrawal"
-                                    id="annualTaxFreeWithdrawal"
                                     min="0" step="1"
                                     value="{{ edit_account.annualTaxFreeWithdrawal if edit_account and edit_account.annualTaxFreeWithdrawal else '' }}"
                                     placeholder="e.g. 6000"
                                     class="input input-bordered input-sm w-full" />
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Amount withdrawable each year before the effective rate applies. Resets annually. Use for pension PCLS equivalent or annual CGT allowances.</span>
+                                    <span class="label-text-alt text-base-content/40">Amount withdrawable each year before the effective rate applies. Resets each year.</span>
                                 </label>
                             </div>
 
@@ -517,9 +456,7 @@
                         <div class="alert alert-warning text-xs mt-4">
                             <i class="ti ti-alert-triangle"></i>
                             <span>Tax figures are planning estimates only and do not constitute tax advice.
-                            If you hold accounts in multiple countries, the rates applicable to your situation
-                            depend on bilateral tax treaties and your personal circumstances — consult a qualified
-                            tax adviser before making drawdown decisions.</span>
+                            Consult a qualified adviser before making drawdown decisions.</span>
                         </div>
 
                     </div>
@@ -540,6 +477,152 @@
             </div>
 
         </form>
+
+        <!-- ============================================================
+             Contributions section (ADR-015)
+             Separate <form> — placed after the account </form> above.
+             Only shown when editing an existing account (new accounts are
+             redirected to edit after creation so this section appears).
+             ============================================================ -->
+        {% if edit_account %}
+        {% set contrib = edit_account.contribution %}
+
+        {% if contribution_saved %}
+        <div class="alert alert-success mt-4">
+            <i class="ti ti-circle-check"></i>
+            <span>Contribution saved.</span>
+        </div>
+        {% endif %}
+        {% if contribution_deleted %}
+        <div class="alert alert-info mt-4">
+            <i class="ti ti-trash"></i>
+            <span>Contribution removed.</span>
+        </div>
+        {% endif %}
+
+        <div class="collapse collapse-arrow border border-base-200 rounded-lg mt-4">
+            <input type="checkbox" {% if contrib %}checked{% endif %} />
+            <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
+                <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
+                Regular contribution
+                <span class="text-xs font-normal text-base-content/40">(optional — credits this account and deducts from cashflow)</span>
+                {% if contrib %}
+                <span class="badge badge-info badge-sm ml-auto">£{{ "{:,.0f}".format(contrib.annualAmount) }}/yr</span>
+                {% endif %}
+            </div>
+            <div class="collapse-content">
+                <div class="pt-3">
+                    <p class="text-xs text-base-content/40 mb-4">
+                        A regular contribution credits this account's balance each year and counts as
+                        spending in the cashflow — funded from income or drawdown from other accounts.
+                        Default window: current year up to and including your target retirement year.
+                    </p>
+
+                    <form method="post" action="/investments/{{ edit_account.n }}/contribution">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount per period</span>
+                                </label>
+                                <input type="number" name="contributionAmount" required
+                                    min="0" step="0.01"
+                                    value="{{ contrib.amount if contrib else '' }}"
+                                    placeholder="e.g. 500"
+                                    class="input input-bordered input-sm w-full"
+                                    id="contrib-amount-ci" oninput="updateContribAnnual('ci')" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
+                                </label>
+                                <select name="contributionFrequency"
+                                        class="select select-bordered select-sm w-full"
+                                        id="contrib-freq-ci" onchange="updateContribAnnual('ci')">
+                                    <option value="FrequencyType_Monthly"     {% if not contrib or contrib.frequency == 'FrequencyType_Monthly' %}selected{% endif %}>Monthly</option>
+                                    <option value="FrequencyType_Annually"    {% if contrib and contrib.frequency == 'FrequencyType_Annually' %}selected{% endif %}>Annually</option>
+                                    <option value="FrequencyType_Weekly"      {% if contrib and contrib.frequency == 'FrequencyType_Weekly' %}selected{% endif %}>Weekly</option>
+                                    <option value="FrequencyType_Fortnightly" {% if contrib and contrib.frequency == 'FrequencyType_Fortnightly' %}selected{% endif %}>Fortnightly</option>
+                                    <option value="FrequencyType_TwiceMonthly"{% if contrib and contrib.frequency == 'FrequencyType_TwiceMonthly' %}selected{% endif %}>Twice monthly</option>
+                                    <option value="FrequencyType_Quarterly"   {% if contrib and contrib.frequency == 'FrequencyType_Quarterly' %}selected{% endif %}>Quarterly</option>
+                                </select>
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40" id="contrib-annual-hint-ci"></span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionStartYear"
+                                    min="2020" max="2100"
+                                    value="{{ contrib.startYear if contrib and contrib.startYear else '' }}"
+                                    placeholder="Default: current year"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionEndYear"
+                                    min="2020" max="2100"
+                                    value="{{ contrib.endYear if contrib and contrib.endYear else '' }}"
+                                    placeholder="Default: retirement year"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Note <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="text" name="contributionNote"
+                                    value="{{ contrib.note if contrib else '' }}"
+                                    placeholder="e.g. Monthly SIPP contribution"
+                                    class="input input-bordered input-sm w-full" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate % <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="contributionGrowthRate"
+                                    step="0.1" min="-100" max="100"
+                                    value="{{ contrib.growthRate if contrib and contrib.growthRate else '0' }}"
+                                    placeholder="0"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Positive = increases year-on-year (e.g. salary-linked), negative = tapers off. 0 = fixed.</span>
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            {% if contrib %}
+                            <form method="post" action="/investments/{{ edit_account.n }}/contribution/delete"
+                                  onsubmit="return confirm('Remove the contribution from this account?')">
+                                <button type="submit" class="btn btn-ghost btn-sm text-error gap-1">
+                                    <i class="ti ti-trash text-xs"></i> Remove contribution
+                                </button>
+                            </form>
+                            {% else %}
+                            <span></span>
+                            {% endif %}
+                            <button type="submit" class="btn btn-info btn-sm gap-1">
+                                <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                                {% if contrib %}Update contribution{% else %}Add contribution{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- end Contributions -->
+        {% endif %}
+
     </div>
 </div>
 
@@ -547,117 +630,39 @@
 
 {% block scripts %}
 <script>
-    // ---------------------------------------------------------------------------
-    // FX field visibility
-    // ---------------------------------------------------------------------------
     function toggleFxFields() {
         const currencySelect = document.querySelector('select[name="accountCurrency"]');
         if (!currencySelect) return;
         const selected = currencySelect.options[currencySelect.selectedIndex];
         const code = selected ? selected.text.split(' — ')[0] : '';
         const isBase = code === 'GBP';
-        document.getElementById('fx-rate-field').style.display = isBase ? 'none' : 'block';
-        document.getElementById('fx-date-field').style.display = isBase ? 'none' : 'block';
+        const fxField     = document.getElementById('fx-rate-field');
+        const fxDateField = document.getElementById('fx-date-field');
+        if (fxField)     fxField.style.display     = isBase ? 'none' : 'block';
+        if (fxDateField) fxDateField.style.display  = isBase ? 'none' : 'block';
     }
 
-    // ---------------------------------------------------------------------------
-    // Compound return hint beneath dividend field
-    // ---------------------------------------------------------------------------
-    function updateReturnHint() {
-        const growth   = parseFloat(document.getElementById('growth-rate-input').value) || 0;
-        const dividend = parseFloat(document.getElementById('dividend-rate-input').value) || 0;
-        const reinvest = document.getElementById('reinvest-checkbox').checked;
-        const hint     = document.getElementById('return-hint');
-        if (growth > 0 || dividend > 0) {
-            const total = growth + (reinvest ? dividend : 0);
-            hint.textContent = reinvest
-                ? `Total compounding return: ${total.toFixed(1)}%/yr`
-                : `Capital growth: ${growth.toFixed(1)}%/yr · Dividends paid as income: ${dividend.toFixed(1)}%/yr`;
-        } else {
-            hint.textContent = '';
-        }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Account type → tax treatment hint
-    //
-    // When the user selects a pension or ISA type, suggest the appropriate tax
-    // treatment and open the Tax & Drawdown section automatically.
-    // Only fires when the tax treatment field is currently empty (don't override
-    // an existing user choice).
-    // ---------------------------------------------------------------------------
-    const TAX_HINTS = {
-        'InvestmentAccountType_Pension': {
-            treatment: 'TaxTreatment_PreTaxWholeWithdrawal',
-            minAge: '57',
-            hint: 'Pensions are typically pre-tax: the whole withdrawal is taxable income. UK SIPPs are accessible from age 57 (post-2028). Set your expected effective tax rate below.',
-        },
-        'InvestmentAccountType_TaxAdvantaged': {
-            treatment: 'TaxTreatment_PostTaxTaxFreeWithdrawal',
-            minAge: '',
-            hint: 'Tax-advantaged accounts (ISA, Roth IRA, TFSA) are funded with post-tax money and withdrawals are typically tax-free. Effective rate: 0.',
-        },
-        'InvestmentAccountType_StocksShares': {
-            treatment: 'TaxTreatment_PostTaxGainsOnly',
-            minAge: '',
-            hint: 'General stocks & shares accounts are typically taxable on gains only. If held in an ISA wrapper, choose Tax-advantaged instead.',
-        },
-        'InvestmentAccountType_UnitTrust': {
-            treatment: 'TaxTreatment_PostTaxGainsOnly',
-            minAge: '',
-            hint: 'Unit trusts / mutual funds outside a tax wrapper are taxable on gains only.',
-        },
-        'InvestmentAccountType_Bonds': {
-            treatment: 'TaxTreatment_PostTaxGainsOnly',
-            minAge: '',
-            hint: 'Bond portfolios outside a tax wrapper are typically taxable on gains. Government bonds may have different treatment — check your jurisdiction.',
-        },
-    };
-
-    function onAccountTypeChange() {
-        const typeSelect    = document.getElementById('accountType');
-        const taxSelect     = document.getElementById('taxTreatment');
-        const hintBanner    = document.getElementById('tax-type-hint');
-        const hintText      = document.getElementById('tax-type-hint-text');
-        const minAgeInput   = document.getElementById('drawdownMinAge');
-        const collapseInput = document.getElementById('drawdown-tax-toggle');
-
-        const key  = typeSelect ? typeSelect.value : '';
-        const info = TAX_HINTS[key];
-
-        if (!info) {
-            hintBanner.style.display = 'none';
-            return;
-        }
-
-        // Show the hint banner
-        hintText.textContent     = info.hint;
-        hintBanner.style.display = 'flex';
-
-        // Only pre-fill fields that are currently empty
-        if (taxSelect && !taxSelect.value) {
-            taxSelect.value = info.treatment;
-        }
-
-        if (minAgeInput && !minAgeInput.value && info.minAge) {
-            minAgeInput.value = info.minAge;
-        }
-
-        // Open the Tax & Drawdown section if it's closed
-        if (collapseInput && !collapseInput.checked) {
-            collapseInput.checked = true;
-        }
-    }
-
-    // ---------------------------------------------------------------------------
-    // Init
-    // ---------------------------------------------------------------------------
     const currSel = document.querySelector('select[name="accountCurrency"]');
-    if (currSel) currSel.addEventListener('change', toggleFxFields);
-    toggleFxFields();
-    updateReturnHint();
+    if (currSel) {
+        currSel.addEventListener('change', toggleFxFields);
+        toggleFxFields();
+    }
 
-    // Run the type hint on load (without overriding existing saved values)
-    onAccountTypeChange();
+    const CONTRIB_MULTIPLIERS = {
+        FrequencyType_Weekly: 52, FrequencyType_Fortnightly: 26,
+        FrequencyType_TwiceMonthly: 24, FrequencyType_Monthly: 12,
+        FrequencyType_Quarterly: 4, FrequencyType_Annually: 1,
+    };
+    function updateContribAnnual(suffix) {
+        const amt  = parseFloat(document.getElementById(`contrib-amount-${suffix}`)?.value) || 0;
+        const freq = document.getElementById(`contrib-freq-${suffix}`)?.value || 'FrequencyType_Monthly';
+        const hint = document.getElementById(`contrib-annual-hint-${suffix}`);
+        if (!hint) return;
+        const annual = amt * (CONTRIB_MULTIPLIERS[freq] || 12);
+        hint.textContent = amt > 0
+            ? `Annual equivalent: £${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
+            : '';
+    }
+    updateContribAnnual('ci');
 </script>
 {% endblock %}

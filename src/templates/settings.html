@@ -18,6 +18,69 @@
 
 <div class="grid grid-cols-2 gap-5">
 
+    <!-- Scenarios -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-folders text-base-content/40" aria-hidden="true"></i>
+                Scenarios
+            </h3>
+
+            {% set sc = active_scenario() %}
+
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
+                    {% if sc.is_clean %}bg-success/10 text-success
+                    {% elif sc.is_named %}bg-warning/10 text-warning
+                    {% else %}bg-base-200 text-base-content/40{% endif %}">
+                    <i class="ti ti-{% if sc.is_clean %}check{% elif sc.is_named %}pencil{% else %}file-unknown{% endif %} text-sm"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium">{{ sc.display_name }}</p>
+                    <p class="text-xs text-base-content/40">
+                        {% if sc.is_clean %}Saved — no unsaved changes
+                        {% elif sc.is_named %}Unsaved changes since last save
+                        {% else %}Not yet saved to a scenario file{% endif %}
+                    </p>
+                </div>
+                {% if sc.is_named and not sc.saved %}
+                <span class="badge badge-warning badge-xs">Unsaved</span>
+                {% endif %}
+            </div>
+
+            {% if sc.is_named and not sc.saved %}
+            <!-- One-click save when there are unsaved changes -->
+            <form method="post" action="/scenarios/save" class="mb-2">
+                <button type="submit" class="btn btn-primary btn-sm gap-1 w-full">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    Save "{{ sc.name }}"
+                </button>
+            </form>
+            {% elif sc.is_clean %}
+            <div class="flex items-center gap-1.5 text-xs text-success mb-2 px-1">
+                <i class="ti ti-circle-check"></i>
+                <span>Up to date</span>
+            </div>
+            {% endif %}
+
+            <div class="flex gap-2">
+                <a href="/scenarios" class="btn btn-sm btn-ghost btn-outline flex-1 gap-1">
+                    <i class="ti ti-folders" aria-hidden="true"></i>
+                    Manage scenarios
+                </a>
+                {% if not sc.is_named %}
+                <a href="/scenarios" class="btn btn-sm btn-primary flex-1 gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    Save As…
+                </a>
+                {% endif %}
+            </div>
+            <p class="text-xs text-base-content/40 mt-2">
+                Save, load, and switch between named planning scenarios.
+            </p>
+        </div>
+    </div>
+
     <!-- Backup & restore -->
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-5">

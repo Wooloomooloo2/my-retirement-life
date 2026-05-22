@@ -142,6 +142,58 @@
 </div>
 {% endif %}
 
+<!-- Account contributions (ADR-015) — read-only, managed via Accounts/Investments pages -->
+{% if contributions %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
+            Account contributions
+            <span class="text-xs font-normal text-base-content/50 ml-1">— read-only; managed via the Accounts &amp; Investments pages</span>
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr class="text-xs uppercase tracking-wide text-base-content/40">
+                        <th>Account</th>
+                        <th>Amount</th>
+                        <th>Frequency</th>
+                        <th>Annual total</th>
+                        <th>Active</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in contributions %}
+                    <tr>
+                        <td class="font-medium">{{ c.accountName }}</td>
+                        <td>£{{ "{:,.2f}".format(c.amount | float) }}</td>
+                        <td class="text-base-content/60 text-xs">{{ c.frequencyLabel }}</td>
+                        <td class="font-medium text-info">£{{ "{:,.0f}".format(c.annualAmount) }}</td>
+                        <td class="text-xs text-base-content/50">
+                            {% if c.startYear or c.endYear %}
+                                {{ c.startYear if c.startYear else '…' }} → {{ c.endYear if c.endYear else 'retirement' }}
+                            {% else %}
+                                <span class="text-base-content/30">Now → retirement</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-xs text-base-content/50">{{ c.note if c.note else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="font-medium border-t border-base-200">
+                        <td colspan="3">Total annual contributions</td>
+                        <td class="text-info">£{{ "{:,.0f}".format(contributions | sum(attribute='annualAmount')) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Add / Edit form -->
 <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">

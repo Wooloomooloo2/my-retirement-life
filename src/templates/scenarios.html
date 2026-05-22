@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Scenarios — {{ app_name }}{% endblock %}
+{% block page_title %}Scenarios{% endblock %}
+{% block page_subtitle %}Save, load and manage named planning scenarios{% endblock %}
+
+{% block content %}
+
+{% if message %}
+<div class="alert
+    {% if message_type == 'success' %}alert-success
+    {% elif message_type == 'error' %}alert-error
+    {% elif message_type == 'warning' %}alert-warning
+    {% else %}alert-info{% endif %} mb-5">
+    <i class="ti ti-{% if message_type == 'success' %}circle-check{% elif message_type == 'error' %}alert-circle{% elif message_type == 'warning' %}alert-triangle{% else %}info-circle{% endif %}"></i>
+    <span>{{ message }}</span>
+    {% if message_type == 'info' %}
+    <a href="/" class="btn btn-sm btn-ghost ml-auto">Go to dashboard →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-2 gap-5">
+
+    <!-- ================================================================
+         Left column: current session + new / save as
+         ================================================================ -->
+    <div class="flex flex-col gap-5">
+
+        <!-- Current session status -->
+        <div class="card bg-base-100 shadow-sm">
+            <div class="card-body p-5">
+                <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                    <i class="ti ti-file text-base-content/40" aria-hidden="true"></i>
+                    Current session
+                </h3>
+
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                        {% if scenario_state.is_clean %}bg-success/10 text-success
+                        {% elif scenario_state.is_named %}bg-warning/10 text-warning
+                        {% else %}bg-base-200 text-base-content/40{% endif %}">
+                        <i class="ti ti-{% if scenario_state.is_clean %}check{% elif scenario_state.is_named %}pencil{% else %}file-unknown{% endif %}" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="font-medium text-sm">{{ scenario_state.display_name }}</p>
+                        <p class="text-xs text-base-content/40">
+                            {% if scenario_state.is_clean %}Saved — no unsaved changes
+                            {% elif scenario_state.is_named %}Unsaved changes since last save
+                            {% else %}Not yet saved to a scenario file{% endif %}
+                        </p>
+                    </div>
+                    {% if scenario_state.is_named and not scenario_state.saved %}
+                    <span class="badge badge-warning badge-sm ml-auto">Unsaved</span>
+                    {% endif %}
+                </div>
+
+                <!-- Save (only when named) -->
+                {% if scenario_state.is_named %}
+                <form method="post" action="/scenarios/save" class="mb-3">
+                    <button type="submit" class="btn btn-primary btn-sm gap-1 w-full">
+                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                        Save "{{ scenario_state.name }}"
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- Save As -->
+                <form method="post" action="/scenarios/save-as">
+                    <div class="flex gap-2">
+                        <input type="text" name="scenario_name" required
+                            placeholder="{% if scenario_state.is_named %}Save as new name…{% else %}Name this scenario…{% endif %}"
+                            class="input input-bordered input-sm flex-1" />
+                        <button type="submit" class="btn btn-sm btn-outline gap-1">
+                            <i class="ti ti-copy" aria-hidden="true"></i>
+                            Save As
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- New session -->
+        <div class="card bg-base-100 shadow-sm border border-error/10">
+            <div class="card-body p-5">
+                <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                    <i class="ti ti-file-plus text-base-content/40" aria-hidden="true"></i>
+                    New session
+                </h3>
+                <p class="text-sm text-base-content/60 mb-4">
+                    Clears all current data and starts a blank session.
+                    {% if scenario_state.is_named and not scenario_state.saved %}
+                    You have unsaved changes — save before creating a new session.
+                    {% endif %}
+                </p>
+                <form method="post" action="/scenarios/new"
+                      onsubmit="return confirm('This will permanently clear all current data and start a new blank session.\n\nMake sure you have saved your work first.\n\nContinue?')">
+                    <button type="submit" class="btn btn-error btn-sm btn-outline gap-1 w-full">
+                        <i class="ti ti-trash" aria-hidden="true"></i>
+                        Clear &amp; start new session
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ================================================================
+         Right column: saved scenarios list
+         ================================================================ -->
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-5">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-folders text-base-content/40" aria-hidden="true"></i>
+                Saved scenarios
+                <span class="badge badge-ghost badge-sm ml-auto">{{ scenarios | length }}</span>
+            </h3>
+
+            {% if not scenarios %}
+            <div class="text-center py-8 text-base-content/30">
+                <i class="ti ti-folder-open text-3xl mb-2 block" aria-hidden="true"></i>
+                <p class="text-sm">No saved scenarios yet.</p>
+                <p class="text-xs mt-1">Use "Save As" to save your current session.</p>
+            </div>
+
+            {% else %}
+            <div class="space-y-1">
+                {% for s in scenarios %}
+                <div class="rounded-lg border border-base-200 overflow-hidden
+                    {% if scenario_state.name == s.name %}bg-primary/5 border-primary/20{% endif %}">
+
+                    <!-- Scenario row -->
+                    <div class="flex items-center gap-3 px-3 py-2.5">
+                        <i class="ti ti-file-description text-base-content/30 text-sm flex-shrink-0" aria-hidden="true"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium truncate">{{ s.name }}</p>
+                            <p class="text-xs text-base-content/40">{{ s.modified }} · {{ s.size_kb }} KB</p>
+                        </div>
+                        {% if scenario_state.name == s.name %}
+                        <span class="badge badge-primary badge-xs flex-shrink-0">Active</span>
+                        {% endif %}
+
+                        <!-- Load -->
+                        <form method="post" action="/scenarios/load"
+                              onsubmit="return confirm('Load \'{{ s.name }}\'?\n\nThis will replace your current data with the saved scenario.')">
+                            <input type="hidden" name="scenario_name" value="{{ s.name }}" />
+                            <button type="submit" class="btn btn-xs btn-ghost gap-1">
+                                <i class="ti ti-folder-open text-xs" aria-hidden="true"></i> Load
+                            </button>
+                        </form>
+
+                        <!-- Rename toggle -->
+                        <button class="btn btn-xs btn-ghost gap-1"
+                                onclick="toggleRename('rename-{{ loop.index }}')">
+                            <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Rename
+                        </button>
+
+                        <!-- Delete -->
+                        <form method="post" action="/scenarios/delete"
+                              onsubmit="return confirm('Delete \'{{ s.name }}\'? This cannot be undone.')">
+                            <input type="hidden" name="scenario_name" value="{{ s.name }}" />
+                            <button type="submit" class="btn btn-xs btn-ghost text-error gap-1">
+                                <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Inline rename form (hidden by default) -->
+                    <div id="rename-{{ loop.index }}" class="hidden border-t border-base-200 px-3 py-2.5 bg-base-50">
+                        <form method="post" action="/scenarios/rename"
+                              class="flex items-center gap-2">
+                            <input type="hidden" name="old_name" value="{{ s.name }}" />
+                            <input type="text" name="new_name" required
+                                value="{{ s.name }}"
+                                class="input input-bordered input-xs flex-1" />
+                            <button type="submit" class="btn btn-xs btn-primary">Save name</button>
+                            <button type="button" class="btn btn-xs btn-ghost"
+                                    onclick="toggleRename('rename-{{ loop.index }}')">Cancel</button>
+                        </form>
+                    </div>
+
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+</div>
+
+<!-- Info footer -->
+<div class="mt-5 text-xs text-base-content/40 flex items-center gap-2">
+    <i class="ti ti-info-circle" aria-hidden="true"></i>
+    Scenario files are stored in your data directory alongside the Oxigraph store.
+    They use the same format as JSON backups and can be shared or version-controlled.
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleRename(id) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.classList.toggle('hidden');
+        if (!el.classList.contains('hidden')) {
+            const input = el.querySelector('input[name="new_name"]');
+            if (input) { input.focus(); input.select(); }
+        }
+    }
+}
+</script>
+{% endblock %}

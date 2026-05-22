@@ -94,7 +94,8 @@
             </table>
         </div>
         <p class="text-xs text-base-content/40 mt-3">
-            Positive amounts are costs (reduce your balance). Negative amounts are receipts such as windfalls (increase your balance).
+            <span class="text-success font-medium">+£ amounts</span> are receipts that increase your balance. &nbsp;
+            <span class="text-error font-medium">−£ amounts</span> are costs that reduce your balance.
         </p>
     </div>
 </div>
@@ -127,7 +128,8 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
                     </label>
-                    <select name="lifeEventType" class="select select-bordered select-sm w-full">
+                    <select name="lifeEventType" class="select select-bordered select-sm w-full"
+                            onchange="updateAmountSign()">
                         {% for key, label in event_type_options.items() %}
                         <option value="{{ key }}"
                             {% if edit_event and edit_event.eventType == key %}selected
@@ -157,14 +159,19 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
                     </label>
-                    <input type="number" name="lifeEventAmount" id="lifeEventAmount" required
-                        step="1"
-                        value="{{ edit_event.amount if edit_event else '' }}"
-                        placeholder="e.g. 15000"
-                        class="input input-bordered input-sm w-full"
-                        oninput="updateBalanceHints()" />
+                    <div class="flex items-center gap-2">
+                        <span id="amount-sign-badge" class="badge badge-sm badge-outline font-mono w-6 justify-center text-sm">−</span>
+                        <input type="number" name="lifeEventAmount" id="lifeEventAmount" required
+                            step="1" min="1"
+                            value="{{ (edit_event.amount | float | abs) | int if edit_event else '' }}"
+                            placeholder="e.g. 15000"
+                            class="input input-bordered input-sm flex-1"
+                            oninput="updateBalanceHints()" />
+                    </div>
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Positive = cost, negative = receipt (windfall)</span>
+                        <span class="label-text-alt text-base-content/40" id="amount-hint-text">
+                            Amount this event will cost (deducted from your balance)
+                        </span>
                     </label>
                 </div>
 
@@ -266,6 +273,52 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// ---------------------------------------------------------------------------
+// Receipt type detection — only Windfall is a receipt in the current ontology.
+// Extend this set if additional receipt types are added later.
+// ---------------------------------------------------------------------------
+const RECEIPT_TYPES = new Set(['LifeEventType_Windfall']);
+
+function isReceiptType() {
+    const sel = document.querySelector('[name=lifeEventType]');
+    return sel ? RECEIPT_TYPES.has(sel.value) : false;
+}
+
+// Update the sign badge and hint label whenever the event type changes.
+function updateAmountSign() {
+    const badge = document.getElementById('amount-sign-badge');
+    const hint  = document.getElementById('amount-hint-text');
+    if (!badge || !hint) return;
+    if (isReceiptType()) {
+        badge.textContent = '+';
+        badge.className = 'badge badge-sm badge-success badge-outline font-mono w-6 justify-center text-sm';
+        hint.textContent = 'Amount you will receive (added to your balance)';
+    } else {
+        badge.textContent = '−';
+        badge.className = 'badge badge-sm badge-error badge-outline font-mono w-6 justify-center text-sm';
+        hint.textContent = 'Amount this event will cost (deducted from your balance)';
+    }
+    updateBalanceHints();
+}
+
+// Before submitting, negate the amount for receipt types so the engine
+// stores a negative value (its convention for receipts / windfalls).
+document.querySelector('form[action*="life-events"]')?.addEventListener('submit', function() {
+    const amtField = document.getElementById('lifeEventAmount');
+    if (!amtField) return;
+    const val = parseFloat(amtField.value);
+    if (!isNaN(val) && val > 0 && isReceiptType()) {
+        amtField.value = -val;
+    }
+});
+
+// Initialise on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateAmountSign();
+});
+</script>
+
 {% if proj_data %}
 <script>
 // Per-account projected balances from the deterministic engine.

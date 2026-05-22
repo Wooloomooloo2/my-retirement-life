@@ -29,6 +29,135 @@ RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
+FREQUENCY_MULTIPLIERS = {
+    "FrequencyType_Weekly":       52,
+    "FrequencyType_Fortnightly":  26,
+    "FrequencyType_TwiceMonthly": 24,
+    "FrequencyType_Monthly":      12,
+    "FrequencyType_Quarterly":     4,
+    "FrequencyType_Annually":      1,
+}
+
+FREQUENCY_LABELS = {
+    "FrequencyType_Weekly":       "Weekly",
+    "FrequencyType_Fortnightly":  "Fortnightly",
+    "FrequencyType_TwiceMonthly": "Twice monthly",
+    "FrequencyType_Monthly":      "Monthly",
+    "FrequencyType_Quarterly":    "Quarterly",
+    "FrequencyType_Annually":     "Annually",
+}
+
+
+# ---------------------------------------------------------------------------
+# Contribution helpers (ADR-015)
+# ---------------------------------------------------------------------------
+
+def _next_contribution_n() -> int:
+    """Return the next available AccountContribution N (shared namespace with accounts.py)."""
+    sparql = f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT (MAX(?n) AS ?maxN)
+        WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                ?s a mrl:AccountContribution .
+                BIND(xsd:integer(STRAFTER(STR(?s), "AccountContribution_")) AS ?n)
+            }}
+        }}
+    """
+    results = list(store.query(sparql))
+    try:
+        max_n = int(str(results[0]["maxN"].value)) if results and results[0].get("maxN") else 0
+    except (ValueError, AttributeError, TypeError):
+        max_n = 0
+    return max_n + 1
+
+
+def get_contribution(account_iri_str: str) -> dict | None:
+    """Return the single contribution for a given account IRI string, or None."""
+    account_iri = og.NamedNode(account_iri_str)
+    qs = list(store.store.quads_for_pattern(
+        None, og.NamedNode(f"{MRL}contributionOwner"), account_iri, DATA_GRAPH))
+    if not qs:
+        return None
+    c_iri = qs[0].subject
+
+    def gv(prop):
+        r = list(store.store.quads_for_pattern(
+            c_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+        return str(r[0].object.value) if r else ""
+
+    def gl(prop):
+        v = gv(prop)
+        return v.split("#")[-1] if "#" in v else v
+
+    freq = gl("contributionFrequency")
+    amount_str = gv("contributionAmount")
+    try:
+        amount = float(amount_str)
+    except (ValueError, TypeError):
+        amount = 0.0
+    multiplier  = FREQUENCY_MULTIPLIERS.get(freq, 12)
+    annual      = round(amount * multiplier, 2)
+
+    return {
+        "iri":          str(c_iri.value),
+        "amount":       amount_str,
+        "frequency":    freq,
+        "annualAmount": annual,
+        "startYear":    gv("contributionStartYear"),
+        "endYear":      gv("contributionEndYear"),
+        "note":         gv("contributionNote"),
+        "growthRate":   gv("contributionGrowthRate"),
+    }
+
+
+def save_contribution(
+    account_iri_str: str,
+    amount: float,
+    frequency: str,
+    start_year: Optional[int],
+    end_year: Optional[int],
+    note: str,
+    growth_rate: float = 0.0,
+) -> None:
+    """Delete any existing contribution for this account and write a new one."""
+    delete_contribution(account_iri_str)
+    n     = _next_contribution_n()
+    c_iri = f"{MRL}AccountContribution_{n}"
+
+    triples = f"""
+        <{c_iri}> a mrl:AccountContribution ;
+            mrl:contributionAmount    "{amount}"^^xsd:decimal ;
+            mrl:contributionFrequency mrlx:{frequency} ;
+            mrl:contributionOwner     <{account_iri_str}> .
+    """
+    if start_year:
+        triples += f'\n        <{c_iri}> mrl:contributionStartYear "{start_year}"^^xsd:integer .'
+    if end_year:
+        triples += f'\n        <{c_iri}> mrl:contributionEndYear "{end_year}"^^xsd:integer .'
+    if note and note.strip():
+        safe = note.replace('"', '\\"')
+        triples += f'\n        <{c_iri}> mrl:contributionNote "{safe}" .'
+    if growth_rate and growth_rate != 0.0:
+        triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{growth_rate}"^^xsd:decimal .'
+
+    store.update(f"""
+        PREFIX mrl:  <{MRL}>
+        PREFIX mrlx: <{MRL_EXT}>
+        PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {triples} }} }}
+    """)
+
+
+def delete_contribution(account_iri_str: str) -> None:
+    """Delete all contributions for a given account IRI string."""
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE {{ GRAPH <{DATA_GRAPH.value}> {{ ?c ?p ?o . }} }}
+        WHERE  {{ GRAPH <{DATA_GRAPH.value}> {{ ?c mrl:contributionOwner <{account_iri_str}> ; ?p ?o . }} }}
+    """)
+
 INVESTMENT_ACCOUNT_TYPES = {
     "InvestmentAccountType_StocksShares":  "Stocks and shares",
     "InvestmentAccountType_TaxAdvantaged": "Tax-advantaged (ISA / Roth / TFSA)",
@@ -127,6 +256,8 @@ def get_all_investment_accounts() -> list:
             "taxTreatment":               get_local("taxTreatment"),
             "effectiveWithdrawalTaxRate": get_val("effectiveWithdrawalTaxRate"),
             "annualTaxFreeWithdrawal":    get_val("annualTaxFreeWithdrawal"),
+            # ADR-015: contribution
+            "contribution": get_contribution(str(iri.value)),
         })
     accounts.sort(key=lambda a: int(a["n"]) if a["n"].isdigit() else 0)
     return accounts
@@ -408,12 +539,9 @@ async def add_investment_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-    accounts = get_all_investment_accounts()
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, saved=True),
-    )
+    # Redirect to edit so the contribution section is immediately available
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/investments/{next_n}/edit", status_code=303)
 
 
 @router.get("/investments/{n}/edit", response_class=HTMLResponse)
@@ -517,6 +645,7 @@ async def investment_projection_detail(request: Request, n: int):
     balances     = projection["account_balances"][label]
     withdrawals  = projection["account_withdrawals"][label]
     returns_data = projection["account_returns"][label]
+    contributions_data = projection.get("account_contributions", {}).get(label, [0] * len(years))
 
     # Summary stats
     total_return    = round(sum(r for r in returns_data if r > 0), 0)
@@ -540,24 +669,25 @@ async def investment_projection_detail(request: Request, n: int):
         request=request,
         name="investment_projection.html",
         context={
-            "app_name":        settings.app_name,
-            "active":          "investments",
-            "account":         account,
-            "back_url":        "/investments",
-            "back_label":      "Back to investments",
-            "years":           years,
-            "balances":        balances,
-            "withdrawals":     withdrawals,
-            "returns_data":    returns_data,
-            "total_return":    total_return,
-            "total_withdrawn": total_withdrawn,
-            "opening_balance": opening_balance,
-            "final_balance":   final_balance,
-            "peak_balance":    peak_balance,
-            "crossover_year":  crossover_year,
-            "depletion_year":  depletion_year,
-            "retirement_year": projection["retirement_year"],
-            "no_data":         False,
+            "app_name":           settings.app_name,
+            "active":             "investments",
+            "account":            account,
+            "back_url":           "/investments",
+            "back_label":         "Back to investments",
+            "years":              years,
+            "balances":           balances,
+            "withdrawals":        withdrawals,
+            "returns_data":       returns_data,
+            "contributions_data": contributions_data,
+            "total_return":       total_return,
+            "total_withdrawn":    total_withdrawn,
+            "opening_balance":    opening_balance,
+            "final_balance":      final_balance,
+            "peak_balance":       peak_balance,
+            "crossover_year":     crossover_year,
+            "depletion_year":     depletion_year,
+            "retirement_year":    projection["retirement_year"],
+            "no_data":            False,
         }
     )
 
@@ -565,6 +695,8 @@ async def investment_projection_detail(request: Request, n: int):
 @router.post("/investments/{n}/delete", response_class=HTMLResponse)
 async def delete_investment_account(request: Request, n: int):
     account_iri = f"{MRL}InvestmentAccount_{n}"
+    # Delete the account and any associated contributions
+    delete_contribution(account_iri)
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -577,4 +709,53 @@ async def delete_investment_account(request: Request, n: int):
         request=request,
         name="investments.html",
         context=_page_context(request, accounts, deleted=True),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contribution routes (ADR-015)
+# ---------------------------------------------------------------------------
+
+@router.post("/investments/{n}/contribution", response_class=HTMLResponse)
+async def save_investment_contribution(
+    request: Request,
+    n: int,
+    contributionAmount:    float        = Form(...),
+    contributionFrequency: str          = Form("FrequencyType_Monthly"),
+    contributionStartYear: Optional[int] = Form(None),
+    contributionEndYear:   Optional[int] = Form(None),
+    contributionNote:      str          = Form(""),
+    contributionGrowthRate: float       = Form(0.0),
+):
+    """Save (or replace) the contribution for investment account N."""
+    account_iri = f"{MRL}InvestmentAccount_{n}"
+    save_contribution(
+        account_iri,
+        contributionAmount,
+        contributionFrequency,
+        contributionStartYear,
+        contributionEndYear,
+        contributionNote,
+        growth_rate=contributionGrowthRate,
+    )
+    accounts = get_all_investment_accounts()
+    account  = next((a for a in accounts if a["n"] == str(n)), None)
+    return templates.TemplateResponse(
+        request=request,
+        name="investments.html",
+        context=_page_context(request, accounts, edit_account=account, contribution_saved=True),
+    )
+
+
+@router.post("/investments/{n}/contribution/delete", response_class=HTMLResponse)
+async def delete_investment_contribution(request: Request, n: int):
+    """Delete the contribution for investment account N."""
+    account_iri = f"{MRL}InvestmentAccount_{n}"
+    delete_contribution(account_iri)
+    accounts = get_all_investment_accounts()
+    account  = next((a for a in accounts if a["n"] == str(n)), None)
+    return templates.TemplateResponse(
+        request=request,
+        name="investments.html",
+        context=_page_context(request, accounts, edit_account=account, contribution_deleted=True),
     )

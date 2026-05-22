@@ -88,6 +88,64 @@ def get_all_budget_lines() -> list:
     return lines
 
 
+def get_all_contributions_for_budget() -> list:
+    """Return all AccountContribution instances with their owning account name.
+
+    Used for the read-only 'Account contributions' section on the budget page.
+    """
+    type_node = og.NamedNode(f"{MRL}AccountContribution")
+    quads     = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    results   = []
+
+    for q in quads:
+        c_iri = q.subject
+
+        def gv(prop):
+            r = list(store.store.quads_for_pattern(
+                c_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+            return str(r[0].object.value) if r else ""
+
+        def gl(prop):
+            v = gv(prop)
+            return v.split("#")[-1] if "#" in v else v
+
+        # Resolve account name via contributionOwner
+        owner_qs = list(store.store.quads_for_pattern(
+            c_iri, og.NamedNode(f"{MRL}contributionOwner"), None, DATA_GRAPH))
+        owner_label = ""
+        account_name = ""
+        if owner_qs:
+            owner_iri = owner_qs[0].object
+            owner_label = str(owner_iri.value).split("#")[-1]
+            name_qs = list(store.store.quads_for_pattern(
+                owner_iri, og.NamedNode(f"{MRL}accountName"), None, DATA_GRAPH))
+            account_name = str(name_qs[0].object.value) if name_qs else owner_label
+
+        freq       = gl("contributionFrequency")
+        multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
+        amount_str = gv("contributionAmount")
+        try:
+            amount = float(amount_str)
+        except (ValueError, TypeError):
+            amount = 0.0
+        annual = round(amount * multiplier, 2)
+
+        results.append({
+            "accountLabel": owner_label,
+            "accountName":  account_name,
+            "amount":       amount_str,
+            "frequency":    freq,
+            "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
+            "annualAmount": annual,
+            "startYear":    gv("contributionStartYear"),
+            "endYear":      gv("contributionEndYear"),
+            "note":         gv("contributionNote"),
+        })
+
+    results.sort(key=lambda x: x["accountName"])
+    return results
+
+
 def get_budget_summary(lines: list) -> dict:
     """Calculate totals by type."""
     mandatory = sum(l["annualAmount"] for l in lines
@@ -174,14 +232,16 @@ def save_budget_line(n: int, name: str, amount: float, frequency: str,
 
 
 def _page_context(request, lines, edit_line=None, **kwargs):
-    summary = get_budget_summary(lines)
+    summary       = get_budget_summary(lines)
+    contributions = get_all_contributions_for_budget()
     return {
-        "app_name": settings.app_name,
-        "active": "budget",
-        "lines": lines,
-        "summary": summary,
+        "app_name":         settings.app_name,
+        "active":           "budget",
+        "lines":            lines,
+        "summary":          summary,
         "frequency_options": FREQUENCY_LABELS,
-        "edit_line": edit_line,
+        "edit_line":        edit_line,
+        "contributions":    contributions,
         **kwargs,
     }
 

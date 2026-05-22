@@ -96,8 +96,9 @@
             <canvas id="gvdChart"></canvas>
         </div>
         <p class="text-xs text-base-content/40 mt-3 text-center">
-            Green bars = annual growth earned &nbsp;|&nbsp;
-            Orange bars = annual withdrawal (both per-year, left axis) &nbsp;|&nbsp;
+            Green bars = annual growth &nbsp;|&nbsp;
+            Indigo bars = annual contribution &nbsp;|&nbsp;
+            Orange bars = annual withdrawal (all left axis) &nbsp;|&nbsp;
             Indigo line = account balance (right axis) &nbsp;|&nbsp;
             ★ = retirement year
         </p>
@@ -117,6 +118,7 @@ const years        = {{ years       | tojson }};
 const balances     = {{ balances    | tojson }};
 const withdrawals  = {{ withdrawals | tojson }};
 const returnsData  = {{ returns_data| tojson }};
+const contributionsData = {{ contributions_data | default([]) | tojson }};
 const retirementYear = {{ retirement_year }};
 const crossoverYear  = {{ crossover_year  | tojson }};
 
@@ -154,6 +156,15 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 borderWidth: 1,
                 borderRadius: 2,
                 order: 2,
+            },
+            {
+                label: 'Annual contribution',
+                data: contributionsData,
+                backgroundColor: 'rgba(99,102,241,0.50)',
+                borderColor: '#6366F1',
+                borderWidth: 1,
+                borderRadius: 2,
+                order: 3,
             },
             {
                 label: 'Annual drawdown',
