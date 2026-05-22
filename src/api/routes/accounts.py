@@ -22,6 +22,7 @@ import pyoxigraph as og
 
 from src.config import settings
 from src.store.graph import store, MRL, DATA_GRAPH
+from src.fx import fetch_rates, FxError
 
 router = APIRouter()
 
@@ -452,6 +453,124 @@ async def accounts_page(request: Request):
             "today":        today,
             "edit_account": None,
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Live exchange-rate refresh (ADR-016)
+#
+# Fetches today's rates from open.er-api.com for the person's base currency
+# and writes each account's mrl:exchangeRateToBase + mrl:exchangeRateDate.
+# This route triggers the application's ONLY outbound network call, and only
+# the base currency code is transmitted — see src/fx.py for the details.
+# ---------------------------------------------------------------------------
+
+def _update_account_rate(account_iri_str: str, rate_to_base: float, rate_date: str) -> None:
+    """Overwrite only the two exchange-rate properties on a single account,
+    leaving every other triple on that account untouched."""
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateToBase ?r .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateDate ?d .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateToBase "{rate_to_base}"^^xsd:decimal ;
+                                    mrl:exchangeRateDate   "{rate_date}"^^xsd:date .
+            }}
+        }}
+    """)
+
+
+def _render_accounts(request: Request, **extra) -> HTMLResponse:
+    """Render the accounts page, with optional extra context such as a
+    rate-refresh result banner."""
+    context = {
+        "app_name":      settings.app_name,
+        "active":        "accounts",
+        "accounts":      get_all_accounts(),
+        "currencies":    get_currencies(),
+        "jurisdictions": get_jurisdictions(),
+        "today":         date.today().isoformat(),
+        "edit_account":  None,
+    }
+    context.update(extra)
+    return templates.TemplateResponse(
+        request=request, name="accounts.html", context=context)
+
+
+@router.post("/accounts/refresh-rates", response_class=HTMLResponse)
+async def refresh_exchange_rates(request: Request):
+    """Fetch today's live rates and update every account's exchange rate.
+
+    The rate stored on each account is mrl:exchangeRateToBase, defined as
+    "1 unit of account currency = N units of base currency". The provider
+    returns the inverse orientation (1 base = N foreign), so the value written
+    is 1 / rate[account_code]. Accounts already in the base currency get 1.0.
+
+    Transparency: this is the app's only outbound network call (to
+    open.er-api.com), sending just the base currency code. See ADR-016.
+    """
+    from src.api.routes.profile import get_profile
+
+    base_local = (get_profile() or {}).get("baseCurrency", "")
+    base_code  = _currency_code(base_local) if base_local else ""
+
+    if not base_code:
+        return _render_accounts(
+            request,
+            rate_refresh_error="Set your base currency on the Profile page "
+                               "before refreshing exchange rates.",
+        )
+
+    try:
+        data  = fetch_rates(base_code)
+        rates = data["rates"]
+    except FxError as exc:
+        return _render_accounts(
+            request,
+            rate_refresh_error=f"Live rates unavailable — {exc}. "
+                               "Existing rates were left unchanged.",
+        )
+
+    today   = date.today().isoformat()
+    updated = 0
+    skipped = []
+    for acc in get_all_accounts():
+        code = acc.get("currencyCode", "")
+        if not code:
+            continue
+        if code == base_code:
+            _update_account_rate(acc["iri"], 1.0, today)
+            updated += 1
+        elif code in rates and rates[code]:
+            rate_to_base = round(1.0 / float(rates[code]), 6)
+            _update_account_rate(acc["iri"], rate_to_base, today)
+            updated += 1
+        else:
+            skipped.append(code)
+
+    return _render_accounts(
+        request,
+        rate_refresh_count=updated,
+        rate_refresh_base=base_code,
+        rate_refresh_as_of=data.get("as_of", ""),
+        rate_refresh_provider=data.get("provider", ""),
+        rate_refresh_skipped=sorted(set(skipped)),
     )
 
 

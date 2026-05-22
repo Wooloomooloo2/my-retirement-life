@@ -654,6 +654,24 @@ mrl:Currency_ZAR a mrl:Currency ;
     mrl:currencySymbol "R" ;
     mrl:currencyName "South African Rand"@en .
 
+mrl:Currency_INR a mrl:Currency ;
+    rdfs:label "Indian Rupee"@en ;
+    mrl:currencyCode "INR" ;
+    mrl:currencySymbol "₹" ;
+    mrl:currencyName "Indian Rupee"@en .
+
+mrl:Currency_CNY a mrl:Currency ;
+    rdfs:label "Chinese Yuan"@en ;
+    mrl:currencyCode "CNY" ;
+    mrl:currencySymbol "CN¥" ;
+    mrl:currencyName "Chinese Yuan Renminbi"@en .
+
+mrl:Currency_AED a mrl:Currency ;
+    rdfs:label "UAE Dirham"@en ;
+    mrl:currencyCode "AED" ;
+    mrl:currencySymbol "د.إ" ;
+    mrl:currencyName "United Arab Emirates Dirham"@en .
+
 
 # ---------------------------------------------------------------------------
 # Jurisdiction

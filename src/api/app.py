@@ -198,15 +198,14 @@ def get_dashboard_data() -> dict:
         except (ValueError, TypeError):
             pass
 
-    drawdown_configured = False
-    try:
-        ps_iri = og.NamedNode(f"{MRL}ProjectionSettings_1")
-        drawdown_configured = len(list(store.store.quads_for_pattern(
-            ps_iri, og.NamedNode(RDF_TYPE), None, DATA_GRAPH))) > 0
-    except Exception:
-        pass
-
     proj_settings = get_projection_settings()
+
+    # Drawdown is "configured" only when a spending account has actually been
+    # chosen (mrl:spendingAccount) — NOT merely when a ProjectionSettings row
+    # exists. Any settings save creates that row, which previously tripped this
+    # flag too early on the dashboard. (Backlog fix.)
+    drawdown_configured = bool(proj_settings.get("spending_account_label"))
+
     proj = run_projection(proj_settings["inflation_rate"]) if prof and accs else None
 
     return {

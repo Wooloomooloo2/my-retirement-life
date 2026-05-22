@@ -8,18 +8,21 @@ The loader is idempotent: if the ontology graph already contains triples
 it will not reload unless force=True is passed. This avoids redundant work
 on every application restart.
 """
-from pathlib import Path
 import logging
 
 import pyoxigraph as og
+
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Named graph that holds the ontology — separates it from user data
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
-# Path to the TTL file relative to the project root
-ONTOLOGY_TTL = Path(__file__).parent.parent.parent / "docs" / "ontology" / "mrl-ontology.ttl"
+# Path to the TTL file. Resolved via settings so it works both in development
+# (docs/ontology/mrl-ontology.ttl) and in a PyInstaller-frozen build (the same
+# file extracted under sys._MEIPASS).
+ONTOLOGY_TTL = settings.ontology_ttl
 
 
 def load_ontology(store: og.Store, force: bool = False) -> int:
