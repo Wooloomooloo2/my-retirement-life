@@ -225,7 +225,7 @@
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total savings</p>
             <p class="text-xl font-semibold mt-1">
-                {% if total_balance %}£{{ "{:,.0f}".format(total_balance) }}{% else %}—{% endif %}
+                {% if total_balance %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(total_balance) }}{% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">{{ account_count }} account{% if account_count != 1 %}s{% endif %}</p>
         </div>
@@ -247,7 +247,7 @@
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Annual spending</p>
             <p class="text-xl font-semibold mt-1">
-                {% if annual_spending %}£{{ "{:,.0f}".format(annual_spending) }}{% else %}—{% endif %}
+                {% if annual_spending %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(annual_spending) }}{% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">{{ budget_line_count }} budget line{% if budget_line_count != 1 %}s{% endif %}</p>
         </div>
@@ -258,7 +258,7 @@
             <p class="text-xl font-semibold mt-1">
                 {% if projection %}
                     {% set ret = projection.years | selectattr('is_retirement_year') | list %}
-                    {% if ret %}£{{ "{:,.0f}".format(ret[0].balance) }}{% else %}—{% endif %}
+                    {% if ret %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(ret[0].balance) }}{% else %}—{% endif %}
                 {% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Projected savings pot</p>
@@ -344,6 +344,7 @@
 {% block scripts %}
 {% if projection %}
 <script>
+const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
 const years = {{ projection.years | map(attribute='year') | list | tojson }};
 const balances = {{ projection.years | map(attribute='balance') | list | tojson }};
 const retirementYear = {{ projection.retirement_year }};
@@ -383,7 +384,7 @@ new Chart(ctx, {
             y: {
                 ticks: {
                     font: { size: 9 },
-                    callback: v => '£' + (v/1000).toFixed(0) + 'k'
+                    callback: v => BASE_SYMBOL + (v/1000).toFixed(0) + 'k'
                 },
                 grid: { color: 'rgba(0,0,0,0.04)' }
             }

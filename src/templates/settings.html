@@ -173,7 +173,7 @@
                 {% if proj_settings.annual_personal_allowance %}
                 <div class="flex justify-between items-center">
                     <span class="text-base-content/50">Personal allowance</span>
-                    <span class="font-medium">£{{ "{:,.0f}".format(proj_settings.annual_personal_allowance) }}</span>
+                    <span class="font-medium">{{ base_currency_symbol() }}{{ "{:,.0f}".format(proj_settings.annual_personal_allowance) }}</span>
                 </div>
                 {% endif %}
                 {% if proj_settings.residence_income_tax_rate %}

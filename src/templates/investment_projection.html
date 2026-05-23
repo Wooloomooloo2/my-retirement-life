@@ -56,21 +56,21 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Opening balance</p>
-            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(opening_balance) }}</p>
+            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(opening_balance) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Today's value</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Peak balance</p>
-            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(peak_balance) }}</p>
+            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(peak_balance) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Highest projected value</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total growth earned</p>
-            <p class="text-xl font-semibold mt-1 text-success">£{{ "{:,.0f}".format(total_return) }}</p>
+            <p class="text-xl font-semibold mt-1 text-success">{{ base_currency_symbol() }}{{ "{:,.0f}".format(total_return) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Cumulative over projection</p>
         </div>
     </div>
@@ -78,7 +78,7 @@
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total drawn</p>
             <p class="text-xl font-semibold mt-1 {% if total_withdrawn > 0 %}text-warning{% else %}text-base-content/50{% endif %}">
-                £{{ "{:,.0f}".format(total_withdrawn) }}
+                {{ base_currency_symbol() }}{{ "{:,.0f}".format(total_withdrawn) }}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Cumulative withdrawals</p>
         </div>
@@ -114,6 +114,7 @@
 {% block scripts %}
 {% if not no_data %}
 <script>
+const BASE_SYMBOL  = {{ base_currency_symbol() | tojson }};
 const years        = {{ years       | tojson }};
 const balances     = {{ balances    | tojson }};
 const withdrawals  = {{ withdrawals | tojson }};
@@ -204,7 +205,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 callbacks: {
                     label: ctx => {
                         const v = ctx.parsed.y;
-                        return ` ${ctx.dataset.label}: £${Math.round(v).toLocaleString('en-GB')}`;
+                        return ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.round(v).toLocaleString('en-GB')}`;
                     },
                     afterBody: items => {
                         const idx = items[0].dataIndex;
@@ -213,8 +214,8 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                         if (drw > 0 || ret > 0) {
                             const net = ret - drw;
                             return net >= 0
-                                ? [`Net this year: +£${Math.round(net).toLocaleString('en-GB')} (growing)`]
-                                : [`Net this year: −£${Math.round(-net).toLocaleString('en-GB')} (depleting)`];
+                                ? [`Net this year: +${BASE_SYMBOL}${Math.round(net).toLocaleString('en-GB')} (growing)`]
+                                : [`Net this year: −${BASE_SYMBOL}${Math.round(-net).toLocaleString('en-GB')} (depleting)`];
                         }
                         return [];
                     }
@@ -227,13 +228,13 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 grid: { display: false },
             },
             y: {
-                ticks: { font: { size: 10 }, callback: v => '£' + (v / 1000).toFixed(0) + 'k' },
+                ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                 grid: gridCfg,
-                title: { display: true, text: '£ per year (bars)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                title: { display: true, text: BASE_SYMBOL + ' per year (bars)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
             },
             yBalance: {
                 position: 'right',
-                ticks: { font: { size: 10 }, callback: v => '£' + (v / 1000).toFixed(0) + 'k' },
+                ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                 grid: { drawOnChartArea: false },
                 title: { display: true, text: 'Balance (line)', font: { size: 10 }, color: '#6366F1' }
             }

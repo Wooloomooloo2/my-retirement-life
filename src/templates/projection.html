@@ -59,7 +59,7 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Opening balance</p>
-            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(projection.opening_balance) }}</p>
+            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.opening_balance) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Today's total savings</p>
         </div>
     </div>
@@ -69,7 +69,7 @@
             {% set retirement_balance = projection.years | selectattr('is_retirement_year') | list %}
             <p class="text-xl font-semibold mt-1">
                 {% if retirement_balance %}
-                    £{{ "{:,.0f}".format(retirement_balance[0].balance) }}
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(retirement_balance[0].balance) }}
                 {% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.retirement_year }}</p>
@@ -81,9 +81,9 @@
             <p class="text-xl font-semibold mt-1
                 {% if projection.final_balance >= 0 %}text-success{% else %}text-error{% endif %}">
                 {% if projection.final_balance >= 0 %}
-                    £{{ "{:,.0f}".format(projection.final_balance) }}
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.final_balance) }}
                 {% else %}
-                    −£{{ "{:,.0f}".format(projection.final_balance | abs) }}
+                    −{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.final_balance | abs) }}
                 {% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.end_year }}</p>
@@ -239,14 +239,14 @@
             {% if projection.total_tax_paid and projection.total_tax_paid > 0 %}
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Total tax (est.)</p>
-                <p class="font-medium text-warning">£{{ "{:,.0f}".format(projection.total_tax_paid) }}</p>
+                <p class="font-medium text-warning">{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.total_tax_paid) }}</p>
                 <p class="text-xs text-base-content/40 mt-0.5">Cumulative over projection — estimate only</p>
             </div>
             {% endif %}
             {% if proj_settings.annual_personal_allowance and proj_settings.annual_personal_allowance > 0 %}
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Personal allowance</p>
-                <p class="font-medium">£{{ "{:,.0f}".format(proj_settings.annual_personal_allowance) }}</p>
+                <p class="font-medium">{{ base_currency_symbol() }}{{ "{:,.0f}".format(proj_settings.annual_personal_allowance) }}</p>
                 <p class="text-xs text-base-content/40 mt-0.5">
                     Marginal rate above: {{ (proj_settings.residence_income_tax_rate * 100) | round(1) }}%
                 </p>
@@ -419,6 +419,7 @@
 {% block scripts %}
 {% if projection %}
 <script>
+const BASE_SYMBOL    = {{ base_currency_symbol() | tojson }};
 const years          = {{ projection.years | map(attribute='year')                | list | tojson }};
 const balances       = {{ projection.years | map(attribute='balance')             | list | tojson }};
 const mandatory      = {{ projection.years | map(attribute='mandatory')           | list | tojson }};
@@ -499,9 +500,9 @@ function initByAccountChart() {
                         callbacks: {
                             label: ctx => {
                                 const v = ctx.parsed.y;
-                                return ` ${ctx.dataset.label}: £${Math.abs(Math.round(v)).toLocaleString('en-GB')}`;
+                                return ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.abs(Math.round(v)).toLocaleString('en-GB')}`;
                             },
-                            footer: items => `Total: £${Math.round(items.reduce((s, i) => s + i.parsed.y, 0)).toLocaleString('en-GB')}`,
+                            footer: items => `Total: ${BASE_SYMBOL}${Math.round(items.reduce((s, i) => s + i.parsed.y, 0)).toLocaleString('en-GB')}`,
                         }
                     }
                 },
@@ -520,9 +521,9 @@ function initByAccountChart() {
                     },
                     y: {
                         stacked: true,
-                        ticks: { font: { size: 10 }, callback: v => '£' + (v / 1000).toFixed(0) + 'k' },
+                        ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                         grid: { color: 'rgba(0,0,0,0.04)' },
-                        title: { display: true, text: 'Balance (£)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                        title: { display: true, text: 'Balance (' + BASE_SYMBOL + ')', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
                     }
                 }
             }
@@ -759,7 +760,7 @@ new Chart(ctx, {
                 callbacks: {
                     label: function(ctx) {
                         const val = ctx.parsed.y;
-                        return ` ${ctx.dataset.label}: £${Math.abs(val).toLocaleString('en-GB')}`;
+                        return ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.abs(val).toLocaleString('en-GB')}`;
                     }
                 }
             }
@@ -782,12 +783,12 @@ new Chart(ctx, {
                 stacked: true,
                 ticks: {
                     font: { size: 10 },
-                    callback: v => '£' + Math.abs(v/1000).toFixed(0) + 'k'
+                    callback: v => BASE_SYMBOL + Math.abs(v/1000).toFixed(0) + 'k'
                 },
                 grid: { color: 'rgba(0,0,0,0.04)' },
                 title: {
                     display: true,
-                    text: 'Annual cashflow (£)',
+                    text: 'Annual cashflow (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
                     color: 'rgba(0,0,0,0.4)'
                 }
@@ -796,12 +797,12 @@ new Chart(ctx, {
                 position: 'right',
                 ticks: {
                     font: { size: 10 },
-                    callback: v => '£' + (v/1000).toFixed(0) + 'k'
+                    callback: v => BASE_SYMBOL + (v/1000).toFixed(0) + 'k'
                 },
                 grid: { drawOnChartArea: false },
                 title: {
                     display: true,
-                    text: 'Balance (£)',
+                    text: 'Balance (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
                     color: '#534AB7'
                 }
@@ -891,7 +892,7 @@ new Chart(mcCtx, {
                 callbacks: {
                     label: function(ctx) {
                         const val = ctx.parsed.y;
-                        const sign = val < 0 ? '−£' : '£';
+                        const sign = val < 0 ? '−' + BASE_SYMBOL : BASE_SYMBOL;
                         return ` ${ctx.dataset.label}: ${sign}${Math.abs(val).toLocaleString('en-GB')}`;
                     }
                 }
@@ -913,12 +914,12 @@ new Chart(mcCtx, {
             y: {
                 ticks: {
                     font: { size: 10 },
-                    callback: v => (v < 0 ? '−' : '') + '£' + Math.abs(v / 1000).toFixed(0) + 'k'
+                    callback: v => (v < 0 ? '−' : '') + BASE_SYMBOL + Math.abs(v / 1000).toFixed(0) + 'k'
                 },
                 grid: { color: 'rgba(0,0,0,0.04)' },
                 title: {
                     display: true,
-                    text: 'Balance (£)',
+                    text: 'Balance (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
                     color: 'rgba(0,0,0,0.4)'
                 }

@@ -133,7 +133,7 @@
                         </td>
                         <td class="text-xs text-base-content/50">
                             {% if account.contribution %}
-                                <span class="badge badge-info badge-sm badge-outline">£{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
+                                <span class="badge badge-info badge-sm badge-outline">{{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
                             {% else %}—{% endif %}
                         </td>
                         <td class="text-right">
@@ -548,7 +548,7 @@
                 Regular contribution
                 <span class="text-xs font-normal text-base-content/40">(optional — credits this account and deducts from cashflow)</span>
                 {% if contrib %}
-                <span class="badge badge-info badge-sm ml-auto">£{{ "{:,.0f}".format(contrib.annualAmount) }}/yr</span>
+                <span class="badge badge-info badge-sm ml-auto">{{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount) }}/yr</span>
                 {% endif %}
             </div>
             <div class="collapse-content">
@@ -668,6 +668,8 @@
 
 {% block scripts %}
 <script>
+    const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
+
     function toggleFxFields() {
         const currencySelect = document.querySelector('select[name="accountCurrency"]');
         if (!currencySelect) return;
@@ -699,7 +701,7 @@
         if (!hint) return;
         const annual = amt * (CONTRIB_MULTIPLIERS[freq] || 12);
         hint.textContent = amt > 0
-            ? `Annual equivalent: £${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
+            ? `Annual equivalent: ${BASE_SYMBOL}${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
             : '';
     }
     // Run on load to populate hint if editing an existing contribution
