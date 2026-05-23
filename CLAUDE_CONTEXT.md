@@ -60,6 +60,12 @@ All delivered and confirmed working unless noted.
 
 9. **Backlog #10 — Monte Carlo gated on investment accounts.** `projection.py` `run_monte_carlo()` returns `None` early when no `InvestmentAccount` exists in `all_accounts` (ADR-012 — there's nothing stochastic to model without investments). Template's existing `{% if mc %}` guards auto-hide the MC card, JS, and confidence-card line. `projection.html` adds an info notice in the `else` branch explaining why MC isn't shown and linking to `/investments`. Note: the deeper "MC model discrepancy" (aggregate-pool MC vs per-account deterministic depletion) is a SEPARATE issue and remains open.
 
+10. **Backlog #1 + #2 — employment end default and workplace pension type.** Commit `627db7f`. `income.py`/`income.html`: new income source defaults End year to the person's retirement year, with JS that auto-clears it when Type isn't Employment. `mrl-ontology.ttl` + `investments.py`/`investments.html`: new `InvestmentAccountType_WorkPension` for employer-sponsored pensions (UK auto-enrolment, US 401(k)/403(b), Australian super, German bAV); existing Pension type rescoped to self-directed plans (SIPP / IRA / RRSP). Requires `python tools\reload_ontology.py` to appear in the live store.
+
+11. **Backlog #5 — Income currency exposed with per-source FX rate.** Commit `81023f3`. Ontology adds `mrl:incomeExchangeRateToBase` + `mrl:incomeExchangeRateDate` on `IncomeSource` (mirrors ADR-016 account pattern; `mrl:incomeCurrency` already existed). `income.py`: new form fields persisted via `save_income_source()`; new `POST /income/refresh-rates` route; helpers `_currency_code` / `_currency_symbol` / `get_currencies` / `get_base_currency` imported from `profile.py` to avoid duplication. `income.html`: currency dropdown defaulting to base currency (and defaulting to base for legacy rows so editing pre-existing income doesn't silently flip currency to whatever sorts first); FX rate field shown only when income currency ≠ base; "Refresh rates" button + result banner. Engine: `projection.py` `load_all_income_sources()` pre-multiplies `amount` by `incomeExchangeRateToBase` (default 1.0), so `run_projection` and `run_monte_carlo` see base-currency figures without further changes.
+
+12. **Backlog #6 — Default base-currency symbol everywhere.** Same commit `81023f3`. `app.py`: new Jinja globals `base_currency_symbol()` + `base_currency_code()`, resolved via `profile.get_base_currency()` (returns `{local, code, symbol}`, falls back to GBP/£ when no profile exists). `budget.html`, `life_events.html`, `income.html`: every hardcoded `£` in templates and inline JS now uses the Jinja global. Per-budget-line and per-life-event currency overrides remain unmodelled — those screens continue to treat all amounts as being in the base currency; per-item override stays on the Post-1.0 ADR-016 follow-on list.
+
 ### Documentation tidy-ups still pending (small, user to action)
 - **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
 
@@ -168,14 +174,15 @@ my-retirement-life/
 - `mrl:Currency` individuals (code/symbol/name); 17 total.
 - `mrl:baseCurrency` on `mrl:Person` (single base).
 - `mrl:accountCurrency` + `mrl:exchangeRateToBase` + `mrl:exchangeRateDate` on cash AND investment accounts; the deterministic engine applies the per-account rate (`base_balance = raw_balance * fx_rate`, default 1.0).
-- `mrl:incomeCurrency` exists on `IncomeSource`.
-- Live refresh of `exchangeRateToBase` on both account pages (ADR-016).
+- `mrl:incomeCurrency` + `mrl:incomeExchangeRateToBase` + `mrl:incomeExchangeRateDate` on `IncomeSource`; income form exposes currency selector defaulting to base; engine pre-multiplies amount × rate in `load_all_income_sources()`.
+- Live refresh of `exchangeRateToBase` on both account pages **and** `incomeExchangeRateToBase` on the income page (ADR-016).
+- All template displays of monetary amounts on `budget.html`, `life_events.html`, and `income.html` use the Jinja global `base_currency_symbol()` (resolves from `Person.baseCurrency`).
 
 **NOT modelled yet (gaps behind several backlog items):**
 - No per-budget-line currency property.
+- No per-life-event currency property (events follow base currency).
 - No separate "expected retirement base" currency (only one `baseCurrency`).
-- Income currency: `incomeCurrency` exists but the income UI doesn't expose it and engine conversion of income is unconfirmed.
-- Most forms default currency to **GBP hardcoded** rather than the person's base currency.
+- Account / investment / projection / dashboard / settings templates still contain hardcoded `£` in places — sweep is a quick follow-on once the income/budget/life-events pattern is approved.
 
 ---
 
@@ -315,16 +322,16 @@ ONTOLOGY_GRAPH = NamedNode("https://myretirementlife.app/ontology/graph")
 ### PRE-BETA — new items from end-to-end walkthrough (2026-05-23)
 All to be addressed before public beta. File(s) each will need are noted.
 
-1. **Employment income default end = "at retirement."** Employment income should default its end to the retirement year/age (still overridable). _Needs: `income.py`, `income.html`._
-2. **Investment account types missing "work pension."** Add workplace/occupational pension as an investment account type. _Needs: investment account-type individuals in `mrl-ontology.ttl` + `investments.py`/`investments.html`._
+1. _(RESOLVED — commit `627db7f`; see "Changes this session" item 10.)_
+2. _(RESOLVED — commit `627db7f`; see "Changes this session" item 10.)_
 3. **Accounts vs Investments are awkwardly separated with overlapping options.** Information-architecture review — the two screens duplicate currency/FX/contribution/tax options. Decide on unification or clearer separation. _Needs: design review across `accounts.*` + `investments.*`._
 4. **"Plan to retire in" doesn't match available currencies.** The retirement-jurisdiction options and the currency set are inconsistent. Align jurisdictions ↔ currencies (clarify intended relationship first). _Needs: `profile.py`/`profile.html` + jurisdiction/currency individuals in `mrl-ontology.ttl`._
-5. **Salary has no currency selector (hardcoded GBP).** Expose `incomeCurrency` on income/salary. _Needs: `income.py`/`income.html`; confirm engine converts income by rate._
-6. **Default to base currency everywhere (not GBP).** Income, expenses/budget, life events etc. should default to `Person.baseCurrency`, overridable per item. Currently default to GBP. _Needs: `income.*`, `budget.*`, `life_events.*`; note per-budget-line currency isn't modelled yet._
+5. _(RESOLVED — commit `81023f3`; see "Changes this session" item 11.)_
+6. _(RESOLVED — commit `81023f3`; see "Changes this session" item 12 — for the income/budget/life-events templates. Hardcoded `£` still present on `projection.html`, `dashboard.html`, `accounts.html`, `investments.html`, `settings.html` — quick sweep to follow.)_
 7. **Contributions not explicit in the budget.** Savings/investment contributions (ADR-015) need to be clearly called out in the budget. A read-only section exists but isn't prominent/explicit enough. _Needs: `budget.py`/`budget.html`._
-8. _(RESOLVED this session — see "Changes this session" item 8.)_
+8. _(RESOLVED earlier this session — see "Changes this session" item 8.)_
 9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
-10. _(RESOLVED this session — see "Changes this session" item 9.)_
+10. _(RESOLVED earlier this session — see "Changes this session" item 9.)_
 
 ### PRE-BETA — carried over (still open)
 - **Income deposit account UI** — income sources should specify which account receives the income (engine surplus routing already delivers most of the value). _Needs: `income.py`, `income.html`._
@@ -340,6 +347,10 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Spending growth rate must be REAL, not nominal (#8)~~ — DONE. Engine now composes `inflation + change_rate`; UI relabelled.
 - ~~Loan-line inflation (follow-on)~~ — DONE. Loans now use `change_rate` only; no inflation lift.
 - ~~Monte Carlo runs with cash-only input (#10)~~ — DONE. `run_monte_carlo()` returns `None` when no investment accounts; template shows an info notice instead.
+- ~~Employment income default end (#1)~~ — DONE (commit `627db7f`). Defaults to retirement year for Employment type with JS sync.
+- ~~Workplace pension investment type (#2)~~ — DONE (commit `627db7f`). `InvestmentAccountType_WorkPension` added; existing Pension type now scoped to self-directed plans.
+- ~~Income currency selector + per-source FX rate (#5)~~ — DONE (commit `81023f3`). Engine FX-converts income via `incomeExchangeRateToBase` at load time.
+- ~~Default base-currency symbol on income/budget/life-events (#6 partial)~~ — DONE (commit `81023f3`). `base_currency_symbol()` Jinja global. Remaining templates (`projection`, `dashboard`, `accounts`, `investments`, `settings`) still hardcode `£` — quick sweep follow-on.
 
 ### Post-1.0
 - Tax-optimal drawdown ordering (ADR-011 future)
@@ -358,18 +369,18 @@ All to be addressed before public beta. File(s) each will need are noted.
 ---
 
 ## Files Claude has SEEN (current/uploaded this project)
-`main.py`, `main.spec`, `requirements.txt`, `src/config.py`, `src/fx.py` (new),
+`main.py`, `main.spec`, `requirements.txt`, `src/config.py`, `src/fx.py`,
 `src/api/app.py`, `src/api/routes/accounts.py`, `src/api/routes/profile.py`,
 `src/api/routes/investments.py`, `src/api/routes/projection.py` (full),
-`src/api/routes/budget.py`, `src/store/ontology_loader.py`,
+`src/api/routes/budget.py`, `src/api/routes/income.py`, `src/api/routes/life_events.py`,
+`src/store/ontology_loader.py`,
 `src/templates/base.html`, `src/templates/accounts.html`,
 `src/templates/investments.html`, `src/templates/budget.html`,
+`src/templates/income.html`, `src/templates/life_events.html`,
 `docs/ontology/mrl-ontology.ttl`, `docs/adr/README.md`, ADR-014/015/016.
 
 ## Files Claude has NOT seen (upload when relevant)
-- `src/api/routes/income.py` + `src/templates/income.html` — items 1, 5, 6; income deposit account
-- `src/api/routes/life_events.py` + `src/templates/life_events.html` — item 6 (life events default currency)
 - `src/templates/profile.html` — item 4 (and to confirm currency dropdowns now show INR/CNY/AED)
-- `src/templates/projection.html` — items 9, 10 (template only — route file now fully seen)
+- `src/templates/projection.html` — items 9, remaining `£` sweep (template only — route file now fully seen)
 - `src/api/routes/settings_route.py`, `src/api/routes/scenarios.py`, `src/store/scenario_manager.py`, `src/store/graph.py` (full)
-- `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html`
+- `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html` — all candidates for the remaining `£`-symbol sweep
