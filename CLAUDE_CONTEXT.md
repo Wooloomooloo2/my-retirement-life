@@ -54,6 +54,8 @@ All delivered and confirmed working unless noted.
 
 6. **`tools/reload_ontology.py`** (new): force-reloads the ontology named graph (`load_ontology(force=True)`) after TTL edits. Run with the app CLOSED: `python tools\reload_ontology.py`.
 
+7. **Backlog #8 — budget-line growth is now real (above inflation).** Engine: `projection.py` (deterministic + Monte Carlo branches) now computes `rate = inflation_rate + line["change_rate"]` instead of substituting one for the other. UI: `budget.html` field relabelled to "Real growth rate % (above inflation)"; placeholder and hint updated; table column renamed "Real growth". Verified by running the app and confirming mandatory-line growth of ~6.6%/yr at inflation=3.5% — mathematically impossible under the old "substitute" formula (max would have been 4%). **Silent reinterpretation accepted** (pre-beta): existing budget lines with non-zero `change_rate` now grow faster than before. Loan-line inflation (loans currently still inflate even though typically fixed nominal) deferred as a separate backlog item.
+
 ### Documentation tidy-ups still pending (small, user to action)
 - **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
 
@@ -79,9 +81,9 @@ my-retirement-life/
 │   │       ├── accounts.py          ← Cash CRUD + contribution CRUD + /accounts/refresh-rates
 │   │       ├── investments.py       ← Investment CRUD + contribution CRUD + /investments/refresh-rates
 │   │       ├── income.py            ← NOT YET SEEN
-│   │       ├── budget.py            ← NOT YET SEEN (has get_all_contributions_for_budget())
+│   │       ├── budget.py            ← Budget-line CRUD + get_all_contributions_for_budget()
 │   │       ├── life_events.py       ← NOT YET SEEN
-│   │       ├── projection.py        ← Engine + projection settings (seen in part)
+│   │       ├── projection.py        ← Engine + projection settings
 │   │       ├── settings_route.py    ← Backup/restore/export (NOT YET SEEN)
 │   │       └── scenarios.py         ← Scenario management (NOT YET SEEN)
 │   ├── store/
@@ -106,7 +108,7 @@ my-retirement-life/
 │       ├── investments.html
 │       ├── investment_projection.html ← NOT YET SEEN
 │       ├── income.html              ← NOT YET SEEN
-│       ├── budget.html              ← NOT YET SEEN
+│       ├── budget.html              ← Budget-line CRUD form + read-only contributions table
 │       ├── life_events.html         ← NOT YET SEEN
 │       ├── projection.html          ← NOT YET SEEN
 │       ├── settings.html            ← NOT YET SEEN
@@ -316,7 +318,7 @@ All to be addressed before public beta. File(s) each will need are noted.
 5. **Salary has no currency selector (hardcoded GBP).** Expose `incomeCurrency` on income/salary. _Needs: `income.py`/`income.html`; confirm engine converts income by rate._
 6. **Default to base currency everywhere (not GBP).** Income, expenses/budget, life events etc. should default to `Person.baseCurrency`, overridable per item. Currently default to GBP. _Needs: `income.*`, `budget.*`, `life_events.*`; note per-budget-line currency isn't modelled yet._
 7. **Contributions not explicit in the budget.** Savings/investment contributions (ADR-015) need to be clearly called out in the budget. A read-only section exists but isn't prominent/explicit enough. _Needs: `budget.py`/`budget.html`._
-8. **Spending growth rate must be REAL, not nominal.** The budget-line growth field currently suggests inflation, but global inflation is applied separately — double counting. Relabel as "planned increase above inflation" and verify the engine treats budget growth as real (on top of inflation), not re-adding it. _Needs: `budget.py`/`budget.html` + verify `projection.py` step 6._
+8. **Loan-line inflation (carried follow-on from #8 spending-growth fix).** Loan budget lines currently grow with inflation (and now with the new real-growth formula too), but loans are typically fixed in nominal terms. A £1000/mo mortgage payment shouldn't compound. Either skip inflation for `BudgetLineType_Loan` in the engine, or auto-set `change_rate = -inflation_rate` on save. _Needs: `projection.py` (steps 6 and MC equivalent) + design choice._
 9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
 10. **Monte Carlo runs with cash-only input (bug).** Per ADR-012, MC is restricted to the investment pool — it should not run/display when there are no investment accounts. Gate MC on presence of investment accounts. _Needs: `projection.py` (`run_monte_carlo` + caller gating) and `projection.html` (hide MC UI)._ Related to the existing "MC model discrepancy" note below.
 
@@ -331,6 +333,7 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Offline packaging / first Windows .exe~~ — DONE.
 - ~~Add currencies INR/CNY/AED~~ — DONE.
 - ~~Auto-populate exchange rates from today's rate~~ — DONE (ADR-016, both account types).
+- ~~Spending growth rate must be REAL, not nominal (#8)~~ — DONE. Engine now composes `inflation + change_rate`; UI relabelled. Loan-line inflation split off as new item #8.
 
 ### Post-1.0
 - Tax-optimal drawdown ordering (ADR-011 future)
@@ -351,16 +354,16 @@ All to be addressed before public beta. File(s) each will need are noted.
 ## Files Claude has SEEN (current/uploaded this project)
 `main.py`, `main.spec`, `requirements.txt`, `src/config.py`, `src/fx.py` (new),
 `src/api/app.py`, `src/api/routes/accounts.py`, `src/api/routes/profile.py`,
-`src/api/routes/investments.py`, `src/api/routes/projection.py` (in part),
-`src/store/ontology_loader.py`, `src/templates/base.html`, `src/templates/accounts.html`,
-`src/templates/investments.html`, `docs/ontology/mrl-ontology.ttl`,
-`docs/adr/README.md`, ADR-014/015/016.
+`src/api/routes/investments.py`, `src/api/routes/projection.py` (full),
+`src/api/routes/budget.py`, `src/store/ontology_loader.py`,
+`src/templates/base.html`, `src/templates/accounts.html`,
+`src/templates/investments.html`, `src/templates/budget.html`,
+`docs/ontology/mrl-ontology.ttl`, `docs/adr/README.md`, ADR-014/015/016.
 
 ## Files Claude has NOT seen (upload when relevant)
 - `src/api/routes/income.py` + `src/templates/income.html` — items 1, 5, 6; income deposit account
-- `src/api/routes/budget.py` + `src/templates/budget.html` — items 6, 7, 8
 - `src/api/routes/life_events.py` + `src/templates/life_events.html` — item 6 (life events default currency)
 - `src/templates/profile.html` — item 4 (and to confirm currency dropdowns now show INR/CNY/AED)
-- `src/templates/projection.html` + full `src/api/routes/projection.py` — items 9, 10
+- `src/templates/projection.html` — items 9, 10 (template only — route file now fully seen)
 - `src/api/routes/settings_route.py`, `src/api/routes/scenarios.py`, `src/store/scenario_manager.py`, `src/store/graph.py` (full)
 - `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html`
