@@ -66,6 +66,10 @@ All delivered and confirmed working unless noted.
 
 12. **Backlog #6 — Default base-currency symbol everywhere.** Same commit `81023f3`. `app.py`: new Jinja globals `base_currency_symbol()` + `base_currency_code()`, resolved via `profile.get_base_currency()` (returns `{local, code, symbol}`, falls back to GBP/£ when no profile exists). `budget.html`, `life_events.html`, `income.html`: every hardcoded `£` in templates and inline JS now uses the Jinja global. Per-budget-line and per-life-event currency overrides remain unmodelled — those screens continue to treat all amounts as being in the base currency; per-item override stays on the Post-1.0 ADR-016 follow-on list.
 
+13. **Backlog #6 (rest) — `£` sweep across remaining templates.** Commit `dd6298c`. `dashboard.html`, `settings.html`, `accounts.html`, `investments.html`, `investment_projection.html`, `projection.html`: every hardcoded `£` (Jinja and inline JS) replaced with `base_currency_symbol()` / a `BASE_SYMBOL` const injected at the top of each script block via `tojson`. Chart.js axis titles like `'Balance (£)'` become `'Balance (' + BASE_SYMBOL + ')'`. **Zero `£` left in any template** — switching `Person.baseCurrency` now flips every display in the app without code changes. Per-account balance displays keep using `account.currencySymbol` (each account's own currency), unaffected.
+
+14. **Budget summary respects start/end years (mini-chart).** Commit `1b8c9d4`. `/budget`'s previous 4-card summary summed every line's `annualAmount` ignoring its active window, so non-overlapping lines double-counted in any given year (engine was already correct). Replaced with a stacked-area Chart.js chart of annual spending year-by-year + three snapshot metrics (Today, At retirement, Peak — each year-labelled). New helpers in `budget.py`: `compute_annual_spending_series()` and `get_budget_metrics()`. Chart is in today's pounds — applies each line's `change_rate` (real growth) but NOT base inflation; the projection page is where inflation layers in. Horizon comes from `load_profile()` with a 40-year fallback during onboarding.
+
 ### Documentation tidy-ups still pending (small, user to action)
 - **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
 
@@ -353,6 +357,7 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Default base-currency symbol on income/budget/life-events (#6 partial)~~ — DONE (commit `81023f3`). `base_currency_symbol()` Jinja global. Remaining templates (`projection`, `dashboard`, `accounts`, `investments`, `settings`) still hardcode `£` — quick sweep follow-on.
 
 ### Post-1.0
+- Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
 - Tax-optimal drawdown ordering (ADR-011 future)
 - PCLS dedicated model
 - Multiple marginal tax bands (ADR-013 future)
