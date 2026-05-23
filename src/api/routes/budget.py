@@ -146,20 +146,104 @@ def get_all_contributions_for_budget() -> list:
     return results
 
 
-def get_budget_summary(lines: list) -> dict:
-    """Calculate totals by type."""
-    mandatory = sum(l["annualAmount"] for l in lines
-                    if l["lineType"] == "BudgetLineType_Mandatory")
-    discretionary = sum(l["annualAmount"] for l in lines
-                        if l["lineType"] == "BudgetLineType_Discretionary")
-    loans = sum(l["annualAmount"] for l in lines
-                if l["lineType"] == "BudgetLineType_Loan")
+def _int_or_none(v):
+    try:
+        return int(v) if v else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _float_or_zero(v):
+    try:
+        return float(v) if v else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _horizon() -> tuple[int, int, int | None]:
+    """Return (current_year, end_year, retirement_year) for the annual-spending
+    chart. Uses the profile's life expectancy when available; otherwise falls
+    back to a 40-year window. retirement_year is None when no profile is set.
+    """
+    from datetime import date
+    current_year = date.today().year
+    try:
+        from src.api.routes.projection import load_profile
+        prof = load_profile()
+    except Exception:
+        prof = None
+    if prof:
+        retirement_year = prof["birth_year"] + prof["retirement_age"]
+        end_year        = prof["birth_year"] + prof["life_expectancy"]
+        return current_year, end_year, retirement_year
+    return current_year, current_year + 40, None
+
+
+def compute_annual_spending_series(lines: list, current_year: int, end_year: int) -> dict:
+    """Per-year spending arrays in today's pounds, broken out by line type.
+
+    For each line, applies its `change_rate` (real growth above inflation) but
+    NOT the base inflation rate — the budget page is conceptually a real-terms
+    plan. The projection engine layers inflation on top of this when computing
+    actual nominal cash outflows.
+
+    Respects each line's start_year / end_year / loan_end_year so non-
+    overlapping lines no longer double-count in any single year.
+    """
+    years         = list(range(current_year, end_year + 1))
+    n             = len(years)
+    mandatory     = [0.0] * n
+    discretionary = [0.0] * n
+    loans         = [0.0] * n
+
+    for line in lines:
+        annual      = _float_or_zero(line.get("annualAmount"))
+        change_rate = _float_or_zero(line.get("changeRate"))
+        start       = _int_or_none(line.get("startYear"))
+        end         = _int_or_none(line.get("endYear"))
+        loan_end    = _int_or_none(line.get("loanEndYear"))
+        line_type   = line.get("lineType", "")
+
+        for i, year in enumerate(years):
+            if start    is not None and year < start:    continue
+            if end      is not None and year > end:      continue
+            if loan_end is not None and year > loan_end: continue
+            amount = annual * ((1 + change_rate / 100) ** i)
+            if   line_type == "BudgetLineType_Mandatory":     mandatory[i]     += amount
+            elif line_type == "BudgetLineType_Discretionary": discretionary[i] += amount
+            elif line_type == "BudgetLineType_Loan":          loans[i]         += amount
+
+    total = [m + d + l for m, d, l in zip(mandatory, discretionary, loans)]
     return {
-        "mandatory": mandatory,
-        "discretionary": discretionary,
-        "loans": loans,
-        "total": mandatory + discretionary + loans,
+        "years":         years,
+        "mandatory":     [round(x, 0) for x in mandatory],
+        "discretionary": [round(x, 0) for x in discretionary],
+        "loans":         [round(x, 0) for x in loans],
+        "total":         [round(x, 0) for x in total],
     }
+
+
+def get_budget_metrics(series: dict, retirement_year: int | None) -> dict:
+    """Pick out the three headline numbers shown above the chart: today,
+    at retirement, and the peak year — each as {year, total} (or None when
+    there's no spending or no retirement year set)."""
+    if not series["years"] or not series["total"]:
+        return {"today": None, "retirement": None, "peak": None}
+
+    years = series["years"]
+    total = series["total"]
+
+    today = {"year": years[0], "total": total[0]}
+
+    retirement = None
+    if retirement_year is not None and years[0] <= retirement_year <= years[-1]:
+        idx = retirement_year - years[0]
+        retirement = {"year": retirement_year, "total": total[idx]}
+
+    peak_idx = max(range(len(total)), key=lambda i: total[i])
+    peak = {"year": years[peak_idx], "total": total[peak_idx]}
+
+    return {"today": today, "retirement": retirement, "peak": peak}
 
 
 def save_budget_line(n: int, name: str, amount: float, frequency: str,
@@ -232,16 +316,22 @@ def save_budget_line(n: int, name: str, amount: float, frequency: str,
 
 
 def _page_context(request, lines, edit_line=None, **kwargs):
-    summary       = get_budget_summary(lines)
     contributions = get_all_contributions_for_budget()
+    current_year, end_year, retirement_year = _horizon()
+    series  = compute_annual_spending_series(lines, current_year, end_year)
+    metrics = get_budget_metrics(series, retirement_year)
     return {
-        "app_name":         settings.app_name,
-        "active":           "budget",
-        "lines":            lines,
-        "summary":          summary,
+        "app_name":          settings.app_name,
+        "active":            "budget",
+        "lines":             lines,
+        "series":            series,
+        "metrics":           metrics,
+        "retirement_year":   retirement_year,
+        "current_year":      current_year,
+        "end_year":          end_year,
         "frequency_options": FREQUENCY_LABELS,
-        "edit_line":        edit_line,
-        "contributions":    contributions,
+        "edit_line":         edit_line,
+        "contributions":     contributions,
         **kwargs,
     }
 
