@@ -148,9 +148,29 @@ def get_setup_state() -> dict:
     }
 
 
-_shared_templates.env.globals["user_initials"]   = get_user_initials
-_shared_templates.env.globals["active_scenario"] = get_active_scenario
-_shared_templates.env.globals["setup_state"]     = get_setup_state
+def get_base_currency_symbol() -> str:
+    """Symbol of the user's base currency, used as the default for amount displays."""
+    try:
+        from src.api.routes.profile import get_base_currency
+        return get_base_currency()["symbol"]
+    except Exception:
+        return "£"
+
+
+def get_base_currency_code() -> str:
+    """ISO code of the user's base currency, used in column headings and tooltips."""
+    try:
+        from src.api.routes.profile import get_base_currency
+        return get_base_currency()["code"]
+    except Exception:
+        return "GBP"
+
+
+_shared_templates.env.globals["user_initials"]        = get_user_initials
+_shared_templates.env.globals["active_scenario"]      = get_active_scenario
+_shared_templates.env.globals["setup_state"]          = get_setup_state
+_shared_templates.env.globals["base_currency_symbol"] = get_base_currency_symbol
+_shared_templates.env.globals["base_currency_code"]   = get_base_currency_code
 
 
 # ---------------------------------------------------------------------------

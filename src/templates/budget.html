@@ -26,28 +26,28 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total annual</p>
-            <p class="text-xl font-semibold mt-1">£{{ "{:,.0f}".format(summary.total) }}</p>
+            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(summary.total) }}</p>
             <p class="text-xs text-base-content/40 mt-1">All spending</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Mandatory</p>
-            <p class="text-xl font-semibold mt-1 text-error">£{{ "{:,.0f}".format(summary.mandatory) }}</p>
+            <p class="text-xl font-semibold mt-1 text-error">{{ base_currency_symbol() }}{{ "{:,.0f}".format(summary.mandatory) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Essential costs</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Discretionary</p>
-            <p class="text-xl font-semibold mt-1 text-warning">£{{ "{:,.0f}".format(summary.discretionary) }}</p>
+            <p class="text-xl font-semibold mt-1 text-warning">{{ base_currency_symbol() }}{{ "{:,.0f}".format(summary.discretionary) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Lifestyle spending</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Loan repayments</p>
-            <p class="text-xl font-semibold mt-1 text-info">£{{ "{:,.0f}".format(summary.loans) }}</p>
+            <p class="text-xl font-semibold mt-1 text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(summary.loans) }}</p>
             <p class="text-xs text-base-content/40 mt-1">Fixed term</p>
         </div>
     </div>
@@ -89,9 +89,9 @@
                                 <span class="badge badge-info badge-sm badge-outline">Loan{% if line.loanEndYear %} ends {{ line.loanEndYear }}{% endif %}</span>
                             {% endif %}
                         </td>
-                        <td>£{{ "{:,.2f}".format(line.amount | float) }}</td>
+                        <td>{{ base_currency_symbol() }}{{ "{:,.2f}".format(line.amount | float) }}</td>
                         <td class="text-base-content/60 text-xs">{{ line.frequencyLabel }}</td>
-                        <td class="font-medium">£{{ "{:,.0f}".format(line.annualAmount) }}</td>
+                        <td class="font-medium">{{ base_currency_symbol() }}{{ "{:,.0f}".format(line.annualAmount) }}</td>
                         <td>
                             {% if line.changeRate and line.changeRate != '0' and line.changeRate != '0.0' %}
                                 <span class="text-xs {% if line.changeRate | float > 0 %}text-error{% else %}text-success{% endif %}">
@@ -132,7 +132,7 @@
                 <tfoot>
                     <tr class="font-medium border-t border-base-200">
                         <td colspan="4">Total annual spending</td>
-                        <td>£{{ "{:,.0f}".format(summary.total) }}</td>
+                        <td>{{ base_currency_symbol() }}{{ "{:,.0f}".format(summary.total) }}</td>
                         <td colspan="3"></td>
                     </tr>
                 </tfoot>
@@ -167,9 +167,9 @@
                     {% for c in contributions %}
                     <tr>
                         <td class="font-medium">{{ c.accountName }}</td>
-                        <td>£{{ "{:,.2f}".format(c.amount | float) }}</td>
+                        <td>{{ base_currency_symbol() }}{{ "{:,.2f}".format(c.amount | float) }}</td>
                         <td class="text-base-content/60 text-xs">{{ c.frequencyLabel }}</td>
-                        <td class="font-medium text-info">£{{ "{:,.0f}".format(c.annualAmount) }}</td>
+                        <td class="font-medium text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(c.annualAmount) }}</td>
                         <td class="text-xs text-base-content/50">
                             {% if c.startYear or c.endYear %}
                                 {{ c.startYear if c.startYear else '…' }} → {{ c.endYear if c.endYear else 'retirement' }}
@@ -184,7 +184,7 @@
                 <tfoot>
                     <tr class="font-medium border-t border-base-200">
                         <td colspan="3">Total annual contributions</td>
-                        <td class="text-info">£{{ "{:,.0f}".format(contributions | sum(attribute='annualAmount')) }}</td>
+                        <td class="text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(contributions | sum(attribute='annualAmount')) }}</td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
@@ -360,6 +360,7 @@
 
 {% block scripts %}
 <script>
+    const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
     const multipliers = {
         FrequencyType_Weekly: 52,
         FrequencyType_Fortnightly: 26,
@@ -376,7 +377,7 @@
         const annual = amount * multiplier;
         const hint = document.getElementById('annual-hint');
         if (amount > 0) {
-            hint.textContent = `Annual equivalent: £${annual.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+            hint.textContent = `Annual equivalent: ${BASE_SYMBOL}${annual.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
         } else {
             hint.textContent = '';
         }

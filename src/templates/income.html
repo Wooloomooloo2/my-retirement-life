@@ -20,6 +20,25 @@
 </div>
 {% endif %}
 
+{% if rate_refresh_count is defined %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-refresh"></i>
+    <div>
+        <span>Updated FX rates on {{ rate_refresh_count }} income source{{ 's' if rate_refresh_count != 1 else '' }} against {{ rate_refresh_base }} ({{ rate_refresh_as_of }}, via {{ rate_refresh_provider }}).</span>
+        {% if rate_refresh_skipped %}
+        <span class="block text-xs text-base-content/60 mt-1">No live rate available for: {{ rate_refresh_skipped | join(', ') }}.</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if rate_refresh_error %}
+<div class="alert alert-warning mb-4">
+    <i class="ti ti-alert-triangle"></i>
+    <span>{{ rate_refresh_error }}</span>
+</div>
+{% endif %}
+
 <!-- Info note -->
 <div class="alert mb-5 bg-base-100 border border-base-300 text-sm">
     <i class="ti ti-info-circle text-base-content/40"></i>
@@ -33,10 +52,18 @@
 {% if sources %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
-        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
-            <i class="ti ti-cash text-base-content/40" aria-hidden="true"></i>
-            Your income sources
-        </h3>
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+            <h3 class="text-sm font-medium flex items-center gap-2">
+                <i class="ti ti-cash text-base-content/40" aria-hidden="true"></i>
+                Your income sources
+                <span class="text-xs font-normal text-base-content/40 ml-2">Live rates from open.er-api.com</span>
+            </h3>
+            <form method="post" action="/income/refresh-rates">
+                <button type="submit" class="btn btn-ghost btn-xs gap-1">
+                    <i class="ti ti-refresh text-xs" aria-hidden="true"></i> Refresh rates
+                </button>
+            </form>
+        </div>
         <div class="overflow-x-auto">
             <table class="table table-sm w-full">
                 <thead>
@@ -57,7 +84,12 @@
                         <td>
                             <span class="badge badge-ghost badge-sm">{{ source.incomeTypeLabel }}</span>
                         </td>
-                        <td class="font-medium">£{{ "{:,.0f}".format(source.annualAmount | float) }}</td>
+                        <td class="font-medium">
+                            {{ source.currencySymbol if source.currencySymbol else base_currency.symbol }}{{ "{:,.0f}".format(source.annualAmount | float) }}
+                            {% if source.currencyCode and source.currencyCode != base_currency.code %}
+                            <span class="block text-xs text-base-content/40 font-normal">{{ source.currencyCode }} @ {{ source.exchangeRate if source.exchangeRate else '1.0' }}</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if source.growthRate and source.growthRate != '0' and source.growthRate != '0.0' %}
                                 <span class="text-xs {% if source.growthRate | float > 0 %}text-success{% else %}text-error{% endif %}">
@@ -148,7 +180,27 @@
                         placeholder="e.g. 45000"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Annual take-home amount in base currency</span>
+                        <span class="label-text-alt text-base-content/40">Annual take-home amount in the currency selected below</span>
+                    </label>
+                </div>
+
+                {% set selected_currency = edit_source.currency if edit_source and edit_source.currency else base_currency.local %}
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Currency</span>
+                    </label>
+                    <select name="incomeCurrency" id="incomeCurrency"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateFxVisibility()">
+                        {% for c in currencies %}
+                        <option value="{{ c.local }}" data-code="{{ c.code }}"
+                            {% if c.local == selected_currency %}selected{% endif %}>
+                            {{ c.code }} — {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Defaults to your base currency ({{ base_currency.code }})</span>
                     </label>
                 </div>
 
@@ -195,6 +247,31 @@
                     </label>
                 </div>
 
+                <!-- FX rate to base — visible only when income currency != base currency -->
+                <div class="form-control col-span-2" id="fx-rate-field"
+                     style="display:{% if edit_source and edit_source.currencyCode and edit_source.currencyCode != base_currency.code %}block{% else %}none{% endif %}">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                            Exchange rate to base
+                            <span class="font-normal normal-case text-base-content/50">— 1 unit of income currency in {{ base_currency.code }}</span>
+                        </span>
+                    </label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" name="incomeExchangeRateToBase" id="incomeExchangeRateToBase"
+                            step="0.000001" min="0"
+                            value="{{ edit_source.exchangeRate if edit_source and edit_source.exchangeRate else '1.0' }}"
+                            class="input input-bordered input-sm w-40" />
+                        {% if edit_source and edit_source.exchangeRateDate %}
+                        <span class="text-xs text-base-content/40">Last updated {{ edit_source.exchangeRateDate }}</span>
+                        {% endif %}
+                    </div>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Use the "Refresh rates" button above to populate from live rates, or set manually. Same-currency income uses 1.0 automatically.</span>
+                    </label>
+                </div>
+                <input type="hidden" name="incomeExchangeRateDate"
+                       value="{{ edit_source.exchangeRateDate if edit_source and edit_source.exchangeRateDate else today }}" />
+
                 <div class="form-control col-span-2">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Net of tax</span>
@@ -229,6 +306,24 @@
 
 {% block scripts %}
 <script>
+    const BASE_CURRENCY_CODE = {{ base_currency.code | tojson }};
+
+    function updateFxVisibility() {
+        const sel    = document.getElementById('incomeCurrency');
+        const field  = document.getElementById('fx-rate-field');
+        const rateIn = document.getElementById('incomeExchangeRateToBase');
+        if (!sel || !field) return;
+        const opt  = sel.options[sel.selectedIndex];
+        const code = opt ? opt.getAttribute('data-code') : '';
+        if (code && code !== BASE_CURRENCY_CODE) {
+            field.style.display = 'block';
+        } else {
+            field.style.display = 'none';
+            if (rateIn) rateIn.value = '1.0';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', updateFxVisibility);
+
     const RETIREMENT_YEAR = {{ retirement_year if retirement_year else 'null' }};
     if (RETIREMENT_YEAR) {
         const typeSelect = document.querySelector('select[name="incomeSourceType"]');

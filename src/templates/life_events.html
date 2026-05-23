@@ -68,9 +68,9 @@
                         </td>
                         <td class="{% if event.amount | float < 0 %}text-success{% else %}text-error{% endif %} font-medium">
                             {% if event.amount | float < 0 %}
-                                +£{{ "{:,.0f}".format(event.amount | float | abs) }}
+                                +{{ base_currency_symbol() }}{{ "{:,.0f}".format(event.amount | float | abs) }}
                             {% else %}
-                                −£{{ "{:,.0f}".format(event.amount | float) }}
+                                −{{ base_currency_symbol() }}{{ "{:,.0f}".format(event.amount | float) }}
                             {% endif %}
                         </td>
                         <td class="text-xs text-base-content/50">{{ event.notes if event.notes else '—' }}</td>
@@ -94,8 +94,8 @@
             </table>
         </div>
         <p class="text-xs text-base-content/40 mt-3">
-            <span class="text-success font-medium">+£ amounts</span> are receipts that increase your balance. &nbsp;
-            <span class="text-error font-medium">−£ amounts</span> are costs that reduce your balance.
+            <span class="text-success font-medium">+{{ base_currency_symbol() }} amounts</span> are receipts that increase your balance. &nbsp;
+            <span class="text-error font-medium">−{{ base_currency_symbol() }} amounts</span> are costs that reduce your balance.
         </p>
     </div>
 </div>
@@ -329,8 +329,9 @@ const accountNames    = {{ proj_data.account_names    | tojson }};
 const projStartYear   = {{ proj_data.current_year }};
 const projEndYear     = {{ proj_data.end_year }};
 
+const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
 function fmtGBP(v) {
-    return '£' + Math.round(Math.abs(v)).toLocaleString('en-GB');
+    return BASE_SYMBOL + Math.round(Math.abs(v)).toLocaleString('en-GB');
 }
 
 function updateBalanceHints() {

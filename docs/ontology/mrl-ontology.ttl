@@ -900,6 +900,18 @@ mrl:incomeCurrency a owl:ObjectProperty ;
     rdfs:domain mrl:IncomeSource ;
     rdfs:range mrl:Currency .
 
+mrl:incomeExchangeRateToBase a owl:DatatypeProperty ;
+    rdfs:label "income exchange rate to base currency"@en ;
+    rdfs:comment "The exchange rate used to convert this income amount to the person's base currency for projection calculations. Expressed as: 1 unit of income currency = N units of base currency. For example, if base currency is GBP and income is in USD, a rate of 0.79 means 1 USD = 0.79 GBP. Only required when income currency differs from base currency. Mirrors mrl:exchangeRateToBase on accounts; user-maintained with optional live refresh (ADR-016)."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:decimal .
+
+mrl:incomeExchangeRateDate a owl:DatatypeProperty ;
+    rdfs:label "income exchange rate date"@en ;
+    rdfs:comment "The date on which the income exchange rate was last updated. Displayed in the UI as a reminder to keep rates current."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:date .
+
 mrl:incomeOwner a owl:ObjectProperty ;
     rdfs:label "income owner"@en ;
     rdfs:comment "The person who receives this income."@en ;

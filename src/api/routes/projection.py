@@ -130,6 +130,13 @@ def load_col_ratio() -> float:
 # ---------------------------------------------------------------------------
 
 def load_all_income_sources() -> list:
+    """Load income sources, pre-converting amounts to the base currency.
+
+    Each source carries mrl:incomeCurrency + (when not base) mrl:incomeExchangeRateToBase.
+    Converting once at load time lets the downstream engine treat every amount
+    as base-currency, mirroring how account balances are pre-multiplied by
+    exchangeRateToBase in load_all_accounts().
+    """
     type_node = og.NamedNode(f"{MRL}IncomeSource")
     quads = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
     sources = []
@@ -145,9 +152,11 @@ def load_all_income_sources() -> list:
             end_year = int(end_raw) if end_raw else None
         except ValueError:
             end_year = None
+        raw_amount = _float(iri, "incomeAnnualAmount")
+        fx_rate    = _float(iri, "incomeExchangeRateToBase", 1.0)
         sources.append({
             "name":        _val(iri, "incomeSourceName", "Income"),
-            "amount":      _float(iri, "incomeAnnualAmount"),
+            "amount":      raw_amount * fx_rate,
             "growth_rate": _float(iri, "incomeGrowthRate"),
             "start_year":  start_year,
             "end_year":    end_year,

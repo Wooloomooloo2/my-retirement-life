@@ -19,6 +19,7 @@ router = APIRouter()
 
 MRL_EXT = "https://myretirementlife.app/ontology/ext#"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
 
 def get_profile() -> Optional[dict]:
@@ -49,6 +50,41 @@ def get_profile() -> Optional[dict]:
         "baseCurrency": get_local("baseCurrency"),
         "jurisdiction": get_local("residesIn"),
         "plansToRetireIn": get_local("plansToRetireIn"),
+    }
+
+
+def _currency_code(local: str) -> str:
+    """Resolve a Currency local name (e.g. 'GBP') to its ISO code via the ontology."""
+    if not local:
+        return ""
+    iri = og.NamedNode(f"{MRL}{local}")
+    qs = list(store.store.quads_for_pattern(
+        iri, og.NamedNode(f"{MRL}currencyCode"), None, ONTOLOGY_GRAPH))
+    return str(qs[0].object.value) if qs else local
+
+
+def _currency_symbol(local: str) -> str:
+    """Resolve a Currency local name (e.g. 'GBP') to its display symbol via the ontology."""
+    if not local:
+        return ""
+    iri = og.NamedNode(f"{MRL}{local}")
+    qs = list(store.store.quads_for_pattern(
+        iri, og.NamedNode(f"{MRL}currencySymbol"), None, ONTOLOGY_GRAPH))
+    return str(qs[0].object.value) if qs else ""
+
+
+def get_base_currency() -> dict:
+    """Return the user's base currency as {local, code, symbol}.
+
+    Falls back to GBP if no profile has been saved yet, so templates rendered
+    before profile setup still get a sensible default rather than empty strings.
+    """
+    prof = get_profile()
+    local = (prof or {}).get("baseCurrency", "") or "GBP"
+    return {
+        "local":  local,
+        "code":   _currency_code(local) or local,
+        "symbol": _currency_symbol(local) or "£",
     }
 
 
