@@ -180,17 +180,18 @@
                     </label>
                 </div>
 
+                {% set endYearDefault = retirement_year if retirement_year and not edit_source else '' %}
                 <div class="form-control">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
                     </label>
                     <input type="number" name="incomeEndYear"
                         min="2000" max="2100"
-                        value="{{ edit_source.endYear if edit_source and edit_source.endYear else '' }}"
+                        value="{{ edit_source.endYear if edit_source and edit_source.endYear else endYearDefault }}"
                         placeholder="e.g. 2031 — leave blank if indefinite"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Leave blank if this income continues indefinitely</span>
+                        <span class="label-text-alt text-base-content/40">Defaults to your retirement year for employment income — clear to make indefinite</span>
                     </label>
                 </div>
 
@@ -224,4 +225,22 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const RETIREMENT_YEAR = {{ retirement_year if retirement_year else 'null' }};
+    if (RETIREMENT_YEAR) {
+        const typeSelect = document.querySelector('select[name="incomeSourceType"]');
+        const endInput = document.querySelector('input[name="incomeEndYear"]');
+        typeSelect.addEventListener('change', function () {
+            if (this.value === 'IncomeSourceType_Employment' && !endInput.value) {
+                endInput.value = RETIREMENT_YEAR;
+            } else if (this.value !== 'IncomeSourceType_Employment'
+                       && parseInt(endInput.value, 10) === RETIREMENT_YEAR) {
+                endInput.value = '';
+            }
+        });
+    }
+</script>
 {% endblock %}

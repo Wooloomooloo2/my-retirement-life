@@ -127,6 +127,21 @@ def save_income_source(n: int, name: str, income_type: str,
         """)
 
 
+def _get_retirement_year() -> Optional[int]:
+    """Birth year + targetRetirementAge from Person_1, or None if either is missing."""
+    person = og.NamedNode(f"{MRL}Person_1")
+    dob_qs = list(store.store.quads_for_pattern(
+        person, og.NamedNode(f"{MRL}dateOfBirth"), None, DATA_GRAPH))
+    age_qs = list(store.store.quads_for_pattern(
+        person, og.NamedNode(f"{MRL}targetRetirementAge"), None, DATA_GRAPH))
+    if not dob_qs or not age_qs:
+        return None
+    try:
+        return date.fromisoformat(str(dob_qs[0].object.value)).year + int(str(age_qs[0].object.value))
+    except (ValueError, TypeError):
+        return None
+
+
 def _page_context(request, sources, edit_source=None, **kwargs):
     current_year = date.today().year
     return {
@@ -136,6 +151,7 @@ def _page_context(request, sources, edit_source=None, **kwargs):
         "income_type_options": INCOME_TYPE_LABELS,
         "edit_source": edit_source,
         "current_year": current_year,
+        "retirement_year": _get_retirement_year(),
         **kwargs,
     }
 

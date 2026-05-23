@@ -162,7 +162,8 @@ def delete_contribution(account_iri_str: str) -> None:
 INVESTMENT_ACCOUNT_TYPES = {
     "InvestmentAccountType_StocksShares":  "Stocks and shares",
     "InvestmentAccountType_TaxAdvantaged": "Tax-advantaged (ISA / Roth / TFSA)",
-    "InvestmentAccountType_Pension":       "Self-directed pension (SIPP / 401k)",
+    "InvestmentAccountType_Pension":       "Self-directed pension (SIPP / IRA)",
+    "InvestmentAccountType_WorkPension":   "Workplace pension (401(k) / auto-enrolment)",
     "InvestmentAccountType_UnitTrust":     "Unit trust / mutual fund",
     "InvestmentAccountType_Bonds":         "Bond portfolio",
     "InvestmentAccountType_Other":         "Other",
@@ -173,6 +174,7 @@ INVESTMENT_ACCOUNT_TYPES_SHORT = {
     "InvestmentAccountType_StocksShares":  "Stocks & shares",
     "InvestmentAccountType_TaxAdvantaged": "Tax-advantaged",
     "InvestmentAccountType_Pension":       "Pension",
+    "InvestmentAccountType_WorkPension":   "Workplace pension",
     "InvestmentAccountType_UnitTrust":     "Unit trust",
     "InvestmentAccountType_Bonds":         "Bonds",
     "InvestmentAccountType_Other":         "Other",

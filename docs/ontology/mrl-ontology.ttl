@@ -242,9 +242,17 @@ mrlx:InvestmentAccountType_Pension a skos:Concept ;
     skos:inScheme mrlx:AccountTypeScheme ;
     skos:broader mrlx:InvestmentAccountType ;
     skos:prefLabel "Self-directed pension pot"@en ;
-    skos:definition "A pension account where the holder directs investment choices, such as a SIPP, 401(k), or RRSP."@en ;
+    skos:definition "A pension account where the holder directs investment choices, such as a SIPP or IRA."@en ;
     skos:notation "INVEST_PENSION" ;
-    skos:scopeNote "For defined contribution pensions where the pot value can be tracked. Covers UK SIPPs, US 401(k) and IRA accounts, Canadian RRSPs, and Australian Superannuation funds."@en .
+    skos:scopeNote "For defined contribution pensions where the holder picks investments themselves. Covers UK SIPPs, US IRAs, Canadian RRSPs, and equivalent self-directed plans. For employer-sponsored workplace pensions use Workplace pension instead."@en .
+
+mrlx:InvestmentAccountType_WorkPension a skos:Concept ;
+    skos:inScheme mrlx:AccountTypeScheme ;
+    skos:broader mrlx:InvestmentAccountType ;
+    skos:prefLabel "Workplace pension"@en ;
+    skos:definition "An employer-sponsored pension where contributions are typically deducted from salary and often matched by the employer, with investment choices limited to the scheme's options."@en ;
+    skos:notation "INVEST_WORK_PENSION" ;
+    skos:scopeNote "Covers UK auto-enrolment workplace pensions, US 401(k) and 403(b) employer plans, Australian Superannuation workplace funds, German bAV, and equivalent occupational pensions in other jurisdictions."@en .
 
 mrlx:InvestmentAccountType_UnitTrust a skos:Concept ;
     skos:inScheme mrlx:AccountTypeScheme ;
