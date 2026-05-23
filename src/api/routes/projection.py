@@ -1099,8 +1099,13 @@ def run_monte_carlo(
     retirement_year = birth_year + profile["retirement_age"]
     end_year        = birth_year + profile["life_expectancy"]
 
-    income_sources = load_all_income_sources()
     all_accounts   = load_all_accounts()
+    # No investments → nothing stochastic to model; suppress so the template
+    # doesn't show a misleading cash-floor confidence band.
+    if not any(a["account_class"] == "InvestmentAccount" for a in all_accounts):
+        return None
+
+    income_sources = load_all_income_sources()
     budget_lines   = load_budget_lines()
     life_events    = load_life_events()
     col_ratio      = load_col_ratio()

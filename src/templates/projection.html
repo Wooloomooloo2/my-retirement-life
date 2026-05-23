@@ -143,7 +143,19 @@
 </div>
 
 <!-- Monte Carlo chart -->
-{% if mc %}
+{% if not mc %}
+<div class="alert alert-info mb-6">
+    <i class="ti ti-info-circle"></i>
+    <div>
+        <p class="font-medium">Monte Carlo simulation not available</p>
+        <p class="text-sm">
+            Uncertainty bands need at least one
+            <a href="/investments" class="underline">investment account</a> —
+            cash accounts grow at a fixed interest rate, so there's nothing stochastic to model.
+        </p>
+    </div>
+</div>
+{% else %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
         <h3 class="text-sm font-medium flex items-center justify-between pb-3 mb-3 border-b border-base-200">
