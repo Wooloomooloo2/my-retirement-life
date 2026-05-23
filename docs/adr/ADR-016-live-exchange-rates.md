@@ -78,8 +78,6 @@ which for a personal-finance tool deserves an explicit, documented decision.
 
 ## Scope (this ADR)
 
-Covers refreshing `mrl:exchangeRateToBase` on **cash accounts**. Extending the
-same refresh to investment accounts, and adding per-budget-line currency and a
-separate expected-retirement base currency, are tracked as separate follow-on
+Covers refreshing `mrl:exchangeRateToBase` on **cash accounts** and **investment accounts**. Extending the same refresh to  per-budget-line currency and a separate expected-retirement base currency, are tracked as separate follow-on
 items — they require additional ontology properties and projection-engine
 changes beyond this decision.

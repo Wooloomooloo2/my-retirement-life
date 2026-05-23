@@ -22,6 +22,7 @@ import pyoxigraph as og
 
 from src.config import settings
 from src.store.graph import store, MRL, DATA_GRAPH
+from src.fx import fetch_rates, FxError
 
 router = APIRouter()
 
@@ -487,6 +488,117 @@ async def investments_page(request: Request):
         request=request,
         name="investments.html",
         context=_page_context(request, accounts),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Live exchange-rate refresh (ADR-016)
+#
+# Mirrors the cash-accounts refresh: fetches today's rates from open.er-api.com
+# for the person's base currency and writes each investment account's
+# mrl:exchangeRateToBase + mrl:exchangeRateDate. This is an outbound call that
+# transmits only the base currency code — see src/fx.py.
+# ---------------------------------------------------------------------------
+
+def _update_investment_rate(account_iri_str: str, rate_to_base: float, rate_date: str) -> None:
+    """Overwrite only the two exchange-rate properties on a single investment
+    account, leaving every other triple on that account untouched."""
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateToBase ?r .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateDate ?d .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{account_iri_str}> mrl:exchangeRateToBase "{rate_to_base}"^^xsd:decimal ;
+                                    mrl:exchangeRateDate   "{rate_date}"^^xsd:date .
+            }}
+        }}
+    """)
+
+
+@router.post("/investments/refresh-rates", response_class=HTMLResponse)
+async def refresh_investment_rates(request: Request):
+    """Fetch today's live rates and update every investment account's rate.
+
+    Same model as the cash-accounts refresh (ADR-016): mrl:exchangeRateToBase
+    is "1 unit of account currency = N units of base currency", so the value
+    written is 1 / rate[account_code], and accounts already in the base
+    currency are set to 1.0. Triggers the app's only outbound network call
+    (open.er-api.com), sending just the base currency code.
+    """
+    from src.api.routes.profile import get_profile
+
+    base_local = (get_profile() or {}).get("baseCurrency", "")
+    base_code  = _currency_code(base_local) if base_local else ""
+
+    if not base_code:
+        return templates.TemplateResponse(
+            request=request,
+            name="investments.html",
+            context=_page_context(
+                request, get_all_investment_accounts(),
+                rate_refresh_error="Set your base currency on the Profile page "
+                                   "before refreshing exchange rates.",
+            ),
+        )
+
+    try:
+        data  = fetch_rates(base_code)
+        rates = data["rates"]
+    except FxError as exc:
+        return templates.TemplateResponse(
+            request=request,
+            name="investments.html",
+            context=_page_context(
+                request, get_all_investment_accounts(),
+                rate_refresh_error=f"Live rates unavailable — {exc}. "
+                                   "Existing rates were left unchanged.",
+            ),
+        )
+
+    today   = date.today().isoformat()
+    updated = 0
+    skipped = []
+    for acc in get_all_investment_accounts():
+        code = acc.get("currencyCode", "")
+        if not code:
+            continue
+        if code == base_code:
+            _update_investment_rate(acc["iri"], 1.0, today)
+            updated += 1
+        elif code in rates and rates[code]:
+            rate_to_base = round(1.0 / float(rates[code]), 6)
+            _update_investment_rate(acc["iri"], rate_to_base, today)
+            updated += 1
+        else:
+            skipped.append(code)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="investments.html",
+        context=_page_context(
+            request, get_all_investment_accounts(),
+            rate_refresh_count=updated,
+            rate_refresh_base=base_code,
+            rate_refresh_as_of=data.get("as_of", ""),
+            rate_refresh_provider=data.get("provider", ""),
+            rate_refresh_skipped=sorted(set(skipped)),
+        ),
     )
 
 

@@ -20,17 +20,53 @@
 </div>
 {% endif %}
 
+{% if rate_refresh_error %}
+<div class="alert alert-warning mb-4">
+    <i class="ti ti-alert-triangle"></i>
+    <span>{{ rate_refresh_error }}</span>
+</div>
+{% elif rate_refresh_count is defined %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-refresh"></i>
+    <div>
+        <p class="font-medium">Exchange rates updated</p>
+        <p class="text-sm mt-0.5">
+            Refreshed {{ rate_refresh_count }} account{{ '' if rate_refresh_count == 1 else 's' }}
+            against {{ rate_refresh_base }}{% if rate_refresh_as_of %} · rates as of {{ rate_refresh_as_of }}{% endif %}
+            · source: {{ rate_refresh_provider }}.
+            {% if rate_refresh_skipped %}
+            <br>No live rate was available for: {{ rate_refresh_skipped | join(", ") }}.
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
 <!-- Existing accounts list -->
 {% if accounts %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
-        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
-            <i class="ti ti-chart-bar text-base-content/40" aria-hidden="true"></i>
-            Your investment accounts
-            <span class="ml-auto text-base-content/40 text-xs font-normal">
-                Total: £{{ "{:,.0f}".format(total_balance) }}
-            </span>
-        </h3>
+        <div class="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-base-200">
+            <h3 class="text-sm font-medium flex items-center gap-2">
+                <i class="ti ti-chart-bar text-base-content/40" aria-hidden="true"></i>
+                Your investment accounts
+            </h3>
+            <div class="flex items-center gap-3">
+                <span class="text-base-content/40 text-xs font-normal">
+                    Total: £{{ "{:,.0f}".format(total_balance) }}
+                </span>
+                <span class="text-xs text-base-content/40 hidden sm:inline" title="Exchange rates are fetched live from open.er-api.com">
+                    Live rates from open.er-api.com
+                </span>
+                <form method="post" action="/investments/refresh-rates">
+                    <button type="submit" class="btn btn-ghost btn-xs gap-1"
+                            title="Fetch today's exchange rates and update every investment account against your base currency">
+                        <i class="ti ti-refresh text-xs" aria-hidden="true"></i>
+                        Refresh rates
+                    </button>
+                </form>
+            </div>
+        </div>
         <div class="overflow-x-auto">
             <table class="table table-sm w-full">
                 <thead>
