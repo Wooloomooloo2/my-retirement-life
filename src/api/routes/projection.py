@@ -837,7 +837,7 @@ def run_projection(
                 continue
             if line["loan_end_year"] and year > line["loan_end_year"]:
                 continue
-            rate   = line["change_rate"] if line["change_rate"] != 0 else inflation_rate
+            rate   = inflation_rate + line["change_rate"]
             annual = line["annual_amount"] * ((1 + rate / 100) ** years_from_start)
             if   line["line_type"] == "BudgetLineType_Mandatory":     mandatory     += annual
             elif line["line_type"] == "BudgetLineType_Discretionary": discretionary += annual
@@ -1214,7 +1214,7 @@ def run_monte_carlo(
             mandatory = discretionary = loans = 0.0
             active_lines, is_post_retirement = budget_per_year[yi]
             for base, own_rate, lt in active_lines:
-                rate   = own_rate if own_rate != 0.0 else sim_inflation
+                rate   = sim_inflation + own_rate
                 annual = base * ((1 + rate / 100) ** yi)
                 if   lt == "BudgetLineType_Mandatory":     mandatory     += annual
                 elif lt == "BudgetLineType_Discretionary": discretionary += annual

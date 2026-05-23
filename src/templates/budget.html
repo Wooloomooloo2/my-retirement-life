@@ -71,7 +71,7 @@
                         <th>Amount</th>
                         <th>Frequency</th>
                         <th>Annual total</th>
-                        <th>Growth rate</th>
+                        <th>Real growth</th>
                         <th>Active</th>
                         <th></th>
                     </tr>
@@ -277,18 +277,18 @@
                     </label>
                 </div>
 
-                <!-- Growth rate -->
+                <!-- Real growth rate (above inflation) -->
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate %</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Real growth rate % <span class="font-normal normal-case">(above inflation)</span></span>
                     </label>
                     <input type="number" name="annualChangeRate"
                         step="0.1" min="-100" max="100"
                         value="{{ edit_line.changeRate if edit_line else '0' }}"
-                        placeholder="e.g. 3 for 3% inflation"
+                        placeholder="e.g. 2 for 2% above inflation"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Positive = increases, negative = decreases</span>
+                        <span class="label-text-alt text-base-content/40">0 = grows with inflation only. Positive = real increase. Negative = real decrease (e.g. -2.5 holds the line flat in nominal terms when inflation is 2.5%).</span>
                     </label>
                 </div>
 
