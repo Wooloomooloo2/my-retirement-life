@@ -54,7 +54,11 @@ All delivered and confirmed working unless noted.
 
 6. **`tools/reload_ontology.py`** (new): force-reloads the ontology named graph (`load_ontology(force=True)`) after TTL edits. Run with the app CLOSED: `python tools\reload_ontology.py`.
 
-7. **Backlog #8 — budget-line growth is now real (above inflation).** Engine: `projection.py` (deterministic + Monte Carlo branches) now computes `rate = inflation_rate + line["change_rate"]` instead of substituting one for the other. UI: `budget.html` field relabelled to "Real growth rate % (above inflation)"; placeholder and hint updated; table column renamed "Real growth". Verified by running the app and confirming mandatory-line growth of ~6.6%/yr at inflation=3.5% — mathematically impossible under the old "substitute" formula (max would have been 4%). **Silent reinterpretation accepted** (pre-beta): existing budget lines with non-zero `change_rate` now grow faster than before. Loan-line inflation (loans currently still inflate even though typically fixed nominal) deferred as a separate backlog item.
+7. **Backlog #8 — budget-line growth is now real (above inflation).** Engine: `projection.py` (deterministic + Monte Carlo branches) now computes `rate = inflation_rate + line["change_rate"]` instead of substituting one for the other. UI: `budget.html` field relabelled to "Real growth rate % (above inflation)"; placeholder and hint updated; table column renamed "Real growth". Verified by running the app and confirming mandatory-line growth of ~6.6%/yr at inflation=3.5% — mathematically impossible under the old "substitute" formula (max would have been 4%). **Silent reinterpretation accepted** (pre-beta): existing budget lines with non-zero `change_rate` now grow faster than before.
+
+8. **Loan-line inflation (follow-on from #7) — DONE.** `projection.py` (both branches): for `BudgetLineType_Loan`, effective rate is now `change_rate` only — no inflation added. Default 0% gives flat nominal repayments (correct for fixed-rate mortgages etc.). Field label on `budget.html` left as-is per user call; the global "0 = grows with inflation only" hint is technically misleading for loans but in practice users leave 0% and get correct behavior.
+
+9. **Backlog #10 — Monte Carlo gated on investment accounts.** `projection.py` `run_monte_carlo()` returns `None` early when no `InvestmentAccount` exists in `all_accounts` (ADR-012 — there's nothing stochastic to model without investments). Template's existing `{% if mc %}` guards auto-hide the MC card, JS, and confidence-card line. `projection.html` adds an info notice in the `else` branch explaining why MC isn't shown and linking to `/investments`. Note: the deeper "MC model discrepancy" (aggregate-pool MC vs per-account deterministic depletion) is a SEPARATE issue and remains open.
 
 ### Documentation tidy-ups still pending (small, user to action)
 - **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
@@ -318,22 +322,24 @@ All to be addressed before public beta. File(s) each will need are noted.
 5. **Salary has no currency selector (hardcoded GBP).** Expose `incomeCurrency` on income/salary. _Needs: `income.py`/`income.html`; confirm engine converts income by rate._
 6. **Default to base currency everywhere (not GBP).** Income, expenses/budget, life events etc. should default to `Person.baseCurrency`, overridable per item. Currently default to GBP. _Needs: `income.*`, `budget.*`, `life_events.*`; note per-budget-line currency isn't modelled yet._
 7. **Contributions not explicit in the budget.** Savings/investment contributions (ADR-015) need to be clearly called out in the budget. A read-only section exists but isn't prominent/explicit enough. _Needs: `budget.py`/`budget.html`._
-8. **Loan-line inflation (carried follow-on from #8 spending-growth fix).** Loan budget lines currently grow with inflation (and now with the new real-growth formula too), but loans are typically fixed in nominal terms. A £1000/mo mortgage payment shouldn't compound. Either skip inflation for `BudgetLineType_Loan` in the engine, or auto-set `change_rate = -inflation_rate` on save. _Needs: `projection.py` (steps 6 and MC equivalent) + design choice._
+8. _(RESOLVED this session — see "Changes this session" item 8.)_
 9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
-10. **Monte Carlo runs with cash-only input (bug).** Per ADR-012, MC is restricted to the investment pool — it should not run/display when there are no investment accounts. Gate MC on presence of investment accounts. _Needs: `projection.py` (`run_monte_carlo` + caller gating) and `projection.html` (hide MC UI)._ Related to the existing "MC model discrepancy" note below.
+10. _(RESOLVED this session — see "Changes this session" item 9.)_
 
 ### PRE-BETA — carried over (still open)
 - **Income deposit account UI** — income sources should specify which account receives the income (engine surplus routing already delivers most of the value). _Needs: `income.py`, `income.html`._
 - **Load/Save quick-action buttons in top banner** — `base.html` has a scenario-indicator snippet sitting AFTER `</html>` that was never integrated into the header. Integrate it near the user avatar. _Needs: design decision; `base.html` now seen._
 - **Accounts table overflow on narrower screens.**
-- **MC model discrepancy** — Monte Carlo shows high success rates even when the deterministic engine runs out; MC uses an aggregate pool that doesn't model per-account depletion (ADR-012 limitation). Overlaps with new item #10.
+- **MC model discrepancy** — Monte Carlo shows high success rates even when the deterministic engine runs out; MC uses an aggregate pool that doesn't model per-account depletion (ADR-012 limitation). The cash-only gating (#10) was a separate, narrower fix — this deeper model issue remains.
 
 ### RESOLVED this session
 - ~~`drawdown_configured` dashboard flag fires too early~~ — FIXED.
 - ~~Offline packaging / first Windows .exe~~ — DONE.
 - ~~Add currencies INR/CNY/AED~~ — DONE.
 - ~~Auto-populate exchange rates from today's rate~~ — DONE (ADR-016, both account types).
-- ~~Spending growth rate must be REAL, not nominal (#8)~~ — DONE. Engine now composes `inflation + change_rate`; UI relabelled. Loan-line inflation split off as new item #8.
+- ~~Spending growth rate must be REAL, not nominal (#8)~~ — DONE. Engine now composes `inflation + change_rate`; UI relabelled.
+- ~~Loan-line inflation (follow-on)~~ — DONE. Loans now use `change_rate` only; no inflation lift.
+- ~~Monte Carlo runs with cash-only input (#10)~~ — DONE. `run_monte_carlo()` returns `None` when no investment accounts; template shows an info notice instead.
 
 ### Post-1.0
 - Tax-optimal drawdown ordering (ADR-011 future)
