@@ -74,9 +74,6 @@ All delivered and confirmed working unless noted.
 
 16. **Contribution section discoverability fix.** Commit `91bddf1`. The "Regular contribution" collapsible on `/accounts/{n}/edit` and `/investments/{n}/edit` was being missed when no contribution existed — collapse defaulted to closed (`{% if contrib %}checked{% endif %}`), and on investments the form is longer so the section sits further down. Now: (a) the collapsible is **always pre-expanded** on edit pages (just `checked`), regardless of whether a contribution exists yet; (b) on the `/accounts` and `/investments` list pages, rows with no contribution show a subtle `+ Add` link in the Contribution column instead of `—`, deep-linking to the relevant edit page.
 
-### Documentation tidy-ups still pending (small, user to action)
-- **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
-
 ---
 
 ## Repository structure
@@ -172,7 +169,7 @@ my-retirement-life/
 | 013 | Two-layer tax model (source tax + residence allowance) | Implemented |
 | 014 | Scenario management | Implemented |
 | 015 | Account contributions | Implemented |
-| 016 | Live exchange rates (open.er-api.com) | Proposed — code complete (see tidy-up above) |
+| 016 | Live exchange rates (open.er-api.com) | Accepted |
 
 ---
 

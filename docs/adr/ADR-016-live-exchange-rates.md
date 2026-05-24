@@ -1,6 +1,6 @@
 # ADR-016: Live exchange rates
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-22
 
 > Numbering: this assumes 016 is the next free ADR. If that number is already
@@ -78,6 +78,4 @@ which for a personal-finance tool deserves an explicit, documented decision.
 
 ## Scope (this ADR)
 
-Covers refreshing `mrl:exchangeRateToBase` on **cash accounts** and **investment accounts**. Extending the same refresh to  per-budget-line currency and a separate expected-retirement base currency, are tracked as separate follow-on
-items — they require additional ontology properties and projection-engine
-changes beyond this decision.
+Covers refreshing `mrl:exchangeRateToBase` on **cash accounts** and **investment accounts**, and `mrl:incomeExchangeRateToBase` on **income sources** (same provider, same `src/fx.py` boundary). Extending the same refresh to per-budget-line currency and a separate expected-retirement base currency are tracked as separate follow-on items — they require additional ontology properties and projection-engine changes beyond this decision.
