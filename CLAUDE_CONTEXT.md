@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-23
+> Last updated: 2026-05-24
 
 ---
 
@@ -69,6 +69,10 @@ All delivered and confirmed working unless noted.
 13. **Backlog #6 (rest) — `£` sweep across remaining templates.** Commit `dd6298c`. `dashboard.html`, `settings.html`, `accounts.html`, `investments.html`, `investment_projection.html`, `projection.html`: every hardcoded `£` (Jinja and inline JS) replaced with `base_currency_symbol()` / a `BASE_SYMBOL` const injected at the top of each script block via `tojson`. Chart.js axis titles like `'Balance (£)'` become `'Balance (' + BASE_SYMBOL + ')'`. **Zero `£` left in any template** — switching `Person.baseCurrency` now flips every display in the app without code changes. Per-account balance displays keep using `account.currencySymbol` (each account's own currency), unaffected.
 
 14. **Budget summary respects start/end years (mini-chart).** Commit `1b8c9d4`. `/budget`'s previous 4-card summary summed every line's `annualAmount` ignoring its active window, so non-overlapping lines double-counted in any given year (engine was already correct). Replaced with a stacked-area Chart.js chart of annual spending year-by-year + three snapshot metrics (Today, At retirement, Peak — each year-labelled). New helpers in `budget.py`: `compute_annual_spending_series()` and `get_budget_metrics()`. Chart is in today's pounds — applies each line's `change_rate` (real growth) but NOT base inflation; the projection page is where inflation layers in. Horizon comes from `load_profile()` with a 40-year fallback during onboarding.
+
+15. **Backlog #7 — Contributions explicit on the budget chart.** Commit `08b7f0c`. Adds account contributions as a 4th teal stacked area on the `/budget` chart and as a breakdown line beneath each snapshot card. Each card's "total" is now spending + contributions — full cashflow commitment for that year — with a `£X spending · £Y contributions` sub-line. New helper `compute_annual_contributions_series()` in `budget.py` mirrors the engine: default active window `current_year … retirement_year`, per-contribution growth rate applied as `base × (1+g/100)^years_active`, in real terms (no inflation lift). `get_all_contributions_for_budget()` now also returns `growthRate`. Existing read-only per-account contributions table below the chart unchanged. **Employer contributions (`isEmployerContribution`, ADR-015 v1.1) stays Post-1.0.**
+
+16. **Contribution section discoverability fix.** Commit `91bddf1`. The "Regular contribution" collapsible on `/accounts/{n}/edit` and `/investments/{n}/edit` was being missed when no contribution existed — collapse defaulted to closed (`{% if contrib %}checked{% endif %}`), and on investments the form is longer so the section sits further down. Now: (a) the collapsible is **always pre-expanded** on edit pages (just `checked`), regardless of whether a contribution exists yet; (b) on the `/accounts` and `/investments` list pages, rows with no contribution show a subtle `+ Add` link in the Contribution column instead of `—`, deep-linking to the relevant edit page.
 
 ### Documentation tidy-ups still pending (small, user to action)
 - **ADR-016** is `Proposed` and its scope says "cash accounts only." Now that investments are implemented too: flip to `Accepted` when agreed, change scope to "cash **and investment** accounts," and move investment accounts out of the deferred list (genuine remaining follow-ons: per-budget-line currency, separate retirement-base currency).
@@ -332,7 +336,7 @@ All to be addressed before public beta. File(s) each will need are noted.
 4. **"Plan to retire in" doesn't match available currencies.** The retirement-jurisdiction options and the currency set are inconsistent. Align jurisdictions ↔ currencies (clarify intended relationship first). _Needs: `profile.py`/`profile.html` + jurisdiction/currency individuals in `mrl-ontology.ttl`._
 5. _(RESOLVED — commit `81023f3`; see "Changes this session" item 11.)_
 6. _(RESOLVED — commit `81023f3`; see "Changes this session" item 12 — for the income/budget/life-events templates. Hardcoded `£` still present on `projection.html`, `dashboard.html`, `accounts.html`, `investments.html`, `settings.html` — quick sweep to follow.)_
-7. **Contributions not explicit in the budget.** Savings/investment contributions (ADR-015) need to be clearly called out in the budget. A read-only section exists but isn't prominent/explicit enough. _Needs: `budget.py`/`budget.html`._
+7. _(RESOLVED — commit `08b7f0c`; see "Changes this session" item 15. Contribution-section discoverability fix in `91bddf1` is a follow-on.)_
 8. _(RESOLVED earlier this session — see "Changes this session" item 8.)_
 9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
 10. _(RESOLVED earlier this session — see "Changes this session" item 9.)_
@@ -355,6 +359,7 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Workplace pension investment type (#2)~~ — DONE (commit `627db7f`). `InvestmentAccountType_WorkPension` added; existing Pension type now scoped to self-directed plans.
 - ~~Income currency selector + per-source FX rate (#5)~~ — DONE (commit `81023f3`). Engine FX-converts income via `incomeExchangeRateToBase` at load time.
 - ~~Default base-currency symbol on income/budget/life-events (#6 partial)~~ — DONE (commit `81023f3`). `base_currency_symbol()` Jinja global. Remaining templates (`projection`, `dashboard`, `accounts`, `investments`, `settings`) still hardcode `£` — quick sweep follow-on.
+- ~~Contributions in budget (#7)~~ — DONE (commit `08b7f0c`). 4th stacked area + snapshot breakdown lines. Discoverability fix (`91bddf1`) auto-expands the collapsible on edit pages and adds a `+ Add` link to list-page rows with no contribution.
 
 ### Post-1.0
 - Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
