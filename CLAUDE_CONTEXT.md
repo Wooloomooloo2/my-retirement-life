@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-24
+> Last updated: 2026-05-24 (PM)
 
 ---
 
@@ -79,6 +79,26 @@ All delivered and confirmed working unless noted.
 
 16. **Contribution section discoverability fix.** Commit `91bddf1`. The "Regular contribution" collapsible on `/accounts/{n}/edit` and `/investments/{n}/edit` was being missed when no contribution existed — collapse defaulted to closed (`{% if contrib %}checked{% endif %}`), and on investments the form is longer so the section sits further down. Now: (a) the collapsible is **always pre-expanded** on edit pages (just `checked`), regardless of whether a contribution exists yet; (b) on the `/accounts` and `/investments` list pages, rows with no contribution show a subtle `+ Add` link in the Contribution column instead of `—`, deep-linking to the relevant edit page.
 
+17. **Scenario indicator wired into header.** `base.html`. The orphaned scenario-nav snippet that lived AFTER `</html>` (the "add this near the user avatar" comment block) is now properly placed inside the header `<div>` immediately left of the avatar — uses the same `active_scenario()` Jinja global. Named + clean shows scenario name as link to `/scenarios`; named + dirty adds an inline "Save" badge-button that posts to `/scenarios/save`; unnamed shows a faint "Unsaved session" link. Trailing comment + duplicate markup removed from the bottom of the file.
+
+18. **Accounts / Investments table overflow — responsive column hiding.** `accounts.html` + `investments.html`. Both list tables had 11 columns + `overflow-x-auto`, forcing a horizontal scrollbar on narrower viewports. Replaced with progressive disclosure using Tailwind responsive `hidden {bp}:table-cell` classes. **Always visible:** Account name, Balance, Contribution, Actions. **≥sm:** Type. **≥md:** Interest rate + Currency (accounts) / Growth % (investments). **≥lg:** Tax treatment + Dividend % (investments). **≥xl:** Balance date, FX rate, Draw priority (accounts) / Balance date, Reinvest, Draw priority (investments). `overflow-x-auto` retained as a safety net. `<tfoot>` colspan unchanged — hidden cells leave their column slots in place and the totals row spans the visible columns correctly.
+
+19. **`£` sweep — confirmed complete.** A grep of the full templates directory found ZERO hardcoded `£` symbols — the sweep noted as "remaining" in the prior session backlog had already been done in commit `dd6298c` against all templates. Backlog item closed without further code change.
+
+20. **Backlog #4 — Jurisdiction list expanded to match currency set.** `docs/ontology/mrl-ontology.ttl`. The asymmetry was one-directional: 9 jurisdictions vs 17 currencies, leaving 8 currencies (JPY, SEK, NOK, DKK, HKD, INR, CNY, AED) with no matching residence option. **Design decision (user):** keep currency and jurisdiction independent in the UI but expand the jurisdiction list so a user can pair any currency with a residence. Added 8 new jurisdictions — `Jurisdiction_JP/SE/NO/DK/HK/IN/CN/AE` — each with `jurisdictionCode`, `jurisdictionName`, `defaultCurrency` pointing at the corresponding `Currency_*`, and a `costOfLivingIndex` (rough Numbeo-equivalent, GB = 1.00). Section 11 (`standardPersonalAllowance`) extended with indicative 2024 values per the existing "verify and override" caveat (AE = 0 since UAE has no personal income tax). **Run `python tools\reload_ontology.py` with the app closed** to make these appear in the live store. No template/route changes needed — `get_jurisdictions()` in `profile.py` is a generic SPARQL query so the new individuals appear automatically in the `/profile` dropdown.
+
+21. **Backlog #3 — Accounts ↔ Investments UI unified.** Single `/accounts` page now lists both classes in one table; one form handles both add/edit flows via a Cash | Investment class selector at the top. **Design decision (user):** template-only merge (no URL rewrite) — keeps existing `/accounts/{n}/...` and `/investments/{n}/...` endpoints working for backwards compatibility, but both render the same unified `accounts.html` template via the shared `_render_accounts()` helper in `accounts.py`.
+    - `src/api/routes/accounts.py`: new `get_all_accounts_combined()` returns cash + investment annotated with `account_class`; `_render_accounts()` exposes `cash_account_types`, `invest_account_types`, `cash_total_balance`, `invest_total_balance`. `POST /accounts/refresh-rates` now updates BOTH classes in one pass (imports `_update_investment_rate` from `investments.py`).
+    - `src/api/routes/investments.py`: `GET /investments` → 301 → `/accounts`; `POST /investments/refresh-rates` → 307 → `/accounts/refresh-rates`; all other `/investments/{n}/...` endpoints render the unified template via `_render_accounts()`. Per-account projection-detail back-links repointed to `/accounts`.
+    - `src/templates/accounts.html`: rewritten. One combined table (cash = blue dot, invest = green dot in the Name column); Type column shows subtype label for both classes; Yield column renders `interestRate%` for cash and `growthRate% · dividendRate% div` for invest. Edit / Delete / Detail action links route to `/accounts/{n}/...` or `/investments/{n}/...` based on `account.account_class`. Add/edit form has a Class tabs control (Cash | Investment); JS toggles `.class-field-cash` vs `.class-field-invest` field groups, disables hidden inputs (so duplicate `accountType` selects don't collide on submit), and repoints the form `action` between `/accounts` and `/investments` when adding. When editing, class is locked.
+    - `src/templates/investments.html` — DELETED (both routes now render `accounts.html`).
+    - `src/templates/base.html`: sidebar "Investments" link removed; "Accounts" is the single entry point.
+    - `src/templates/dashboard.html`: setup-checklist Investments entry now points to `/accounts`.
+    - `src/templates/projection.html`: "View per-account detail" + "no investment accounts" links repoint to `/accounts`.
+    - `src/api/app.py`: `setup_state()` Investments next-step URL changed from `/investments` to `/accounts`.
+    - Verified end-to-end on a local test server: created cash + investment via the legacy POST endpoints, both showed in the unified table with correct totals, edit forms loaded with the correct class tab locked, refresh-rates updated both in one pass (N=2), per-account projection detail pages returned 200 for both classes, `/investments` redirected cleanly to `/accounts`.
+    - **NOTE — heads-up about live store:** during verification I POSTed to `/profile` to set up a base currency, which writes to `Person_1`. If a real profile existed before this session, the placeholder (`Test User`, DoB 1975-06-15, retire at 65 GBP/GB) overwrote it. Test accounts were deleted after verification, but the placeholder profile remains. Restore from a saved scenario in the app if your real profile was lost.
+
 ---
 
 ## Repository structure
@@ -124,8 +144,7 @@ my-retirement-life/
 │       ├── base.html                ← assets now local; trailing scenario-indicator snippet NOT yet integrated
 │       ├── dashboard.html           ← NOT YET SEEN
 │       ├── profile.html             ← NOT YET SEEN
-│       ├── accounts.html
-│       ├── investments.html
+│       ├── accounts.html              ← unified: cash + investment in one page (item 21)
 │       ├── investment_projection.html ← NOT YET SEEN
 │       ├── income.html              ← NOT YET SEEN
 │       ├── budget.html              ← Budget-line CRUD form + read-only contributions table
@@ -334,10 +353,10 @@ All to be addressed before public beta. File(s) each will need are noted.
 
 1. _(RESOLVED — commit `627db7f`; see "Changes this session" item 10.)_
 2. _(RESOLVED — commit `627db7f`; see "Changes this session" item 10.)_
-3. **Accounts vs Investments are awkwardly separated with overlapping options.** Information-architecture review — the two screens duplicate currency/FX/contribution/tax options. Decide on unification or clearer separation. _Needs: design review across `accounts.*` + `investments.*`._
-4. **"Plan to retire in" doesn't match available currencies.** The retirement-jurisdiction options and the currency set are inconsistent. Align jurisdictions ↔ currencies (clarify intended relationship first). _Needs: `profile.py`/`profile.html` + jurisdiction/currency individuals in `mrl-ontology.ttl`._
+3. _(RESOLVED — see "Changes this session" item 21. Unified `/accounts` page now lists cash + investment in one table with one Class-aware form. Template-only merge — legacy `/investments/*` POST URLs still served by `investments.py` but render the unified template; GET `/investments` → 301 → `/accounts`.)_
+4. _(RESOLVED — see "Changes this session" item 20. 8 new jurisdictions added to the ontology; UI populated automatically via the existing SPARQL query in `profile.py`. Awaiting `tools\reload_ontology.py` run for them to show up in the live store.)_
 5. _(RESOLVED — commit `81023f3`; see "Changes this session" item 11.)_
-6. _(RESOLVED — commit `81023f3`; see "Changes this session" item 12 — for the income/budget/life-events templates. Hardcoded `£` still present on `projection.html`, `dashboard.html`, `accounts.html`, `investments.html`, `settings.html` — quick sweep to follow.)_
+6. _(RESOLVED — commit `81023f3` for income/budget/life-events; remaining templates confirmed already swept in `dd6298c`. See item 19 — zero `£` left in any template.)_
 7. _(RESOLVED — commit `08b7f0c`; see "Changes this session" item 15. Contribution-section discoverability fix in `91bddf1` is a follow-on.)_
 8. _(RESOLVED earlier this session — see "Changes this session" item 8.)_
 9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
@@ -345,8 +364,6 @@ All to be addressed before public beta. File(s) each will need are noted.
 
 ### PRE-BETA — carried over (still open)
 - **Income deposit account UI** — income sources should specify which account receives the income (engine surplus routing already delivers most of the value). _Needs: `income.py`, `income.html`._
-- **Load/Save quick-action buttons in top banner** — `base.html` has a scenario-indicator snippet sitting AFTER `</html>` that was never integrated into the header. Integrate it near the user avatar. _Needs: design decision; `base.html` now seen._
-- **Accounts table overflow on narrower screens.**
 - **MC model discrepancy** — Monte Carlo shows high success rates even when the deterministic engine runs out; MC uses an aggregate pool that doesn't model per-account depletion (ADR-012 limitation). The cash-only gating (#10) was a separate, narrower fix — this deeper model issue remains.
 
 ### RESOLVED this session
@@ -362,6 +379,11 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Income currency selector + per-source FX rate (#5)~~ — DONE (commit `81023f3`). Engine FX-converts income via `incomeExchangeRateToBase` at load time.
 - ~~Default base-currency symbol on income/budget/life-events (#6 partial)~~ — DONE (commit `81023f3`). `base_currency_symbol()` Jinja global. Remaining templates (`projection`, `dashboard`, `accounts`, `investments`, `settings`) still hardcode `£` — quick sweep follow-on.
 - ~~Contributions in budget (#7)~~ — DONE (commit `08b7f0c`). 4th stacked area + snapshot breakdown lines. Discoverability fix (`91bddf1`) auto-expands the collapsible on edit pages and adds a `+ Add` link to list-page rows with no contribution.
+- ~~Scenario indicator integrated into header~~ — DONE (this session, item 17). Orphaned snippet now lives next to the avatar; trailing duplicate markup deleted from `base.html`.
+- ~~Accounts/Investments table overflow on narrow screens~~ — DONE (this session, item 18). Responsive `hidden {bp}:table-cell` classes on lower-priority columns; `overflow-x-auto` retained as safety net.
+- ~~Hardcoded `£` sweep on remaining templates~~ — confirmed already complete (this session, item 19). Zero `£` left anywhere in templates.
+- ~~Plan-to-retire-in vs currency mismatch (#4)~~ — DONE (this session, item 20). 8 jurisdictions added — JP, SE, NO, DK, HK, IN, CN, AE — each with `defaultCurrency`, cost-of-living index, and a 2024 personal-allowance value. Requires `python tools\reload_ontology.py` (app closed) to appear in the live store.
+- ~~Accounts vs Investments IA (#3)~~ — DONE (this session, item 21). Unified `/accounts` page. Legacy `/investments/*` POST URLs still backwards-compatible; `GET /investments` redirects.
 
 ### Post-1.0
 - Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
@@ -393,6 +415,8 @@ All to be addressed before public beta. File(s) each will need are noted.
 
 ## Files Claude has NOT seen (upload when relevant)
 - `src/templates/profile.html` — item 4 (and to confirm currency dropdowns now show INR/CNY/AED)
-- `src/templates/projection.html` — items 9, remaining `£` sweep (template only — route file now fully seen)
 - `src/api/routes/settings_route.py`, `src/api/routes/scenarios.py`, `src/store/scenario_manager.py`, `src/store/graph.py` (full)
-- `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html` — all candidates for the remaining `£`-symbol sweep
+- `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html`
+
+## Files Claude has SEEN (added this session)
+- `src/templates/projection.html` (full)

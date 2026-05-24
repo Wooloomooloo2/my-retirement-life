@@ -1,11 +1,19 @@
 """
-Investment accounts routes — manage the user's investment accounts.
+Investment accounts routes — handlers for investment-class CRUD.
 
-GET  /investments              — list all investment accounts + add form
-POST /investments              — create a new investment account
-GET  /investments/{n}/edit     — load edit form for investment account N
-POST /investments/{n}/edit     — save edits to investment account N
-POST /investments/{n}/delete   — delete investment account N
+After backlog #3 (Accounts ↔ Investments IA unification): /investments GETs
+redirect to /accounts; all POST routes still live here for backwards
+compatibility but render the unified accounts.html template via the shared
+_render_accounts() helper from accounts.py.
+
+GET  /investments                       → 301 → /accounts
+POST /investments                       — create a new investment account
+GET  /investments/{n}/edit              → renders accounts.html with edit form
+POST /investments/{n}/edit              — save edits to investment account N
+POST /investments/{n}/delete            — delete investment account N
+GET  /investments/{n}/projection        — per-account growth/drawdown detail
+POST /investments/{n}/contribution(...) — contribution CRUD
+POST /investments/refresh-rates         → 307 → /accounts/refresh-rates
 
 Changes (ADR-011, ADR-013):
   get_all_investment_accounts() now reads drawdown eligibility and tax fields.
@@ -15,7 +23,7 @@ Changes (ADR-011, ADR-013):
 """
 from datetime import date
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
@@ -460,23 +468,14 @@ def save_investment_account(
     """)
 
 
-def _page_context(request, accounts, edit_account=None, **kwargs):
-    today         = date.today().isoformat()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    total_balance = sum(float(a["balance"]) for a in accounts if a["balance"])
-    return {
-        "app_name":      settings.app_name,
-        "active":        "investments",
-        "accounts":      accounts,
-        "currencies":    currencies,
-        "jurisdictions": jurisdictions,
-        "today":         today,
-        "edit_account":  edit_account,
-        "total_balance": total_balance,
-        "account_types": INVESTMENT_ACCOUNT_TYPES,
-        **kwargs,
-    }
+def _find_invest_edit(n: int) -> dict | None:
+    """Locate an investment-class account by N within the combined list."""
+    from src.api.routes.accounts import get_all_accounts_combined
+    return next(
+        (a for a in get_all_accounts_combined()
+         if a["account_class"] == "InvestmentAccount" and a["n"] == str(n)),
+        None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -484,13 +483,9 @@ def _page_context(request, accounts, edit_account=None, **kwargs):
 # ---------------------------------------------------------------------------
 
 @router.get("/investments", response_class=HTMLResponse)
-async def investments_page(request: Request):
-    accounts = get_all_investment_accounts()
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts),
-    )
+async def investments_redirect():
+    """Legacy URL — redirect to the unified /accounts page (backlog #3)."""
+    return RedirectResponse(url="/accounts", status_code=301)
 
 
 # ---------------------------------------------------------------------------
@@ -533,75 +528,11 @@ def _update_investment_rate(account_iri_str: str, rate_to_base: float, rate_date
     """)
 
 
-@router.post("/investments/refresh-rates", response_class=HTMLResponse)
-async def refresh_investment_rates(request: Request):
-    """Fetch today's live rates and update every investment account's rate.
-
-    Same model as the cash-accounts refresh (ADR-016): mrl:exchangeRateToBase
-    is "1 unit of account currency = N units of base currency", so the value
-    written is 1 / rate[account_code], and accounts already in the base
-    currency are set to 1.0. Triggers the app's only outbound network call
-    (open.er-api.com), sending just the base currency code.
-    """
-    from src.api.routes.profile import get_profile
-
-    base_local = (get_profile() or {}).get("baseCurrency", "")
-    base_code  = _currency_code(base_local) if base_local else ""
-
-    if not base_code:
-        return templates.TemplateResponse(
-            request=request,
-            name="investments.html",
-            context=_page_context(
-                request, get_all_investment_accounts(),
-                rate_refresh_error="Set your base currency on the Profile page "
-                                   "before refreshing exchange rates.",
-            ),
-        )
-
-    try:
-        data  = fetch_rates(base_code)
-        rates = data["rates"]
-    except FxError as exc:
-        return templates.TemplateResponse(
-            request=request,
-            name="investments.html",
-            context=_page_context(
-                request, get_all_investment_accounts(),
-                rate_refresh_error=f"Live rates unavailable — {exc}. "
-                                   "Existing rates were left unchanged.",
-            ),
-        )
-
-    today   = date.today().isoformat()
-    updated = 0
-    skipped = []
-    for acc in get_all_investment_accounts():
-        code = acc.get("currencyCode", "")
-        if not code:
-            continue
-        if code == base_code:
-            _update_investment_rate(acc["iri"], 1.0, today)
-            updated += 1
-        elif code in rates and rates[code]:
-            rate_to_base = round(1.0 / float(rates[code]), 6)
-            _update_investment_rate(acc["iri"], rate_to_base, today)
-            updated += 1
-        else:
-            skipped.append(code)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(
-            request, get_all_investment_accounts(),
-            rate_refresh_count=updated,
-            rate_refresh_base=base_code,
-            rate_refresh_as_of=data.get("as_of", ""),
-            rate_refresh_provider=data.get("provider", ""),
-            rate_refresh_skipped=sorted(set(skipped)),
-        ),
-    )
+@router.post("/investments/refresh-rates")
+async def refresh_investment_rates_redirect():
+    """Legacy URL — the unified /accounts/refresh-rates updates both classes
+    in one pass. 307 preserves the POST method (backlog #3)."""
+    return RedirectResponse(url="/accounts/refresh-rates", status_code=307)
 
 
 @router.post("/investments", response_class=HTMLResponse)
@@ -654,19 +585,13 @@ async def add_investment_account(
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
     # Redirect to edit so the contribution section is immediately available
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=f"/investments/{next_n}/edit", status_code=303)
 
 
 @router.get("/investments/{n}/edit", response_class=HTMLResponse)
 async def edit_investment_account_form(request: Request, n: int):
-    accounts = get_all_investment_accounts()
-    account  = next((a for a in accounts if a["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, edit_account=account),
-    )
+    from src.api.routes.accounts import _render_accounts
+    return _render_accounts(request, edit_account=_find_invest_edit(n))
 
 
 @router.post("/investments/{n}/edit", response_class=HTMLResponse)
@@ -717,24 +642,19 @@ async def save_edit_investment_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-    accounts = get_all_investment_accounts()
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, saved=True),
-    )
+    from src.api.routes.accounts import _render_accounts
+    return _render_accounts(request, saved=True)
 
 
 @router.get("/investments/{n}/projection", response_class=HTMLResponse)
 async def investment_projection_detail(request: Request, n: int):
     """Per-account growth-vs-drawdown detail chart (ADR-012)."""
-    from fastapi.responses import RedirectResponse
     from src.api.routes.projection import run_projection, get_projection_settings
 
     accounts = get_all_investment_accounts()
     account  = next((a for a in accounts if a["n"] == str(n)), None)
     if not account:
-        return RedirectResponse("/investments", status_code=303)
+        return RedirectResponse("/accounts", status_code=303)
 
     label = f"InvestmentAccount_{n}"
     proj_settings = get_projection_settings()
@@ -747,10 +667,10 @@ async def investment_projection_detail(request: Request, n: int):
             name="investment_projection.html",
             context={
                 "app_name":   settings.app_name,
-                "active":     "investments",
+                "active":     "accounts",
                 "account":    account,
-                "back_url":   "/investments",
-                "back_label": "Back to investments",
+                "back_url":   "/accounts",
+                "back_label": "Back to accounts",
                 "no_data":    True,
             }
         )
@@ -784,10 +704,10 @@ async def investment_projection_detail(request: Request, n: int):
         name="investment_projection.html",
         context={
             "app_name":           settings.app_name,
-            "active":             "investments",
+            "active":             "accounts",
             "account":            account,
-            "back_url":           "/investments",
-            "back_label":         "Back to investments",
+            "back_url":           "/accounts",
+            "back_label":         "Back to accounts",
             "years":              years,
             "balances":           balances,
             "withdrawals":        withdrawals,
@@ -818,12 +738,8 @@ async def delete_investment_account(request: Request, n: int):
             }}
         }}
     """)
-    accounts = get_all_investment_accounts()
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, deleted=True),
-    )
+    from src.api.routes.accounts import _render_accounts
+    return _render_accounts(request, deleted=True)
 
 
 # ---------------------------------------------------------------------------
@@ -852,13 +768,8 @@ async def save_investment_contribution(
         contributionNote,
         growth_rate=contributionGrowthRate,
     )
-    accounts = get_all_investment_accounts()
-    account  = next((a for a in accounts if a["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, edit_account=account, contribution_saved=True),
-    )
+    from src.api.routes.accounts import _render_accounts
+    return _render_accounts(request, edit_account=_find_invest_edit(n), contribution_saved=True)
 
 
 @router.post("/investments/{n}/contribution/delete", response_class=HTMLResponse)
@@ -866,10 +777,5 @@ async def delete_investment_contribution(request: Request, n: int):
     """Delete the contribution for investment account N."""
     account_iri = f"{MRL}InvestmentAccount_{n}"
     delete_contribution(account_iri)
-    accounts = get_all_investment_accounts()
-    account  = next((a for a in accounts if a["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="investments.html",
-        context=_page_context(request, accounts, edit_account=account, contribution_deleted=True),
-    )
+    from src.api.routes.accounts import _render_accounts
+    return _render_accounts(request, edit_account=_find_invest_edit(n), contribution_deleted=True)

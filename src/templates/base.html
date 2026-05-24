@@ -50,9 +50,6 @@
                 <a href="/accounts" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'accounts' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-wallet text-base" aria-hidden="true"></i> Accounts
                 </a>
-                <a href="/investments" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'investments' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
-                    <i class="ti ti-chart-line text-base" aria-hidden="true"></i> Investments
-                </a>
                 <a href="/budget" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'budget' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-chart-bar text-base" aria-hidden="true"></i> Budget
                 </a>
@@ -86,9 +83,39 @@
                     <h2 class="font-medium text-base-content">{% block page_title %}{% endblock %}</h2>
                     <p class="text-xs text-base-content/50">{% block page_subtitle %}{% endblock %}</p>
                 </div>
-                <div class="avatar placeholder">
-                    <div class="bg-primary text-primary-content rounded-full w-8">
-                        <span class="text-xs">{{ user_initials() }}</span>
+                <div class="flex items-center gap-4">
+                    {% set sc = active_scenario() %}
+                    {% if sc.is_named %}
+                    <div class="flex items-center gap-1.5 text-xs">
+                        <a href="/scenarios"
+                           class="text-base-content/60 hover:text-base-content flex items-center gap-1 truncate max-w-40"
+                           title="{{ sc.name }}">
+                            <i class="ti ti-file-description text-xs flex-shrink-0"></i>
+                            <span class="truncate">{{ sc.name }}</span>
+                        </a>
+                        {% if not sc.saved %}
+                        <form method="post" action="/scenarios/save" class="flex-shrink-0">
+                            <button type="submit"
+                                    class="badge badge-warning badge-sm hover:badge-error transition-colors cursor-pointer border-0 gap-0.5"
+                                    title="Save '{{ sc.name }}'">
+                                <i class="ti ti-device-floppy" style="font-size:10px"></i>
+                                Save
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <a href="/scenarios"
+                       class="text-xs text-base-content/40 hover:text-base-content/70 flex items-center gap-1"
+                       title="No scenario saved — click to manage scenarios">
+                        <i class="ti ti-file-unknown text-xs"></i>
+                        <span class="hidden sm:inline">Unsaved session</span>
+                    </a>
+                    {% endif %}
+                    <div class="avatar placeholder">
+                        <div class="bg-primary text-primary-content rounded-full w-8">
+                            <span class="text-xs">{{ user_initials() }}</span>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -127,40 +154,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-<!-- =======================================================================
-     Scenario nav indicator — add this near the user avatar/initials in
-     base.html. The active_scenario() global is available on every page.
-
-     When named + clean:   shows scenario name as a link to /scenarios
-     When named + unsaved: shows name + a one-click "Save" button
-     When unnamed:         shows nothing (or a faint "Unsaved session" link)
-     ======================================================================= -->
-
-{% set sc = active_scenario() %}
-{% if sc.is_named %}
-<div class="flex items-center gap-1.5 text-xs">
-    <a href="/scenarios"
-       class="text-base-content/50 hover:text-base-content flex items-center gap-1 truncate max-w-32"
-       title="{{ sc.name }}">
-        <i class="ti ti-file-description text-xs flex-shrink-0"></i>
-        <span class="truncate">{{ sc.name }}</span>
-    </a>
-    {% if not sc.saved %}
-    <form method="post" action="/scenarios/save" class="flex-shrink-0">
-        <button type="submit"
-                class="badge badge-warning badge-xs hover:badge-error transition-colors cursor-pointer border-0 gap-0.5"
-                title="Save '{{ sc.name }}'">
-            <i class="ti ti-device-floppy" style="font-size:9px"></i>
-            Save
-        </button>
-    </form>
-    {% endif %}
-</div>
-{% else %}
-<a href="/scenarios"
-   class="text-xs text-base-content/30 hover:text-base-content/50 flex items-center gap-1"
-   title="No scenario saved — click to save">
-    <i class="ti ti-file-unknown text-xs"></i>
-    <span class="hidden sm:inline">Unsaved</span>
-</a>
-{% endif %}

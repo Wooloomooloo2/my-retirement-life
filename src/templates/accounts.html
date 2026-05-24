@@ -1,15 +1,33 @@
 {% extends "base.html" %}
 
+{# ===========================================================================
+   Unified Accounts page (backlog #3).
+
+   Renders cash AND investment accounts in one table and one add/edit form.
+   The form has a Class selector (Cash | Investment) at the top that swaps
+   between class-specific field groups AND sets the form's submit action
+   (/accounts for cash, /investments for investment).
+
+   When editing an existing account, the class is fixed (no toggle): the
+   selector locks to the matching class and the form action is hard-coded
+   to the right URL.
+
+   Both /accounts/* and /investments/* routes render this same template via
+   the shared _render_accounts() helper in accounts.py.
+   =========================================================================== #}
+
 {% block title %}Accounts — {{ app_name }}{% endblock %}
-{% block page_title %}Cash accounts{% endblock %}
-{% block page_subtitle %}Your savings and current accounts{% endblock %}
+{% block page_title %}Accounts{% endblock %}
+{% block page_subtitle %}Your cash accounts and investment holdings{% endblock %}
+
+{% set edit_class = edit_account.account_class if edit_account else None %}
 
 {% block content %}
 
 {% if saved %}
 <div class="alert alert-success mb-4">
     <i class="ti ti-circle-check"></i>
-    <span>Account saved successfully.</span>
+    <span>Account saved.</span>
 </div>
 {% endif %}
 
@@ -49,8 +67,8 @@
         <p class="font-medium">Tip: add your main current account first</p>
         <p class="text-sm mt-0.5">
             Without a spending account configured in Projection Settings, unspent income
-            accumulates in your first <strong>Current account</strong> type account each year.
-            Add your everyday current/checking account here first, then savings accounts,
+            accumulates in your first <strong>Current account</strong> each year. Add
+            your everyday current/checking account here first, then savings accounts,
             ISAs and investments. You can also set an explicit spending account in
             Projection Settings at any time.
         </p>
@@ -58,14 +76,20 @@
 </div>
 {% endif %}
 
-<!-- Existing accounts list -->
+<!-- ============================================================
+     Existing accounts list (cash + investment combined)
+     ============================================================ -->
 {% if accounts %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+        <div class="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-base-200">
             <h3 class="text-sm font-medium flex items-center gap-2">
                 <i class="ti ti-wallet text-base-content/40" aria-hidden="true"></i>
                 Your accounts
+                <span class="text-xs font-normal text-base-content/40 ml-2">
+                    Cash: {{ base_currency_symbol() }}{{ "{:,.0f}".format(cash_total_balance) }}
+                    · Investments: {{ base_currency_symbol() }}{{ "{:,.0f}".format(invest_total_balance) }}
+                </span>
             </h3>
             <div class="flex items-center gap-3">
                 <span class="text-xs text-base-content/40 hidden sm:inline" title="Exchange rates are fetched live from open.er-api.com">
@@ -73,7 +97,7 @@
                 </span>
                 <form method="post" action="/accounts/refresh-rates">
                     <button type="submit" class="btn btn-ghost btn-xs gap-1"
-                            title="Fetch today's exchange rates and update every account against your base currency">
+                            title="Fetch today's exchange rates and update every account (cash + investment)">
                         <i class="ti ti-refresh text-xs" aria-hidden="true"></i>
                         Refresh rates
                     </button>
@@ -85,30 +109,52 @@
                 <thead>
                     <tr class="text-xs uppercase tracking-wide text-base-content/40">
                         <th>Account name</th>
-                        <th>Type</th>
+                        <th class="hidden sm:table-cell">Type</th>
                         <th>Balance</th>
-                        <th>Balance date</th>
-                        <th>Interest rate</th>
-                        <th>Currency</th>
-                        <th>FX rate</th>
-                        <th>Draw priority</th>
-                        <th>Tax treatment</th>
+                        <th class="hidden xl:table-cell">Balance date</th>
+                        <th class="hidden md:table-cell">Yield</th>
+                        <th class="hidden md:table-cell">Currency</th>
+                        <th class="hidden xl:table-cell">FX rate</th>
+                        <th class="hidden xl:table-cell">Draw priority</th>
+                        <th class="hidden lg:table-cell">Tax treatment</th>
                         <th>Contribution</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for account in accounts %}
-                    <tr class="hover {% if edit_account and edit_account.n == account.n %}bg-base-200{% endif %}">
-                        <td class="font-medium">{{ account.name }}</td>
-                        <td><span class="badge badge-ghost badge-sm">{{ account.accountType.replace("CashAccountType_", "") if account.accountType else "—" }}</span></td>
+                    {% set is_cash = account.account_class == 'CashAccount' %}
+                    {% set edit_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/edit' %}
+                    {% set delete_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/delete' %}
+                    {% set detail_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/projection' %}
+                    <tr class="hover {% if edit_account and edit_account.n == account.n and edit_account.account_class == account.account_class %}bg-base-200{% endif %}">
+                        <td class="font-medium">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full
+                                    {% if is_cash %}bg-blue-500{% else %}bg-green-500{% endif %}"
+                                    title="{{ 'Cash account' if is_cash else 'Investment account' }}"></span>
+                                {{ account.name }}
+                            </div>
+                        </td>
+                        <td class="hidden sm:table-cell">
+                            <span class="badge badge-ghost badge-sm">{{ account.accountTypeShort }}</span>
+                        </td>
                         <td>{{ account.currencySymbol }}{{ "{:,.2f}".format(account.balance | float) }}</td>
-                        <td class="text-base-content/60 text-xs">{{ account.balanceDate }}</td>
-                        <td>{{ account.interestRate }}%</td>
-                        <td>
+                        <td class="hidden xl:table-cell text-base-content/60 text-xs">{{ account.balanceDate }}</td>
+                        <td class="hidden md:table-cell text-xs">
+                            {% if is_cash %}
+                                {{ account.interestRate }}%
+                            {% else %}
+                                <span class="text-base-content/70">{{ account.growthRate }}%</span>
+                                {% if account.dividendRate and account.dividendRate|float > 0 %}
+                                <span class="text-base-content/40">· {{ account.dividendRate }}% div</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="hidden md:table-cell">
                             <span class="badge badge-ghost badge-sm">{{ account.currencyCode }}</span>
                         </td>
-                        <td class="text-xs text-base-content/50">
+                        <td class="hidden xl:table-cell text-xs text-base-content/50">
                             {% if account.exchangeRate and account.exchangeRate != '1.0' %}
                                 {{ account.exchangeRate }}
                                 {% if account.exchangeRateDate %}
@@ -116,12 +162,12 @@
                                 {% endif %}
                             {% else %}—{% endif %}
                         </td>
-                        <td class="text-xs text-base-content/50">
+                        <td class="hidden xl:table-cell text-xs text-base-content/50">
                             {% if account.drawdownPriority %}
                                 <span class="badge badge-outline badge-sm">{{ account.drawdownPriority }}</span>
                             {% else %}—{% endif %}
                         </td>
-                        <td class="text-xs text-base-content/50">
+                        <td class="hidden lg:table-cell text-xs text-base-content/50">
                             {% if account.taxTreatment %}
                                 {% set tt = account.taxTreatment.replace("TaxTreatment_", "") %}
                                 {% if tt == "PostTaxTaxFreeWithdrawal" %}<span class="badge badge-success badge-sm">Tax-free</span>
@@ -135,21 +181,20 @@
                             {% if account.contribution %}
                                 <span class="badge badge-info badge-sm badge-outline">{{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
                             {% else %}
-                                <a href="/accounts/{{ account.n }}/edit" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
+                                <a href="{{ edit_url }}" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
                             {% endif %}
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
-                                <a href="/accounts/{{ account.n }}/projection"
+                                <a href="{{ detail_url }}"
                                    class="btn btn-ghost btn-xs gap-1"
-                                   title="View interest vs drawdown detail">
+                                   title="View per-account projection detail">
                                     <i class="ti ti-chart-line text-xs" aria-hidden="true"></i> Detail
                                 </a>
-                                <a href="/accounts/{{ account.n }}/edit"
-                                   class="btn btn-ghost btn-xs gap-1">
+                                <a href="{{ edit_url }}" class="btn btn-ghost btn-xs gap-1">
                                     <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
                                 </a>
-                                <form method="post" action="/accounts/{{ account.n }}/delete"
+                                <form method="post" action="{{ delete_url }}"
                                       onsubmit="return confirm('Delete {{ account.name }}?')">
                                     <button type="submit" class="btn btn-ghost btn-xs text-error gap-1">
                                         <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
@@ -163,7 +208,7 @@
                 <tfoot>
                     <tr class="font-medium border-t border-base-200">
                         <td>Total</td>
-                        <td colspan="8" class="text-base-content/60 text-xs">
+                        <td colspan="9" class="text-base-content/60 text-xs">
                             {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
                             drawdown priority and tax treatment set per account below
                         </td>
@@ -175,18 +220,59 @@
 </div>
 {% endif %}
 
-<!-- Add / Edit form -->
+<!-- ============================================================
+     Add / Edit form — class-aware
+     ============================================================ -->
 <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
         <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
             <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
-            {% if edit_account %}Edit account — {{ edit_account.name }}{% else %}Add a cash account{% endif %}
+            {% if edit_account %}
+                Edit account — {{ edit_account.name }}
+            {% else %}
+                Add an account
+            {% endif %}
         </h3>
 
-        <form method="post"
-              action="{% if edit_account %}/accounts/{{ edit_account.n }}/edit{% else %}/accounts{% endif %}">
+        <!-- Class selector: Cash | Investment.
+             Locked when editing (preserves the existing class). -->
+        <div class="tabs tabs-boxed mb-4 inline-flex">
+            <button type="button"
+                id="class-tab-cash"
+                class="tab tab-sm
+                    {% if not edit_class or edit_class == 'CashAccount' %}tab-active{% endif %}
+                    {% if edit_class == 'InvestmentAccount' %}opacity-40 cursor-not-allowed{% endif %}"
+                onclick="setAccountClass('cash')"
+                {% if edit_class == 'InvestmentAccount' %}disabled{% endif %}>
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></span>
+                Cash account
+            </button>
+            <button type="button"
+                id="class-tab-invest"
+                class="tab tab-sm
+                    {% if edit_class == 'InvestmentAccount' %}tab-active{% endif %}
+                    {% if edit_class == 'CashAccount' %}opacity-40 cursor-not-allowed{% endif %}"
+                onclick="setAccountClass('invest')"
+                {% if edit_class == 'CashAccount' %}disabled{% endif %}>
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
+                Investment account
+            </button>
+        </div>
 
-            <!-- Core account fields (unchanged) -->
+        {# Compute the right form action up-front based on edit context. The JS
+           below also updates this when the class tab changes (only relevant when
+           adding a new account; editing is class-locked). #}
+        {% if edit_account and edit_class == 'CashAccount' %}
+            {% set form_action = '/accounts/' ~ edit_account.n ~ '/edit' %}
+        {% elif edit_account and edit_class == 'InvestmentAccount' %}
+            {% set form_action = '/investments/' ~ edit_account.n ~ '/edit' %}
+        {% else %}
+            {% set form_action = '/accounts' %}
+        {% endif %}
+
+        <form method="post" id="account-form" action="{{ form_action }}">
+
+            <!-- ============ Core (shared) fields ============ -->
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
                 <div class="form-control">
@@ -195,20 +281,39 @@
                     </label>
                     <input type="text" name="accountName" required
                         value="{{ edit_account.name if edit_account else '' }}"
-                        placeholder="e.g. Barclays ISA, HSBC Current Account"
+                        placeholder="e.g. Barclays ISA, Vanguard SIPP"
                         class="input input-bordered input-sm w-full" />
                 </div>
 
-                <div class="form-control">
+                <!-- Cash subtype dropdown -->
+                <div class="form-control class-field class-field-cash">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Account type</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Cash account type</span>
                     </label>
                     <select name="accountType" class="select select-bordered select-sm w-full">
-                        <option value="CashAccountType_Current"      {% if edit_account and edit_account.accountType == "CashAccountType_Current"      %}selected{% elif not edit_account %}selected{% endif %}>Current account</option>
-                        <option value="CashAccountType_Savings"      {% if edit_account and edit_account.accountType == "CashAccountType_Savings"      %}selected{% endif %}>Savings account</option>
-                        <option value="CashAccountType_FixedTerm"    {% if edit_account and edit_account.accountType == "CashAccountType_FixedTerm"    %}selected{% endif %}>Fixed term deposit</option>
-                        <option value="CashAccountType_TaxAdvantaged"{% if edit_account and edit_account.accountType == "CashAccountType_TaxAdvantaged"%}selected{% endif %}>Tax-advantaged account</option>
-                        <option value="CashAccountType_Other"        {% if edit_account and edit_account.accountType == "CashAccountType_Other"        %}selected{% endif %}>Other</option>
+                        {% for key, label in cash_account_types.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_class == 'CashAccount' and edit_account.accountType == key %}selected
+                            {% elif not edit_account and key == 'CashAccountType_Current' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Investment subtype dropdown -->
+                <div class="form-control class-field class-field-invest">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Investment type</span>
+                    </label>
+                    <select name="accountType" class="select select-bordered select-sm w-full">
+                        {% for key, label in invest_account_types.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_class == 'InvestmentAccount' and edit_account.accountType == key %}selected
+                            {% elif not edit_account and key == 'InvestmentAccountType_StocksShares' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
                     </select>
                 </div>
 
@@ -250,16 +355,56 @@
                     </select>
                 </div>
 
-                <div class="form-control">
+                <!-- Cash-only: interest rate -->
+                <div class="form-control class-field class-field-cash">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual interest rate %</span>
                     </label>
                     <input type="number" name="annualInterestRate" step="0.01" min="0" max="30"
-                        value="{{ edit_account.interestRate if edit_account else '0' }}"
+                        value="{{ edit_account.interestRate if edit_class == 'CashAccount' else '0' }}"
                         placeholder="e.g. 4.5"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40">Leave 0 if no interest</span>
+                    </label>
+                </div>
+
+                <!-- Investment-only: growth rate, dividend rate, reinvest -->
+                <div class="form-control class-field class-field-invest">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate %</span>
+                    </label>
+                    <input type="number" name="annualGrowthRate" step="0.01" min="-30" max="50"
+                        value="{{ edit_account.growthRate if edit_class == 'InvestmentAccount' else '5.0' }}"
+                        placeholder="e.g. 5.0"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Expected real or nominal growth (excluding dividends)</span>
+                    </label>
+                </div>
+
+                <div class="form-control class-field class-field-invest">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual dividend rate %</span>
+                    </label>
+                    <input type="number" name="annualDividendRate" step="0.01" min="0" max="20"
+                        value="{{ edit_account.dividendRate if edit_class == 'InvestmentAccount' else '0' }}"
+                        placeholder="e.g. 1.5"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Distributed dividend yield (separate from price growth)</span>
+                    </label>
+                </div>
+
+                <div class="form-control class-field class-field-invest">
+                    <label class="label py-0.5 cursor-pointer">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Reinvest dividends</span>
+                        <input type="checkbox" name="reinvestDividends" value="1"
+                            class="toggle toggle-sm toggle-primary ml-2"
+                            {% if edit_class != 'InvestmentAccount' or edit_account.reinvestDividends %}checked{% endif %} />
+                    </label>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">On = compounded into balance; off = paid out as income each year</span>
                     </label>
                 </div>
 
@@ -315,11 +460,7 @@
 
             </div>
 
-            <!-- ============================================================
-                 Tax & Drawdown section (ADR-011, ADR-013)
-                 Collapsible — opens automatically when editing an account
-                 that already has any of these fields set.
-                 ============================================================ -->
+            <!-- ============ Tax & Drawdown collapsible (shared) ============ -->
             {% set has_drawdown_tax = edit_account and (
                 edit_account.drawdownPriority or edit_account.taxTreatment or
                 edit_account.effectiveWithdrawalTaxRate or edit_account.drawdownMinAge or
@@ -336,7 +477,6 @@
                 <div class="collapse-content">
                     <div class="pt-3">
 
-                        <!-- Drawdown ordering -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3 mt-1">
                             Drawdown ordering (ADR-011)
                         </p>
@@ -370,7 +510,6 @@
 
                         </div>
 
-                        <!-- Drawdown eligibility -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
                             Access restrictions (leave blank for no restriction)
                         </p>
@@ -425,7 +564,6 @@
 
                         </div>
 
-                        <!-- Tax treatment -->
                         <p class="text-xs font-medium uppercase tracking-wide text-base-content/50 mb-3">
                             Tax treatment (ADR-013)
                         </p>
@@ -505,7 +643,6 @@
                     </div>
                 </div>
             </div>
-            <!-- end Tax & Drawdown -->
 
             <div class="flex justify-between items-center">
                 {% if edit_account %}
@@ -522,13 +659,14 @@
         </form>
 
         <!-- ============================================================
-             Contributions section (ADR-015)
-             Separate <form> — must be outside the account <form> above.
-             Only shown when editing an existing account (new accounts are
-             redirected to edit after creation so this section appears).
+             Contribution panel (separate form — must be outside the
+             account form above to avoid nested-form invalidity).
+             Only shown when editing an existing account.
              ============================================================ -->
         {% if edit_account %}
         {% set contrib = edit_account.contribution %}
+        {% set contrib_action = ('/accounts/' if edit_class == 'CashAccount' else '/investments/') ~ edit_account.n ~ '/contribution' %}
+        {% set contrib_delete_action = contrib_action ~ '/delete' %}
 
         {% if contribution_saved %}
         <div class="alert alert-success mt-4">
@@ -561,7 +699,7 @@
                         Default window: current year up to and including your target retirement year.
                     </p>
 
-                    <form method="post" action="/accounts/{{ edit_account.n }}/contribution">
+                    <form method="post" action="{{ contrib_action }}">
                         <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
                             <div class="form-control">
@@ -573,7 +711,7 @@
                                     value="{{ contrib.amount if contrib else '' }}"
                                     placeholder="e.g. 500"
                                     class="input input-bordered input-sm w-full"
-                                    id="contrib-amount-ca" oninput="updateContribAnnual('ca')" />
+                                    id="contrib-amount" oninput="updateContribAnnual()" />
                             </div>
 
                             <div class="form-control">
@@ -582,7 +720,7 @@
                                 </label>
                                 <select name="contributionFrequency"
                                         class="select select-bordered select-sm w-full"
-                                        id="contrib-freq-ca" onchange="updateContribAnnual('ca')">
+                                        id="contrib-freq" onchange="updateContribAnnual()">
                                     <option value="FrequencyType_Monthly"     {% if not contrib or contrib.frequency == 'FrequencyType_Monthly' %}selected{% endif %}>Monthly</option>
                                     <option value="FrequencyType_Annually"    {% if contrib and contrib.frequency == 'FrequencyType_Annually' %}selected{% endif %}>Annually</option>
                                     <option value="FrequencyType_Weekly"      {% if contrib and contrib.frequency == 'FrequencyType_Weekly' %}selected{% endif %}>Weekly</option>
@@ -591,7 +729,7 @@
                                     <option value="FrequencyType_Quarterly"   {% if contrib and contrib.frequency == 'FrequencyType_Quarterly' %}selected{% endif %}>Quarterly</option>
                                 </select>
                                 <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40" id="contrib-annual-hint-ca"></span>
+                                    <span class="label-text-alt text-base-content/40" id="contrib-annual-hint"></span>
                                 </label>
                             </div>
 
@@ -645,12 +783,11 @@
 
                         <div class="flex justify-between items-center">
                             {% if contrib %}
-                            <form method="post" action="/accounts/{{ edit_account.n }}/contribution/delete"
-                                  onsubmit="return confirm('Remove the contribution from this account?')">
-                                <button type="submit" class="btn btn-ghost btn-sm text-error gap-1">
-                                    <i class="ti ti-trash text-xs"></i> Remove contribution
-                                </button>
-                            </form>
+                            <button type="submit" formaction="{{ contrib_delete_action }}"
+                                    class="btn btn-ghost btn-sm text-error gap-1"
+                                    onclick="return confirm('Remove the contribution from this account?')">
+                                <i class="ti ti-trash text-xs"></i> Remove contribution
+                            </button>
                             {% else %}
                             <span></span>
                             {% endif %}
@@ -663,25 +800,73 @@
                 </div>
             </div>
         </div>
-        <!-- end Contributions -->
         {% endif %}
     </div>
 </div>
+
+{% endblock %}
 
 {% block scripts %}
 <script>
     const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
 
+    // -----------------------------------------------------------------------
+    // Account-class toggle: Cash | Investment
+    // - Show/hide class-specific field groups via .class-field-cash/-invest
+    // - Update form action attribute to point at the right endpoint when adding
+    //   a new account. Editing is class-locked at render time so this is a no-op.
+    // -----------------------------------------------------------------------
+    const EDIT_CLASS = {{ edit_class | tojson }};   // 'CashAccount' | 'InvestmentAccount' | null
+
+    function setAccountClass(klass) {
+        if (EDIT_CLASS) return;   // class is locked when editing — toggle disabled
+
+        const isCash = klass === 'cash';
+        document.querySelectorAll('.class-field-cash').forEach(el => el.style.display = isCash ? '' : 'none');
+        document.querySelectorAll('.class-field-invest').forEach(el => el.style.display = isCash ? 'none' : '');
+
+        document.getElementById('class-tab-cash')  .classList.toggle('tab-active',  isCash);
+        document.getElementById('class-tab-invest').classList.toggle('tab-active', !isCash);
+
+        // Also enable/disable inputs in the hidden group so duplicate names
+        // (accountType, etc.) don't both submit.
+        document.querySelectorAll('.class-field-cash input, .class-field-cash select')
+            .forEach(el => el.disabled = !isCash);
+        document.querySelectorAll('.class-field-invest input, .class-field-invest select')
+            .forEach(el => el.disabled = isCash);
+
+        // Repoint the form to the right create endpoint.
+        document.getElementById('account-form').action = isCash ? '/accounts' : '/investments';
+    }
+
+    // Initialise on page load based on the active class.
+    (function initClass() {
+        const initialClass = EDIT_CLASS === 'InvestmentAccount' ? 'invest' : 'cash';
+        // For editing we still need to hide the OTHER group; setAccountClass
+        // short-circuits when EDIT_CLASS is set, so apply the visibility/disable
+        // logic directly.
+        const isCash = initialClass === 'cash';
+        document.querySelectorAll('.class-field-cash').forEach(el => el.style.display = isCash ? '' : 'none');
+        document.querySelectorAll('.class-field-invest').forEach(el => el.style.display = isCash ? 'none' : '');
+        document.querySelectorAll('.class-field-cash input, .class-field-cash select')
+            .forEach(el => el.disabled = !isCash);
+        document.querySelectorAll('.class-field-invest input, .class-field-invest select')
+            .forEach(el => el.disabled = isCash);
+    })();
+
+    // -----------------------------------------------------------------------
+    // FX rate / date toggle: shown only when account currency != base currency
+    // -----------------------------------------------------------------------
     function toggleFxFields() {
         const currencySelect = document.querySelector('select[name="accountCurrency"]');
         if (!currencySelect) return;
         const selected = currencySelect.options[currencySelect.selectedIndex];
         const code = selected ? selected.text.split(' — ')[0] : '';
-        const isBase = code === 'GBP';
-        const fxField = document.getElementById('fx-rate-field');
+        const isBase = code === {{ base_currency_code() | tojson }};
+        const fxField     = document.getElementById('fx-rate-field');
         const fxDateField = document.getElementById('fx-date-field');
         if (fxField)     fxField.style.display     = isBase ? 'none' : 'block';
-        if (fxDateField) fxDateField.style.display  = isBase ? 'none' : 'block';
+        if (fxDateField) fxDateField.style.display = isBase ? 'none' : 'block';
     }
 
     const currSel = document.querySelector('select[name="accountCurrency"]');
@@ -690,26 +875,26 @@
         toggleFxFields();
     }
 
+    // -----------------------------------------------------------------------
     // Contribution annual equivalent hint
+    // -----------------------------------------------------------------------
     const CONTRIB_MULTIPLIERS = {
         FrequencyType_Weekly: 52, FrequencyType_Fortnightly: 26,
         FrequencyType_TwiceMonthly: 24, FrequencyType_Monthly: 12,
         FrequencyType_Quarterly: 4, FrequencyType_Annually: 1,
     };
-    function updateContribAnnual(suffix) {
-        const amt  = parseFloat(document.getElementById(`contrib-amount-${suffix}`)?.value) || 0;
-        const freq = document.getElementById(`contrib-freq-${suffix}`)?.value || 'FrequencyType_Monthly';
-        const hint = document.getElementById(`contrib-annual-hint-${suffix}`);
-        if (!hint) return;
+    function updateContribAnnual() {
+        const amtEl  = document.getElementById('contrib-amount');
+        const freqEl = document.getElementById('contrib-freq');
+        const hint   = document.getElementById('contrib-annual-hint');
+        if (!amtEl || !freqEl || !hint) return;
+        const amt    = parseFloat(amtEl.value) || 0;
+        const freq   = freqEl.value || 'FrequencyType_Monthly';
         const annual = amt * (CONTRIB_MULTIPLIERS[freq] || 12);
         hint.textContent = amt > 0
             ? `Annual equivalent: ${BASE_SYMBOL}${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
             : '';
     }
-    // Run on load to populate hint if editing an existing contribution
-    updateContribAnnual('ca');
-    updateContribAnnual('ci');
+    updateContribAnnual();
 </script>
-{% endblock %}
-
 {% endblock %}

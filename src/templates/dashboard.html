@@ -69,7 +69,7 @@
             ('Profile',     'Personal details and retirement goal', '/profile',     false),
             ('Income',      'At least one income source',           '/income',      false),
             ('Accounts',    'At least one cash account',            '/accounts',    false),
-            ('Investments', 'At least one investment account',      '/investments', false),
+            ('Investments', 'At least one investment account',      '/accounts',    false),
             ('Budget',      'Your spending lines',                  '/budget',      false),
             ('Projection',  'View your retirement projection',      '/projection',  false),
         ] %}
@@ -124,7 +124,7 @@
             (investment_count > 0,
              'Investments',
              investment_count ~ ' investment account' ~ ('s' if investment_count != 1 else '') ~ ' added' if investment_count > 0 else 'Add at least one investment account',
-             '/investments'),
+             '/accounts'),
             (budget_line_count > 0,
              'Budget',
              budget_line_count ~ ' line' ~ ('s' if budget_line_count != 1 else '') ~ ' added' if budget_line_count > 0 else 'Add your spending lines',

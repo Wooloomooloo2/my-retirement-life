@@ -1,17 +1,23 @@
 """
-Accounts routes — manage the user's cash accounts.
+Accounts routes — manage the user's cash AND investment accounts.
 
-GET  /accounts              — list all accounts + add form
-POST /accounts              — create a new account
-GET  /accounts/{n}/edit     — load edit form for account N (HTMX partial)
-POST /accounts/{n}/edit     — save edits to account N
-POST /accounts/{n}/delete   — delete account N
+The /accounts and /investments URLs both render the unified accounts.html
+template. /investments GETs redirect to /accounts; the legacy
+/investments/{n}/... POST URLs are still served by investments.py for
+backwards compatibility, but they too render accounts.html.
 
-Changes (ADR-011, ADR-013):
-  get_all_accounts() now reads drawdown eligibility properties and tax fields.
-  save_account() now accepts and persists all new optional fields.
-  Route handlers pass new form params through to save_account().
-  All new fields are optional — existing accounts saved without them are unaffected.
+GET  /accounts                       — list all accounts (cash + invest) + form
+POST /accounts                       — create a new CASH account
+GET  /accounts/{n}/edit              — edit cash account N
+POST /accounts/{n}/edit              — save edits to cash account N
+POST /accounts/{n}/delete            — delete cash account N
+GET  /accounts/{n}/projection        — per-account detail (cash)
+POST /accounts/{n}/contribution(...) — contribution CRUD (cash)
+POST /accounts/refresh-rates         — refresh BOTH cash AND investment FX rates
+
+Changes (ADR-011, ADR-013, ADR-015, ADR-016, backlog #3):
+  Page renders combined cash + invest list via get_all_accounts_combined().
+  Refresh-rates updates both classes in one pass.
 """
 from datetime import date
 from fastapi import APIRouter, Request, Form
@@ -25,6 +31,15 @@ from src.store.graph import store, MRL, DATA_GRAPH
 from src.fx import fetch_rates, FxError
 
 router = APIRouter()
+
+# Cash account subtype labels for the unified form's Type dropdown.
+CASH_ACCOUNT_TYPES = {
+    "CashAccountType_Current":       "Current account",
+    "CashAccountType_Savings":       "Savings account",
+    "CashAccountType_FixedTerm":     "Fixed term deposit",
+    "CashAccountType_TaxAdvantaged": "Tax-advantaged account",
+    "CashAccountType_Other":         "Other",
+}
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT  = "https://myretirementlife.app/ontology#"    # unused but kept for symmetry
@@ -437,23 +452,7 @@ def save_account(
 
 @router.get("/accounts", response_class=HTMLResponse)
 async def accounts_page(request: Request):
-    accounts      = get_all_accounts()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":     settings.app_name,
-            "active":       "accounts",
-            "accounts":     accounts,
-            "currencies":   currencies,
-            "jurisdictions": jurisdictions,
-            "today":        today,
-            "edit_account": None,
-        }
-    )
+    return _render_accounts(request)
 
 
 # ---------------------------------------------------------------------------
@@ -496,17 +495,67 @@ def _update_account_rate(account_iri_str: str, rate_to_base: float, rate_date: s
     """)
 
 
+def get_all_accounts_combined() -> list:
+    """Return cash + investment accounts merged into one list, each annotated
+    with `account_class` ('CashAccount' or 'InvestmentAccount').
+
+    Cash-only fields (interestRate) and investment-only fields (growthRate,
+    dividendRate, reinvestDividends) are present where applicable; the
+    template branches on `account_class` to decide which subset to show.
+    """
+    from src.api.routes.investments import (
+        get_all_investment_accounts,
+        INVESTMENT_ACCOUNT_TYPES,
+        INVESTMENT_ACCOUNT_TYPES_SHORT,
+    )
+
+    cash = []
+    for a in get_all_accounts():
+        a["account_class"] = "CashAccount"
+        a["accountTypeLabel"] = CASH_ACCOUNT_TYPES.get(
+            a.get("accountType", ""),
+            (a.get("accountType") or "").replace("CashAccountType_", ""),
+        )
+        a["accountTypeShort"] = a["accountTypeLabel"]
+        cash.append(a)
+
+    invest = []
+    for a in get_all_investment_accounts():
+        a["account_class"] = "InvestmentAccount"
+        # accountTypeLabel / accountTypeShort are already set by get_all_investment_accounts()
+        invest.append(a)
+
+    # Cash first, then investment, both ordered by N ascending (existing semantics)
+    return cash + invest
+
+
 def _render_accounts(request: Request, **extra) -> HTMLResponse:
-    """Render the accounts page, with optional extra context such as a
+    """Render the unified accounts page, with optional extra context such as a
     rate-refresh result banner."""
+    from src.api.routes.investments import (
+        INVESTMENT_ACCOUNT_TYPES,
+        INVESTMENT_ACCOUNT_TYPES_SHORT,
+    )
+
+    accounts = get_all_accounts_combined()
+    cash_total   = sum(float(a["balance"]) for a in accounts
+                       if a["account_class"] == "CashAccount" and a.get("balance"))
+    invest_total = sum(float(a["balance"]) for a in accounts
+                       if a["account_class"] == "InvestmentAccount" and a.get("balance"))
+
     context = {
-        "app_name":      settings.app_name,
-        "active":        "accounts",
-        "accounts":      get_all_accounts(),
-        "currencies":    get_currencies(),
-        "jurisdictions": get_jurisdictions(),
-        "today":         date.today().isoformat(),
-        "edit_account":  None,
+        "app_name":            settings.app_name,
+        "active":              "accounts",
+        "accounts":            accounts,
+        "currencies":          get_currencies(),
+        "jurisdictions":       get_jurisdictions(),
+        "today":               date.today().isoformat(),
+        "edit_account":        None,
+        "cash_account_types":  CASH_ACCOUNT_TYPES,
+        "invest_account_types": INVESTMENT_ACCOUNT_TYPES,
+        "cash_total_balance":   cash_total,
+        "invest_total_balance": invest_total,
+        "total_balance":        cash_total + invest_total,
     }
     context.update(extra)
     return templates.TemplateResponse(
@@ -515,7 +564,8 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
 
 @router.post("/accounts/refresh-rates", response_class=HTMLResponse)
 async def refresh_exchange_rates(request: Request):
-    """Fetch today's live rates and update every account's exchange rate.
+    """Fetch today's live rates and update every account's exchange rate —
+    BOTH cash AND investment accounts in a single pass.
 
     The rate stored on each account is mrl:exchangeRateToBase, defined as
     "1 unit of account currency = N units of base currency". The provider
@@ -526,6 +576,9 @@ async def refresh_exchange_rates(request: Request):
     open.er-api.com), sending just the base currency code. See ADR-016.
     """
     from src.api.routes.profile import get_profile
+    from src.api.routes.investments import (
+        _update_investment_rate, get_all_investment_accounts,
+    )
 
     base_local = (get_profile() or {}).get("baseCurrency", "")
     base_code  = _currency_code(base_local) if base_local else ""
@@ -550,19 +603,25 @@ async def refresh_exchange_rates(request: Request):
     today   = date.today().isoformat()
     updated = 0
     skipped = []
-    for acc in get_all_accounts():
-        code = acc.get("currencyCode", "")
-        if not code:
-            continue
-        if code == base_code:
-            _update_account_rate(acc["iri"], 1.0, today)
-            updated += 1
-        elif code in rates and rates[code]:
-            rate_to_base = round(1.0 / float(rates[code]), 6)
-            _update_account_rate(acc["iri"], rate_to_base, today)
-            updated += 1
-        else:
-            skipped.append(code)
+
+    def _apply(updater, accs):
+        nonlocal updated
+        for acc in accs:
+            code = acc.get("currencyCode", "")
+            if not code:
+                continue
+            if code == base_code:
+                updater(acc["iri"], 1.0, today)
+                updated += 1
+            elif code in rates and rates[code]:
+                rate_to_base = round(1.0 / float(rates[code]), 6)
+                updater(acc["iri"], rate_to_base, today)
+                updated += 1
+            else:
+                skipped.append(code)
+
+    _apply(_update_account_rate,    get_all_accounts())
+    _apply(_update_investment_rate, get_all_investment_accounts())
 
     return _render_accounts(
         request,
@@ -627,24 +686,12 @@ async def add_account(
 @router.get("/accounts/{n}/edit", response_class=HTMLResponse)
 async def edit_account_form(request: Request, n: int):
     """Return the form pre-filled for editing — loaded inline via HTMX."""
-    accounts      = get_all_accounts()
-    account       = next((a for a in accounts if a["n"] == str(n)), None)
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":     settings.app_name,
-            "active":       "accounts",
-            "accounts":     accounts,
-            "currencies":   currencies,
-            "jurisdictions": jurisdictions,
-            "today":        today,
-            "edit_account": account,
-        }
+    combined = get_all_accounts_combined()
+    account  = next(
+        (a for a in combined if a["account_class"] == "CashAccount" and a["n"] == str(n)),
+        None,
     )
+    return _render_accounts(request, edit_account=account)
 
 
 @router.post("/accounts/{n}/edit", response_class=HTMLResponse)
@@ -691,25 +738,7 @@ async def save_edit_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-
-    accounts      = get_all_accounts()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":     settings.app_name,
-            "active":       "accounts",
-            "accounts":     accounts,
-            "currencies":   currencies,
-            "jurisdictions": jurisdictions,
-            "today":        today,
-            "edit_account": None,
-            "saved":        True,
-        }
-    )
+    return _render_accounts(request, saved=True)
 
 
 @router.get("/accounts/{n}/projection", response_class=HTMLResponse)
@@ -802,24 +831,7 @@ async def delete_account(request: Request, n: int):
             }}
         }}
     """)
-    accounts      = get_all_accounts()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":     settings.app_name,
-            "active":       "accounts",
-            "accounts":     accounts,
-            "currencies":   currencies,
-            "jurisdictions": jurisdictions,
-            "today":        today,
-            "edit_account": None,
-            "deleted":      True,
-        }
-    )
+    return _render_accounts(request, deleted=True)
 
 
 # ---------------------------------------------------------------------------
@@ -848,25 +860,12 @@ async def save_account_contribution(
         contributionNote,
         growth_rate=contributionGrowthRate,
     )
-    accounts      = get_all_accounts()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    account       = next((a for a in accounts if a["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":            settings.app_name,
-            "active":              "accounts",
-            "accounts":            accounts,
-            "currencies":          currencies,
-            "jurisdictions":       jurisdictions,
-            "today":               today,
-            "edit_account":        account,
-            "contribution_saved":  True,
-        }
+    combined = get_all_accounts_combined()
+    account  = next(
+        (a for a in combined if a["account_class"] == "CashAccount" and a["n"] == str(n)),
+        None,
     )
+    return _render_accounts(request, edit_account=account, contribution_saved=True)
 
 
 @router.post("/accounts/{n}/contribution/delete", response_class=HTMLResponse)
@@ -874,22 +873,9 @@ async def delete_account_contribution(request: Request, n: int):
     """Delete the contribution for cash account N."""
     account_iri = f"{MRL}CashAccount_{n}"
     delete_contribution(account_iri)
-    accounts      = get_all_accounts()
-    currencies    = get_currencies()
-    jurisdictions = get_jurisdictions()
-    today         = date.today().isoformat()
-    account       = next((a for a in accounts if a["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts.html",
-        context={
-            "app_name":               settings.app_name,
-            "active":                 "accounts",
-            "accounts":               accounts,
-            "currencies":             currencies,
-            "jurisdictions":          jurisdictions,
-            "today":                  today,
-            "edit_account":           account,
-            "contribution_deleted":   True,
-        }
+    combined = get_all_accounts_combined()
+    account  = next(
+        (a for a in combined if a["account_class"] == "CashAccount" and a["n"] == str(n)),
+        None,
     )
+    return _render_accounts(request, edit_account=account, contribution_deleted=True)

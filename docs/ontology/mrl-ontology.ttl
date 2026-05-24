@@ -775,6 +775,62 @@ mrl:Jurisdiction_ZA a mrl:Jurisdiction ;
     mrl:defaultCurrency mrl:Currency_ZAR ;
     mrl:costOfLivingIndex "0.52"^^xsd:decimal .
 
+mrl:Jurisdiction_JP a mrl:Jurisdiction ;
+    rdfs:label "Japan"@en ;
+    mrl:jurisdictionCode "JP" ;
+    mrl:jurisdictionName "Japan"@en ;
+    mrl:defaultCurrency mrl:Currency_JPY ;
+    mrl:costOfLivingIndex "0.85"^^xsd:decimal .
+
+mrl:Jurisdiction_SE a mrl:Jurisdiction ;
+    rdfs:label "Sweden"@en ;
+    mrl:jurisdictionCode "SE" ;
+    mrl:jurisdictionName "Sweden"@en ;
+    mrl:defaultCurrency mrl:Currency_SEK ;
+    mrl:costOfLivingIndex "1.05"^^xsd:decimal .
+
+mrl:Jurisdiction_NO a mrl:Jurisdiction ;
+    rdfs:label "Norway"@en ;
+    mrl:jurisdictionCode "NO" ;
+    mrl:jurisdictionName "Norway"@en ;
+    mrl:defaultCurrency mrl:Currency_NOK ;
+    mrl:costOfLivingIndex "1.20"^^xsd:decimal .
+
+mrl:Jurisdiction_DK a mrl:Jurisdiction ;
+    rdfs:label "Denmark"@en ;
+    mrl:jurisdictionCode "DK" ;
+    mrl:jurisdictionName "Denmark"@en ;
+    mrl:defaultCurrency mrl:Currency_DKK ;
+    mrl:costOfLivingIndex "1.10"^^xsd:decimal .
+
+mrl:Jurisdiction_HK a mrl:Jurisdiction ;
+    rdfs:label "Hong Kong"@en ;
+    mrl:jurisdictionCode "HK" ;
+    mrl:jurisdictionName "Hong Kong"@en ;
+    mrl:defaultCurrency mrl:Currency_HKD ;
+    mrl:costOfLivingIndex "1.15"^^xsd:decimal .
+
+mrl:Jurisdiction_IN a mrl:Jurisdiction ;
+    rdfs:label "India"@en ;
+    mrl:jurisdictionCode "IN" ;
+    mrl:jurisdictionName "India"@en ;
+    mrl:defaultCurrency mrl:Currency_INR ;
+    mrl:costOfLivingIndex "0.30"^^xsd:decimal .
+
+mrl:Jurisdiction_CN a mrl:Jurisdiction ;
+    rdfs:label "China"@en ;
+    mrl:jurisdictionCode "CN" ;
+    mrl:jurisdictionName "China"@en ;
+    mrl:defaultCurrency mrl:Currency_CNY ;
+    mrl:costOfLivingIndex "0.55"^^xsd:decimal .
+
+mrl:Jurisdiction_AE a mrl:Jurisdiction ;
+    rdfs:label "United Arab Emirates"@en ;
+    mrl:jurisdictionCode "AE" ;
+    mrl:jurisdictionName "United Arab Emirates"@en ;
+    mrl:defaultCurrency mrl:Currency_AED ;
+    mrl:costOfLivingIndex "0.95"^^xsd:decimal .
+
 
 # ===========================================================================
 # PERSON
@@ -1682,3 +1738,27 @@ mrl:Jurisdiction_SG
 
 mrl:Jurisdiction_ZA
     mrl:standardPersonalAllowance  "95750.0"^^xsd:decimal .    # ZAR — South Africa primary rebate threshold 2024/25 (below this no income tax is payable)
+
+mrl:Jurisdiction_JP
+    mrl:standardPersonalAllowance  "480000.0"^^xsd:decimal .   # JPY — Japan basic exemption 2024 (resident income tax)
+
+mrl:Jurisdiction_SE
+    mrl:standardPersonalAllowance  "24000.0"^^xsd:decimal .    # SEK — Sweden basic deduction 2024 (grundavdrag, approximate — varies with income)
+
+mrl:Jurisdiction_NO
+    mrl:standardPersonalAllowance  "88250.0"^^xsd:decimal .    # NOK — Norway personal allowance 2024 (personfradrag)
+
+mrl:Jurisdiction_DK
+    mrl:standardPersonalAllowance  "49700.0"^^xsd:decimal .    # DKK — Denmark personal allowance 2024 (personfradrag)
+
+mrl:Jurisdiction_HK
+    mrl:standardPersonalAllowance  "132000.0"^^xsd:decimal .   # HKD — Hong Kong basic allowance 2024/25
+
+mrl:Jurisdiction_IN
+    mrl:standardPersonalAllowance  "300000.0"^^xsd:decimal .   # INR — India new tax regime basic exemption 2024 (₹3 lakh)
+
+mrl:Jurisdiction_CN
+    mrl:standardPersonalAllowance  "60000.0"^^xsd:decimal .    # CNY — China annual basic deduction 2024
+
+mrl:Jurisdiction_AE
+    mrl:standardPersonalAllowance  "0.0"^^xsd:decimal .        # AED — UAE has no personal income tax; allowance is moot (set 0)
