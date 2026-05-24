@@ -32,32 +32,33 @@
             </h3>
         </div>
 
-        <!-- Snapshot metrics row -->
+        <!-- Snapshot metrics row — total = spending + contributions, with a
+             breakdown line so the contribution share stays visible. -->
+        {% macro snapshot_card(label, m) %}
+            <div>
+                <p class="text-xs text-base-content/50 uppercase tracking-wide">{{ label }}
+                    {% if m %}<span class="font-normal normal-case">({{ m.year }})</span>{% endif %}
+                </p>
+                {% if m %}
+                <p class="text-lg font-semibold mt-0.5">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(m.total) }}
+                </p>
+                <p class="text-xs text-base-content/50 mt-0.5">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(m.spending) }} spending
+                    {% if m.contributions > 0 %}
+                    · <span class="text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(m.contributions) }} contributions</span>
+                    {% endif %}
+                </p>
+                {% else %}
+                <p class="text-lg font-semibold mt-0.5"><span class="text-base-content/30">—</span></p>
+                {% endif %}
+            </div>
+        {% endmacro %}
+
         <div class="grid grid-cols-3 gap-4 mb-4 text-sm">
-            <div>
-                <p class="text-xs text-base-content/50 uppercase tracking-wide">Today
-                    {% if metrics.today %}<span class="font-normal normal-case">({{ metrics.today.year }})</span>{% endif %}
-                </p>
-                <p class="text-lg font-semibold mt-0.5">
-                    {% if metrics.today %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(metrics.today.total) }}{% else %}—{% endif %}
-                </p>
-            </div>
-            <div>
-                <p class="text-xs text-base-content/50 uppercase tracking-wide">At retirement
-                    {% if metrics.retirement %}<span class="font-normal normal-case">({{ metrics.retirement.year }})</span>{% endif %}
-                </p>
-                <p class="text-lg font-semibold mt-0.5">
-                    {% if metrics.retirement %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(metrics.retirement.total) }}{% else %}<span class="text-base-content/30">—</span>{% endif %}
-                </p>
-            </div>
-            <div>
-                <p class="text-xs text-base-content/50 uppercase tracking-wide">Peak
-                    {% if metrics.peak %}<span class="font-normal normal-case">({{ metrics.peak.year }})</span>{% endif %}
-                </p>
-                <p class="text-lg font-semibold mt-0.5">
-                    {% if metrics.peak %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(metrics.peak.total) }}{% else %}—{% endif %}
-                </p>
-            </div>
+            {{ snapshot_card('Today',         metrics.today) }}
+            {{ snapshot_card('At retirement', metrics.retirement) }}
+            {{ snapshot_card('Peak',          metrics.peak) }}
         </div>
 
         <div style="position:relative; height:220px">
@@ -377,6 +378,7 @@
     const mandatory      = {{ series.mandatory     | tojson }};
     const discretionary  = {{ series.discretionary | tojson }};
     const loans          = {{ series.loans         | tojson }};
+    const contributions  = {{ series.contributions | tojson }};
     const retirementYear = {{ retirement_year if retirement_year else 'null' }};
 
     const ctx = document.getElementById('budgetChart').getContext('2d');
@@ -388,6 +390,7 @@
                 { label: 'Mandatory',     data: mandatory,     borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.35)',  fill: 'origin', tension: 0.15, pointRadius: 0 },
                 { label: 'Discretionary', data: discretionary, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.35)', fill: '-1',     tension: 0.15, pointRadius: 0 },
                 { label: 'Loans',         data: loans,         borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.35)', fill: '-1',     tension: 0.15, pointRadius: 0 },
+                { label: 'Contributions to savings', data: contributions, borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.35)', fill: '-1', tension: 0.15, pointRadius: 0 },
             ],
         },
         options: {

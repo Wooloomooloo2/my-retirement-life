@@ -139,6 +139,7 @@ def get_all_contributions_for_budget() -> list:
             "annualAmount": annual,
             "startYear":    gv("contributionStartYear"),
             "endYear":      gv("contributionEndYear"),
+            "growthRate":   gv("contributionGrowthRate"),
             "note":         gv("contributionNote"),
         })
 
@@ -223,25 +224,75 @@ def compute_annual_spending_series(lines: list, current_year: int, end_year: int
     }
 
 
+def compute_annual_contributions_series(
+    contributions: list,
+    current_year: int,
+    end_year: int,
+    retirement_year: int | None,
+) -> list:
+    """Per-year contributions array in today's pounds.
+
+    Mirrors the engine's logic in `projection.py`:
+      - Default active window: current_year … retirement_year (inclusive)
+      - Growth: base × (1 + g/100) ** years_active, where years_active is
+        zero in the first active year
+
+    Returned in real terms (no inflation lift), matching the budget-spending
+    series convention. Contributions are a cashflow commitment alongside
+    spending — the chart stacks them on top of the spending categories.
+    """
+    years = list(range(current_year, end_year + 1))
+    series = [0.0] * len(years)
+    default_end = retirement_year if retirement_year is not None else end_year
+
+    for c in contributions:
+        annual = _float_or_zero(c.get("annualAmount"))
+        g_rate = _float_or_zero(c.get("growthRate"))
+        start  = _int_or_none(c.get("startYear")) or current_year
+        end    = _int_or_none(c.get("endYear"))   or default_end
+
+        for i, year in enumerate(years):
+            if year < start or year > end:
+                continue
+            years_active = year - start
+            series[i] += annual * ((1 + g_rate / 100) ** years_active)
+
+    return [round(x, 0) for x in series]
+
+
 def get_budget_metrics(series: dict, retirement_year: int | None) -> dict:
     """Pick out the three headline numbers shown above the chart: today,
-    at retirement, and the peak year — each as {year, total} (or None when
-    there's no spending or no retirement year set)."""
+    at retirement, and the peak year. Each entry is
+    {year, total, spending, contributions} (or None when no data, or when no
+    retirement year is set for the at-retirement slot).
+
+    `total` is spending + contributions — the full cashflow commitment.
+    Snapshot cards show that total with a breakdown line beneath.
+    """
     if not series["years"] or not series["total"]:
         return {"today": None, "retirement": None, "peak": None}
 
-    years = series["years"]
-    total = series["total"]
+    years         = series["years"]
+    total         = series["total"]
+    spending      = series["spending_total"]
+    contributions = series["contributions"]
 
-    today = {"year": years[0], "total": total[0]}
+    def snapshot(idx):
+        return {
+            "year":          years[idx],
+            "total":         total[idx],
+            "spending":      spending[idx],
+            "contributions": contributions[idx],
+        }
+
+    today = snapshot(0)
 
     retirement = None
     if retirement_year is not None and years[0] <= retirement_year <= years[-1]:
-        idx = retirement_year - years[0]
-        retirement = {"year": retirement_year, "total": total[idx]}
+        retirement = snapshot(retirement_year - years[0])
 
     peak_idx = max(range(len(total)), key=lambda i: total[i])
-    peak = {"year": years[peak_idx], "total": total[peak_idx]}
+    peak     = snapshot(peak_idx)
 
     return {"today": today, "retirement": retirement, "peak": peak}
 
@@ -318,8 +369,27 @@ def save_budget_line(n: int, name: str, amount: float, frequency: str,
 def _page_context(request, lines, edit_line=None, **kwargs):
     contributions = get_all_contributions_for_budget()
     current_year, end_year, retirement_year = _horizon()
-    series  = compute_annual_spending_series(lines, current_year, end_year)
+
+    spending_series      = compute_annual_spending_series(lines, current_year, end_year)
+    contributions_series = compute_annual_contributions_series(
+        contributions, current_year, end_year, retirement_year)
+
+    # Combined series: spending categories + contributions, plus a single
+    # spending-only total and a combined grand-total for the snapshot cards.
+    spending_total = spending_series["total"]
+    grand_total    = [s + c for s, c in zip(spending_total, contributions_series)]
+
+    series = {
+        "years":          spending_series["years"],
+        "mandatory":      spending_series["mandatory"],
+        "discretionary":  spending_series["discretionary"],
+        "loans":          spending_series["loans"],
+        "contributions":  contributions_series,
+        "spending_total": spending_total,
+        "total":          grand_total,
+    }
     metrics = get_budget_metrics(series, retirement_year)
+
     return {
         "app_name":          settings.app_name,
         "active":            "budget",
