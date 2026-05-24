@@ -118,7 +118,9 @@
                         <td class="text-xs text-base-content/50">
                             {% if account.contribution %}
                                 <span class="badge badge-info badge-sm badge-outline">{{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
-                            {% else %}—{% endif %}
+                            {% else %}
+                                <a href="/investments/{{ account.n }}/edit" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
+                            {% endif %}
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
@@ -537,7 +539,7 @@
         {% endif %}
 
         <div class="collapse collapse-arrow border border-base-200 rounded-lg mt-4">
-            <input type="checkbox" {% if contrib %}checked{% endif %} />
+            <input type="checkbox" checked />
             <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
                 <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
                 Regular contribution
