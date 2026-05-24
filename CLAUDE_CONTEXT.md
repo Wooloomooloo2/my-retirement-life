@@ -21,9 +21,14 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Working agreement (how the user wants Claude to work)
 
-- Deliver **full files**, never snippets, and always state the **full repo path** for each file.
-- **Don't guess** folder structure or unseen file contents — ask for the file and wait.
-- The user assembles files manually one at a time, on Windows. Minimise re-touching already-installed files.
+**On Claude Code (current workflow, from 2026-05-24):**
+- Edit files directly with the Edit/Write tools — user reviews the diff in the harness.
+- Still **state the full repo path** of every file touched so the change is unambiguous.
+- Still **don't guess** the contents of files you haven't read — read them first.
+- When working on this machine, the repo lives at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, NOT `C:\Projects\my-retirement-life` (that was the previous machine).
+
+**On chat (legacy workflow, kept for reference):**
+- Deliver full files, never snippets, with the full repo path; user assembles manually one at a time. Minimise re-touching already-installed files.
 
 ---
 
