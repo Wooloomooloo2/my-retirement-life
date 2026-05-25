@@ -271,6 +271,87 @@ def get_all_asset_accounts() -> list:
     return accounts
 
 
+def _sync_asset_sale_event(
+    asset_label: str,
+    asset_name: str,
+    current_value: float,
+    sale_year_str: str,
+    sale_value_str: str,
+    proceeds_account: str,
+    appreciation_rate_str: str,
+) -> None:
+    """Create/update/delete the managed LifeEventType_AssetSale linked to this asset.
+
+    Called from save_asset() after the asset's own triples are written. When the
+    user clears the sale year, any existing linked event is removed. When the
+    sale year is set, the event is either created (new N from the LifeEvent
+    counter) or updated in place (reusing the existing N found by sourceAsset).
+
+    Sale amount = manual override if set, otherwise current_value compounded by
+    appreciation_rate over the years to sale. Stored negative per the LifeEvent
+    convention (positive = cost, negative = receipt).
+    """
+    # Lazy imports to break the accounts → life_events → projection → accounts cycle.
+    from src.api.routes.life_events import (
+        save_event,
+        find_event_n_by_source_asset,
+        delete_event_by_source_asset,
+        get_all_events,
+    )
+
+    sale_year_str = (sale_year_str or "").strip()
+    if not sale_year_str:
+        delete_event_by_source_asset(asset_label)
+        return
+    try:
+        sale_year = int(sale_year_str)
+    except ValueError:
+        delete_event_by_source_asset(asset_label)
+        return
+
+    # Manual override wins; otherwise compound from current_value.
+    sale_value = None
+    if sale_value_str and sale_value_str.strip():
+        try:
+            sale_value = float(sale_value_str.strip())
+        except ValueError:
+            pass
+    if sale_value is None:
+        appreciation = 0.0
+        if appreciation_rate_str and appreciation_rate_str.strip():
+            try:
+                appreciation = float(appreciation_rate_str.strip())
+            except ValueError:
+                pass
+        years_to_sale = max(0, sale_year - date.today().year)
+        sale_value = current_value * ((1 + appreciation / 100.0) ** years_to_sale)
+
+    # Negative amount = receipt per the LifeEvent convention
+    amount = -abs(round(sale_value, 2))
+
+    existing_n = find_event_n_by_source_asset(asset_label)
+    if existing_n is not None:
+        ev_n = existing_n
+    else:
+        existing = get_all_events()
+        ev_n = max(
+            [int(e["n"]) for e in existing if e["n"].isdigit()],
+            default=0,
+        ) + 1
+
+    save_event(
+        ev_n,
+        name=f"Sale: {asset_name}",
+        year=sale_year,
+        amount=amount,
+        event_type="LifeEventType_AssetSale",
+        notes=f"Auto-generated from asset {asset_label}. Edit the asset to change.",
+        funded_by_account="",
+        received_by_account=(proceeds_account or "").strip(),
+        source_asset_label=asset_label,
+    )
+
+
 def save_asset(
     subclass: str,
     n: int,
@@ -363,25 +444,31 @@ def save_asset(
         }}
     """)
 
+    # Phase 2: sync the managed LifeEventType_AssetSale. Creates the event when
+    # sale_year is set, updates it in place on subsequent saves, deletes it if
+    # the user clears sale_year. The asset's own triples are already written
+    # above so the lookup helpers see the current state.
+    _sync_asset_sale_event(
+        asset_label=f"{subclass}_{n}",
+        asset_name=name,
+        current_value=float(current_value),
+        sale_year_str=sale_year,
+        sale_value_str=sale_value,
+        proceeds_account=proceeds_account,
+        appreciation_rate_str=appreciation_rate,
+    )
+
 
 def delete_asset(subclass: str, n: int) -> None:
-    """Delete an asset and clean up any sourceAsset back-links on Life Events.
+    """Delete an asset and the linked auto-managed sale Life Event (if any)."""
+    asset_label = f"{subclass}_{n}"
+    asset_iri   = f"{MRL}{asset_label}"
 
-    Phase 2 (auto-sync) will additionally remove the linked LifeEventType_AssetSale
-    event when assetSaleYear was set. For now the back-link property is wiped
-    defensively if Phase 2 has already been activated against this asset.
-    """
-    asset_iri = f"{MRL}{subclass}_{n}"
-    # Wipe any sourceAsset triples pointing AT this asset (defensive — Phase 2 will
-    # extend this to also delete the linked Life Event)
-    store.update(f"""
-        PREFIX mrl: <{MRL}>
-        DELETE WHERE {{
-            GRAPH <{DATA_GRAPH.value}> {{
-                ?ev mrl:sourceAsset <{asset_iri}> .
-            }}
-        }}
-    """)
+    # Phase 2: remove the linked LifeEventType_AssetSale before wiping the asset.
+    # Lazy import to break the accounts → life_events → projection → accounts cycle.
+    from src.api.routes.life_events import delete_event_by_source_asset
+    delete_event_by_source_asset(asset_label)
+
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{

@@ -42,10 +42,18 @@
                 </thead>
                 <tbody>
                     {% for event in events %}
+                    {% set is_asset_sourced = event.sourceAsset and event.sourceAsset|length > 0 %}
                     <tr class="hover {% if edit_event and edit_event.n == event.n %}bg-base-200{% endif %}">
                         <td class="font-medium text-base-content/60">{{ event.year }}</td>
                         <td>
                             <span class="font-medium">{{ event.name }}</span>
+                            {% if is_asset_sourced %}
+                            <span class="badge badge-warning badge-sm badge-outline ml-2"
+                                  title="Auto-generated from this asset. Edit the asset to change the sale year, value or proceeds account.">
+                                <i class="ti ti-link text-xs mr-0.5"></i>
+                                Auto · {{ event.sourceAssetName }}
+                            </span>
+                            {% endif %}
                             {% if event.fundedByAccount %}
                             <span class="block text-xs text-base-content/40 mt-0.5">
                                 <i class="ti ti-corner-down-right text-xs"></i>
@@ -62,6 +70,8 @@
                         <td>
                             {% if event.eventType == 'LifeEventType_Windfall' %}
                                 <span class="badge badge-success badge-sm badge-outline">{{ event.eventTypeLabel }}</span>
+                            {% elif event.eventType == 'LifeEventType_AssetSale' %}
+                                <span class="badge badge-success badge-sm badge-outline">{{ event.eventTypeLabel }}</span>
                             {% else %}
                                 <span class="badge badge-ghost badge-sm">{{ event.eventTypeLabel }}</span>
                             {% endif %}
@@ -76,6 +86,13 @@
                         <td class="text-xs text-base-content/50">{{ event.notes if event.notes else '—' }}</td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
+                                {% if is_asset_sourced %}
+                                <a href="/accounts/asset/{{ event.sourceAsset }}/edit"
+                                   class="btn btn-ghost btn-xs gap-1"
+                                   title="Open the source asset to change this sale">
+                                    <i class="ti ti-external-link text-xs" aria-hidden="true"></i> Edit asset
+                                </a>
+                                {% else %}
                                 <a href="/life-events/{{ event.n }}/edit"
                                    class="btn btn-ghost btn-xs gap-1">
                                     <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
@@ -86,6 +103,7 @@
                                         <i class="ti ti-trash text-xs" aria-hidden="true"></i> Delete
                                     </button>
                                 </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>

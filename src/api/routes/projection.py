@@ -330,6 +330,73 @@ def load_investment_accounts() -> list:
 
 
 # ---------------------------------------------------------------------------
+# Physical assets (Phase 3 — see CLAUDE_CONTEXT items 27-28)
+#
+# Tangible (non-financial) holdings that contribute to net worth but do NOT
+# participate in retirement drawdown, don't earn interest/dividend, and have
+# no contributions. They appreciate per year at assetAppreciationRate and zero
+# at assetSaleYear. The sale proceeds are handled separately via the auto-
+# managed LifeEventType_AssetSale event (Phase 2) which the existing engine
+# Life Event path credits to assetProceedsAccount.
+#
+# Kept in a structure parallel to all_accounts so the engine's spendable
+# `balances` dict (used for drawdown and the "runs out" calculation) is not
+# polluted by illiquid assets.
+# ---------------------------------------------------------------------------
+
+def load_all_assets() -> list:
+    """Return all PhysicalAsset subclass instances (PropertyAsset / VehicleAsset
+    / CollectibleAsset) with base-currency-converted opening balance and the
+    fields the engine needs to project them year-by-year.
+    """
+    assets = []
+    for subclass in ("PropertyAsset", "VehicleAsset", "CollectibleAsset"):
+        type_node = og.NamedNode(f"{MRL}{subclass}")
+        quads = store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+        for q in quads:
+            iri     = q.subject
+            iri_str = str(iri.value)
+            label   = _iri_local(iri_str)
+
+            balance_date_str = _val(iri, "balanceDate", date.today().isoformat())
+            try:
+                balance_date = date.fromisoformat(balance_date_str)
+            except ValueError:
+                balance_date = date.today()
+
+            raw_balance  = _float(iri, "accountBalance")
+            fx_rate      = _float(iri, "exchangeRateToBase", 1.0)
+            base_balance = raw_balance * fx_rate
+
+            sale_year_raw = _val(iri, "assetSaleYear", "")
+            try:
+                sale_year = int(sale_year_raw) if sale_year_raw else None
+            except ValueError:
+                sale_year = None
+
+            proceeds_qs = list(store.store.quads_for_pattern(
+                iri, og.NamedNode(f"{MRL}assetProceedsAccount"), None, DATA_GRAPH))
+            proceeds_account = (
+                _iri_local(str(proceeds_qs[0].object.value)) if proceeds_qs else None
+            )
+
+            assets.append({
+                "iri":               iri_str,
+                "label":             label,
+                "name":              _val(iri, "accountName", label),
+                "asset_subclass":    subclass,
+                "account_class":     "PhysicalAsset",
+                "balance":           base_balance,
+                "balance_date":      balance_date,
+                "appreciation_rate": _float(iri, "assetAppreciationRate"),
+                "sale_year":         sale_year,
+                "proceeds_account":  proceeds_account,
+            })
+    return assets
+
+
+# ---------------------------------------------------------------------------
 # Budget lines (unchanged from v0.2)
 # ---------------------------------------------------------------------------
 
@@ -712,6 +779,7 @@ def _simulate_run(
     proj_settings: dict,
     return_shocks: list[float] | None = None,
     inflation_shocks: list[float] | None = None,
+    all_assets: list | None = None,
 ) -> dict:
     """Run one year-by-year simulation and return the year-level history.
 
@@ -721,6 +789,14 @@ def _simulate_run(
     interest is never shocked (ADR-012 — σ applies to investments only).
     Negative simulated investment rates are clipped at -100% (cannot lose
     more than the balance).
+
+    all_assets is a parallel list of mrl:PhysicalAsset instances (Phase 3).
+    Assets appreciate at their own rate, do not participate in drawdown, and
+    are zeroed at their sale_year. Sale proceeds flow through the existing
+    Life Event engine path via the auto-managed LifeEventType_AssetSale
+    created by accounts.py (Phase 2). Asset balances are tracked in a parallel
+    structure so the spendable `balances` total used for drawdown and
+    "runs-out-year" detection is not polluted by illiquid holdings.
     """
     today           = date.today()
     current_year    = today.year
@@ -733,6 +809,8 @@ def _simulate_run(
         return_shocks = [0.0] * n_years
     if inflation_shocks is None:
         inflation_shocks = [0.0] * n_years
+    if all_assets is None:
+        all_assets = []
 
     drawdown_strategy  = proj_settings.get("drawdown_strategy",  "DrawdownStrategy_Proportional")
     surplus_strategy   = proj_settings.get("surplus_strategy",   "SurplusStrategy_ReduceDrawdown")
@@ -784,11 +862,26 @@ def _simulate_run(
         if acc["account_class"] == "InvestmentAccount"
     )
 
+    # --- Asset opening balances (Phase 3) ---
+    # Forward-grow each asset's current value from its balance_date to
+    # current_year using its appreciation_rate (same pattern as accounts).
+    # Assets already sold before current_year are zeroed up-front so they
+    # never appear in any year's history.
+    asset_balances: dict[str, float] = {}
+    for asset in all_assets:
+        ye = max(0, current_year - asset["balance_date"].year)
+        rate = asset["appreciation_rate"] / 100
+        opening_val = asset["balance"] * ((1 + rate) ** ye)
+        if asset["sale_year"] is not None and asset["sale_year"] <= current_year:
+            opening_val = 0.0
+        asset_balances[asset["label"]] = opening_val
+
     # Per-account history arrays
     account_history:              dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_withdrawal_history:   dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_return_history:       dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_contribution_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    asset_history:                dict[str, list[float]] = {asset["label"]: [] for asset in all_assets}
     projection_years         = []
     cumulative_tax           = 0.0
     cumulative_contributions = 0.0
@@ -996,6 +1089,19 @@ def _simulate_run(
 
         cumulative_tax += net_annual_tax
 
+        # 7b. Asset appreciation / disposal (Phase 3).
+        # Assets appreciate at their own rate each year up to (but not
+        # including) their sale_year. From sale_year onwards they are zero —
+        # the proceeds were already injected into proceeds_account this year
+        # via the auto-managed LifeEventType_AssetSale processed in step 5.
+        for asset in all_assets:
+            label = asset["label"]
+            if asset["sale_year"] is not None and year >= asset["sale_year"]:
+                asset_balances[label] = 0.0
+            elif asset_balances[label] > 0:
+                asset_balances[label] *= (1 + asset["appreciation_rate"] / 100)
+            asset_history[label].append(round(asset_balances[label], 0))
+
         # 8. Record closing balances per account and per-year totals
         for acc in all_accounts:
             account_history[acc["label"]].append(round(balances[acc["label"]], 0))
@@ -1024,6 +1130,7 @@ def _simulate_run(
         "account_withdrawals":         account_withdrawal_history,
         "account_returns":             account_return_history,
         "account_contributions":       account_contribution_history,
+        "asset_balances":              asset_history,
         "total_tax_paid":              round(cumulative_tax, 0),
         "total_contributions":         round(cumulative_contributions, 0),
         "opening_balance":             round(total_opening, 0),
@@ -1065,6 +1172,7 @@ def run_projection(
 
     income_sources = load_all_income_sources()
     all_accounts   = load_all_accounts()
+    all_assets     = load_all_assets()           # Phase 3
     budget_lines   = load_budget_lines()
     life_events    = load_life_events()
     contributions  = load_all_contributions()   # ADR-015
@@ -1083,6 +1191,7 @@ def run_projection(
         col_ratio       = col_ratio,
         inflation_rate  = inflation_rate,
         proj_settings   = proj_settings,
+        all_assets      = all_assets,
     )
 
     # --- Confidence scoring ---
@@ -1133,6 +1242,10 @@ def run_projection(
         "account_contributions":      sim["account_contributions"],
         "account_names":              {acc["label"]: acc["name"]          for acc in all_accounts},
         "account_classes":            {acc["label"]: acc["account_class"] for acc in all_accounts},
+        # Phase 3: physical assets — parallel structure, doesn't pollute total_balance
+        "asset_balances":             sim["asset_balances"],
+        "asset_names":                {a["label"]: a["name"]           for a in all_assets},
+        "asset_subclasses":           {a["label"]: a["asset_subclass"] for a in all_assets},
         "total_tax_paid":             sim["total_tax_paid"],
         "total_contributions":        sim["total_contributions"],
     }
