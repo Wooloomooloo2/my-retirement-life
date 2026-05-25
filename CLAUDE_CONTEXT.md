@@ -34,6 +34,23 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-25)
 
+27. **Asset model — Phase 1a (ontology) — DONE.** Foundation for a 4-phase project introducing physical assets (property, vehicles, collectibles) as a third account class with planned-sale support, culminating in a new net-worth dashboard chart (Phase 4). **Design decision (user, business architect):** reuse the existing pre-staged `mrl:PropertyAsset` (used by sister app MFL) under a new `mrl:PhysicalAsset` intermediate class, with two new concrete subclasses for vehicles and collectibles. **Sale model (user):** sale fields live on the asset itself (single source of truth) but the engine auto-generates a managed `LifeEventType_AssetSale` linked back via `mrl:sourceAsset` — inherits all existing Life Event visualisation without re-implementing it.
+    - `docs/ontology/mrl-ontology.ttl`:
+      - New `mrl:PhysicalAsset` intermediate class (subClassOf `mrl:Account`). Comment notes physical assets contribute to net worth but do NOT participate in retirement drawdown.
+      - Four new properties on `mrl:PhysicalAsset`: `assetAppreciationRate` (decimal %/yr — negative for depreciation), `assetSaleYear` (integer — optional), `assetSaleValue` (decimal — optional manual override; engine otherwise uses appreciated value), `assetProceedsAccount` (object property → `mrl:Account`).
+      - `mrl:PropertyAsset` re-parented from `mrl:Account` to `mrl:PhysicalAsset`. Comment updated to reflect dual MRL/MFL use; retains property-specific extras (`propertyAddress`, `purchasePrice`, `isMortgaged`) for MFL compatibility.
+      - New `mrl:VehicleAsset` and `mrl:CollectibleAsset` concrete subclasses of `mrl:PhysicalAsset`.
+      - `mrl:OtherAsset` comment updated to flag as legacy / superseded by the PhysicalAsset hierarchy (kept in TTL for MFL compatibility; not used by MRL UI).
+      - New `mrlx:LifeEventType_AssetSale` SKOS individual in the existing LifeEventType vocab. Description explicitly warns "do not create directly via the Life Events UI — auto-generated from a PhysicalAsset with a sale year set".
+      - New `mrl:sourceAsset` object property on `mrl:LifeEvent` (range `mrl:PhysicalAsset`) — back-link enabling Phase 2's auto-event managed pattern.
+    - **Requires `python tools\reload_ontology.py` (app closed)** before Phases 1b/1c can function.
+    - Phases 1b (backend CRUD), 1c (Asset tab on `/accounts`), 2 (auto-Life-Event sync), 3 (engine: appreciate + dispose), 4 (net-worth dashboard) tracked in task list. See **In progress** section in backlog below.
+
+26. **Pre-beta documentation — MC + deposit-account explainers + CHANGELOG.md.** User-facing context for the two big engine changes this session (items 23, 24). Wording is product-positive throughout — no "earlier versions" framing — since no external users have tried the app yet.
+    - `src/templates/projection.html`: new collapsible `<details>` "How to read this" panel inside the MC card. Three paragraphs: success-rate definition (% of N sims where balance > 0 every year), shock model (same shock across all investments yearly, cash deterministic), and sequence-of-returns risk explaining why MC and the deterministic projection can disagree on the same plan.
+    - `src/templates/income.html`: new collapsible `<details>` "How the deposit account affects your projection" panel below the Deposit account dropdown — explicit on the drawdown-priority caveat that drove the £2.66M divergence on test data (item 24). Field help text softened from "income behaves as before" to "credited to the projection's spending account and offsets that year's spending directly".
+    - `CHANGELOG.md` (new, repo root): first changelog entry — `[Unreleased — beta engine updates] — 2026-05-25`. Keep a Changelog format. Engine section: MC refactor. Feature section: deposit account + caveat block. Fixed: personal-allowance over-shielding + Accounts header FX bug. Brief "added in earlier sessions" pointer to git log so the changelog isn't starting from zero.
+
 25. **Accounts page header totals — FX-converted (bugfix).** The "Cash: £X · Investments: £Y" header on `/accounts` was summing raw `accountBalance` values without converting via `mrl:exchangeRateToBase`, so USD accounts were added as if they were GBP. On test data this displayed Investments as £1,824,139 (the raw USD sum) when the correct base-currency total was £1,276,897 (×0.7 FX). FIXED in `src/api/routes/accounts.py` `_render_accounts()`: new inline `_base_balance(a)` helper reads `a["balance"]` and `a["exchangeRate"]`, defaults FX to 1.0 when blank/invalid, and the cash/invest totals now sum the converted values.
     - **Scope of the bug:** display-only. The engine has always FX-converted via `load_all_accounts()` (`base_balance = raw_balance * fx_rate`), so projections, MC, dashboard `total_balance`, and the per-account balance arrays were already correct. Only the `accounts.html` header was misreporting.
     - `app.py` dashboard `total_balance` was checked and is correct — it uses the engine-side `load_accounts()` shim, which inherits the FX-correct `load_all_accounts()` output.
@@ -389,6 +406,19 @@ ONTOLOGY_GRAPH = NamedNode("https://myretirementlife.app/ontology/graph")
 
 ## Current backlog
 
+### IN PROGRESS — Asset model + Net-worth dashboard (started 2026-05-25 evening)
+
+Multi-phase project introducing physical assets as a third account class, culminating in a redesigned dashboard. Tracked via in-session task list.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1a | Ontology — `mrl:PhysicalAsset` hierarchy + 4 properties + `LifeEventType_AssetSale` + `mrl:sourceAsset` back-link | **DONE** (item 27 — needs `tools\reload_ontology.py` run) |
+| 1b | Backend — `accounts.py` extensions: `get_all_asset_accounts()`, `save_asset()`, asset CRUD routes (`/accounts/asset/...`), extend `get_all_accounts_combined()` and `_render_accounts()` | Pending |
+| 1c | UI — third "Asset" tab on `/accounts` with class-aware form fields; orange/amber dot in unified table; hide drawdown/interest/tax columns for asset rows | Pending |
+| 2 | Auto-sync sale → Life Event: asset save/update/delete creates/maintains a managed `LifeEventType_AssetSale` linked via `mrl:sourceAsset`. Life Events page shows "Source: {asset name}" badge and disables inline editing on asset-sourced events | Pending |
+| 3 | Engine — `load_all_assets()`, per-year appreciation, zero-out at sale year (proceeds inherit Life Event engine path from Phase 2). Verify parity with baseline script | Pending |
+| 4 | Dashboard redesign — stacked-area net-worth chart across all three classes (cash → invest → assets), per-account legend with chip/dropdown toggle. Setup checklist rethink | Pending |
+
 ### PRE-BETA — new items from end-to-end walkthrough (2026-05-23)
 All to be addressed before public beta. File(s) each will need are noted.
 
@@ -431,8 +461,8 @@ _(All known PRE-BETA items resolved this session.)_
 - ~~Accounts vs Investments IA (#3)~~ — DONE (this session, item 21). Unified `/accounts` page. Legacy `/investments/*` POST URLs still backwards-compatible; `GET /investments` redirects.
 
 ### Post-1.0
-- **Dashboard redesign.** Replace the current setup-checklist + balance-trajectory layout with a broader retirement-health summary: per-account net worth view (not a single trajectory line), key indicators, status-at-a-glance. The existing mini-chart is transitional — don't invest in polishing it.
-- **"Sell asset" feature** — model physical assets (house, rental property, boat, trailer) that can be held, grown/depreciated per year, and sold at a configured year with proceeds flowing into a configured account. New ontology class (`mrl:PhysicalAsset` or similar) + UI page + engine integration. Net worth dashboard view extends to include physical assets as categories.
+- ~~**Dashboard redesign.**~~ Now in progress — see **In progress** section above (Phase 4).
+- ~~**"Sell asset" feature.**~~ Now in progress — see **In progress** section above (Phases 1a–3). Implemented as `mrl:PhysicalAsset` hierarchy with auto-managed `LifeEventType_AssetSale` events.
 - Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
 - Tax-optimal drawdown ordering (ADR-011 future)
 - PCLS dedicated model

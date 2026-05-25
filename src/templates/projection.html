@@ -195,6 +195,24 @@
         <p class="text-xs text-base-content/40 mt-3 text-center">
             Shaded band = 10th–90th percentile range &nbsp;|&nbsp; Line = median (P50) outcome &nbsp;|&nbsp; ★ = retirement year
         </p>
+
+        <details class="mt-4 pt-3 border-t border-base-200">
+            <summary class="cursor-pointer text-xs text-base-content/60 hover:text-base-content list-none flex items-center gap-1.5 select-none">
+                <i class="ti ti-info-circle text-base-content/40" aria-hidden="true"></i>
+                <span class="font-medium">How to read this</span>
+            </summary>
+            <div class="text-xs text-base-content/60 mt-3 space-y-2 leading-relaxed">
+                <p>
+                    <strong class="text-base-content/80">Success rate.</strong> The percentage of the {{ mc.n_sims }} simulated paths in which your total balance stays above zero every year through to life expectancy. A 70% success rate means 30% of paths exhausted savings before life expectancy.
+                </p>
+                <p>
+                    <strong class="text-base-content/80">Shock model.</strong> Each year the same market shock is applied across all of your investment accounts, drawn from a normal distribution per the selected scenario profile (Conservative / Moderate / Aggressive). Cash interest is deterministic — the volatility you see comes from investments only.
+                </p>
+                <p>
+                    <strong class="text-base-content/80">Why MC and the deterministic projection can disagree.</strong> The deterministic projection assumes you earn the average return every year, in order. Monte Carlo reshuffles that same average across volatile years — and a poor sequence of returns early in retirement (sequence-of-returns risk) drains accounts faster than the average alone implies. A green deterministic outcome paired with a low MC success rate is the model telling you the plan survives <em>on average</em> but is fragile to bad luck.
+                </p>
+            </div>
+        </details>
     </div>
 </div>
 {% endif %}
