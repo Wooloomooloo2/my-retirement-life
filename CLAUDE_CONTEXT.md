@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-25
+> Last updated: 2026-05-26
 
 ---
 
@@ -462,9 +462,10 @@ ONTOLOGY_GRAPH = NamedNode("https://myretirementlife.app/ontology/graph")
 
 ## Current backlog
 
-### IN PROGRESS — Asset model + Net-worth dashboard (started 2026-05-25 evening)
+### RECENTLY SHIPPED — Asset model + Net-worth dashboard (2026-05-25 evening — all phases complete)
 
-Multi-phase project introducing physical assets as a third account class, culminating in a redesigned dashboard. Tracked via in-session task list.
+Multi-phase project introducing physical assets as a third account class, culminating in a redesigned dashboard. Four commits, all four phases landed:
+`434717d` Phase 1a · `9564416` Phase 1bc · `36f0d4e` Phase 2+3 · `e44fc9f` Phase 4. Awaiting end-to-end smoke test.
 
 | Phase | Scope | Status |
 |---|---|---|
