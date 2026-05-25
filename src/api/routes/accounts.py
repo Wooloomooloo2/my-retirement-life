@@ -41,6 +41,14 @@ CASH_ACCOUNT_TYPES = {
     "CashAccountType_Other":         "Other",
 }
 
+# PhysicalAsset subclass → display label. Maps the concrete ontology class name
+# (used in the IRI, e.g. PropertyAsset_3) to the dropdown label users see.
+ASSET_SUBCLASSES = {
+    "PropertyAsset":    "Property",
+    "VehicleAsset":     "Vehicle",
+    "CollectibleAsset": "Collectible",
+}
+
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT  = "https://myretirementlife.app/ontology#"    # unused but kept for symmetry
 MRL_EXT  = "https://myretirementlife.app/ontology/ext#"
@@ -174,6 +182,212 @@ def delete_contribution(account_iri_str: str) -> None:
         PREFIX mrl: <{MRL}>
         DELETE {{ GRAPH <{DATA_GRAPH.value}> {{ ?c ?p ?o . }} }}
         WHERE  {{ GRAPH <{DATA_GRAPH.value}> {{ ?c mrl:contributionOwner <{account_iri_str}> ; ?p ?o . }} }}
+    """)
+
+
+# ---------------------------------------------------------------------------
+# PhysicalAsset helpers (Phase 1b — see CLAUDE_CONTEXT item 27)
+#
+# Assets are subclasses of mrl:PhysicalAsset (itself a subclass of mrl:Account)
+# so they reuse the common mrl:accountName / mrl:accountBalance / mrl:accountCurrency
+# fields. The "balance" semantically becomes "current value" for an asset.
+# Asset-specific properties: assetAppreciationRate, assetSaleYear, assetSaleValue,
+# assetProceedsAccount.
+# ---------------------------------------------------------------------------
+
+def _next_asset_n(subclass: str) -> int:
+    """Return the next N for a given PhysicalAsset subclass.
+
+    Counters are independent per subclass: PropertyAsset_1, VehicleAsset_1,
+    CollectibleAsset_1 can coexist with no collision.
+    """
+    type_node = og.NamedNode(f"{MRL}{subclass}")
+    quads = store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    nums = []
+    marker = f"{subclass}_"
+    for q in quads:
+        iri_str = str(q.subject.value)
+        if marker in iri_str:
+            tail = iri_str.split(marker)[-1]
+            try:
+                nums.append(int(tail))
+            except ValueError:
+                pass
+    return max(nums, default=0) + 1
+
+
+def get_all_asset_accounts() -> list:
+    """Return all PhysicalAsset subclass instances from the data graph, merged
+    into one list. Each entry carries asset_subclass = the concrete class name
+    (PropertyAsset / VehicleAsset / CollectibleAsset) plus the shared Account
+    fields and the asset-specific properties.
+    """
+    accounts = []
+    for subclass in ASSET_SUBCLASSES.keys():
+        type_node = og.NamedNode(f"{MRL}{subclass}")
+        quads = list(store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH))
+        for q in quads:
+            iri = q.subject
+            iri_str = str(iri.value)
+            n = iri_str.split(f"{subclass}_")[-1]
+
+            def get_val(prop, _iri=iri):
+                qs = list(store.store.quads_for_pattern(
+                    _iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+                return str(qs[0].object.value) if qs else ""
+
+            def get_local(prop, _iri=iri):
+                v = get_val(prop, _iri)
+                return v.split("#")[-1] if "#" in v else v
+
+            accounts.append({
+                "n":                n,
+                "iri":              iri_str,
+                "label":            f"{subclass}_{n}",
+                "asset_subclass":   subclass,
+                "name":             get_val("accountName"),
+                "balance":          get_val("accountBalance"),
+                "balanceDate":      get_val("balanceDate"),
+                "currency":         get_local("accountCurrency"),
+                "currencyCode":     _currency_code(get_local("accountCurrency")),
+                "currencySymbol":   _currency_symbol(get_local("accountCurrency")),
+                "exchangeRate":     get_val("exchangeRateToBase"),
+                "exchangeRateDate": get_val("exchangeRateDate"),
+                "notes":            get_val("accountNotes"),
+                # PhysicalAsset-specific
+                "appreciationRate": get_val("assetAppreciationRate"),
+                "saleYear":         get_val("assetSaleYear"),
+                "saleValue":        get_val("assetSaleValue"),
+                "proceedsAccount":  get_local("assetProceedsAccount"),
+            })
+    # Sort by subclass order, then by N ascending
+    subclass_order = list(ASSET_SUBCLASSES.keys())
+    accounts.sort(key=lambda a: (
+        subclass_order.index(a["asset_subclass"]) if a["asset_subclass"] in subclass_order else 99,
+        int(a["n"]) if a["n"].isdigit() else 0,
+    ))
+    return accounts
+
+
+def save_asset(
+    subclass: str,
+    n: int,
+    name: str,
+    current_value: float,
+    balance_date: str,
+    currency_local: str,
+    exchange_rate: float,
+    exchange_rate_date: str,
+    notes: str,
+    appreciation_rate: str = "",
+    sale_year: str         = "",
+    sale_value: str        = "",
+    proceeds_account: str  = "",
+) -> None:
+    """Write or overwrite a PhysicalAsset subclass instance in the data graph.
+
+    subclass must be one of ASSET_SUBCLASSES keys. The IRI becomes
+    mrl:{subclass}_{n}, e.g. mrl:PropertyAsset_3.
+
+    Sale fields (year/value/proceeds_account) are only persisted when
+    sale_year is set. Sale value is optional even when sale year is set —
+    the engine computes the appreciated value if unset.
+    """
+    if subclass not in ASSET_SUBCLASSES:
+        raise ValueError(f"Unknown asset subclass: {subclass}")
+
+    asset_iri  = f"{MRL}{subclass}_{n}"
+    person_iri = f"{MRL}Person_1"
+
+    # Wipe the existing instance first
+    store.update(f"""
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{asset_iri}> ?p ?o .
+            }}
+        }}
+    """)
+
+    triples = f"""
+        <{asset_iri}> a mrl:{subclass} ;
+            mrl:accountName        "{name}" ;
+            mrl:accountBalance     "{current_value}"^^xsd:decimal ;
+            mrl:balanceDate        "{balance_date}"^^xsd:date ;
+            mrl:accountCurrency    mrl:{currency_local} ;
+            mrl:ownedBy            <{person_iri}> .
+    """
+
+    if exchange_rate and float(exchange_rate) != 1.0:
+        triples += f"""
+        <{asset_iri}> mrl:exchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
+                      mrl:exchangeRateDate   "{exchange_rate_date}"^^xsd:date .
+        """
+
+    if notes and notes.strip():
+        safe_notes = notes.replace('"', '\\"')
+        triples += f'\n        <{asset_iri}> mrl:accountNotes "{safe_notes}" .'
+
+    if appreciation_rate.strip():
+        try:
+            rate = float(appreciation_rate.strip())
+            triples += f'\n        <{asset_iri}> mrl:assetAppreciationRate "{rate}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if sale_year.strip():
+        try:
+            sy = int(sale_year.strip())
+            triples += f'\n        <{asset_iri}> mrl:assetSaleYear "{sy}"^^xsd:integer .'
+        except ValueError:
+            pass
+
+        if sale_value.strip():
+            try:
+                sv = float(sale_value.strip())
+                triples += f'\n        <{asset_iri}> mrl:assetSaleValue "{sv}"^^xsd:decimal .'
+            except ValueError:
+                pass
+
+        if proceeds_account.strip():
+            triples += f'\n        <{asset_iri}> mrl:assetProceedsAccount mrl:{proceeds_account.strip()} .'
+
+    store.update(f"""
+        PREFIX mrl:  <{MRL}>
+        PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                {triples}
+            }}
+        }}
+    """)
+
+
+def delete_asset(subclass: str, n: int) -> None:
+    """Delete an asset and clean up any sourceAsset back-links on Life Events.
+
+    Phase 2 (auto-sync) will additionally remove the linked LifeEventType_AssetSale
+    event when assetSaleYear was set. For now the back-link property is wiped
+    defensively if Phase 2 has already been activated against this asset.
+    """
+    asset_iri = f"{MRL}{subclass}_{n}"
+    # Wipe any sourceAsset triples pointing AT this asset (defensive — Phase 2 will
+    # extend this to also delete the linked Life Event)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                ?ev mrl:sourceAsset <{asset_iri}> .
+            }}
+        }}
+    """)
+    store.update(f"""
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{asset_iri}> ?p ?o .
+            }}
+        }}
     """)
 
 
@@ -496,11 +710,14 @@ def _update_account_rate(account_iri_str: str, rate_to_base: float, rate_date: s
 
 
 def get_all_accounts_combined() -> list:
-    """Return cash + investment accounts merged into one list, each annotated
-    with `account_class` ('CashAccount' or 'InvestmentAccount').
+    """Return cash + investment + physical-asset accounts merged into one list,
+    each annotated with `account_class` ('CashAccount', 'InvestmentAccount',
+    or 'PhysicalAsset') and a `label` (e.g. 'CashAccount_2', 'PropertyAsset_3')
+    that uniquely identifies the account across classes.
 
-    Cash-only fields (interestRate) and investment-only fields (growthRate,
-    dividendRate, reinvestDividends) are present where applicable; the
+    Cash-only fields (interestRate), investment-only fields (growthRate,
+    dividendRate, reinvestDividends), and asset-only fields (appreciationRate,
+    saleYear, saleValue, proceedsAccount) are present where applicable; the
     template branches on `account_class` to decide which subset to show.
     """
     from src.api.routes.investments import (
@@ -512,6 +729,7 @@ def get_all_accounts_combined() -> list:
     cash = []
     for a in get_all_accounts():
         a["account_class"] = "CashAccount"
+        a["label"] = f"CashAccount_{a['n']}"
         a["accountTypeLabel"] = CASH_ACCOUNT_TYPES.get(
             a.get("accountType", ""),
             (a.get("accountType") or "").replace("CashAccountType_", ""),
@@ -522,11 +740,20 @@ def get_all_accounts_combined() -> list:
     invest = []
     for a in get_all_investment_accounts():
         a["account_class"] = "InvestmentAccount"
+        a["label"] = f"InvestmentAccount_{a['n']}"
         # accountTypeLabel / accountTypeShort are already set by get_all_investment_accounts()
         invest.append(a)
 
-    # Cash first, then investment, both ordered by N ascending (existing semantics)
-    return cash + invest
+    asset = []
+    for a in get_all_asset_accounts():
+        a["account_class"] = "PhysicalAsset"
+        # a["label"] already set by get_all_asset_accounts (e.g. PropertyAsset_3)
+        a["accountTypeLabel"] = ASSET_SUBCLASSES.get(a["asset_subclass"], a["asset_subclass"])
+        a["accountTypeShort"] = a["accountTypeLabel"]
+        asset.append(a)
+
+    # Cash → investment → assets, each ordered by N ascending within its block
+    return cash + invest + asset
 
 
 def _render_accounts(request: Request, **extra) -> HTMLResponse:
@@ -559,6 +786,16 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
                        if a["account_class"] == "CashAccount")
     invest_total = sum(_base_balance(a) for a in accounts
                        if a["account_class"] == "InvestmentAccount")
+    asset_total  = sum(_base_balance(a) for a in accounts
+                       if a["account_class"] == "PhysicalAsset")
+
+    # Dropdown options for an asset's "proceeds account" — excludes other assets
+    # because sale proceeds always flow into a financial account, not another asset.
+    proceeds_account_options = [
+        {"label": a["label"], "name": a["name"], "account_class": a["account_class"]}
+        for a in accounts
+        if a["account_class"] in ("CashAccount", "InvestmentAccount")
+    ]
 
     context = {
         "app_name":            settings.app_name,
@@ -570,9 +807,12 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
         "edit_account":        None,
         "cash_account_types":  CASH_ACCOUNT_TYPES,
         "invest_account_types": INVESTMENT_ACCOUNT_TYPES,
+        "asset_subclasses":     ASSET_SUBCLASSES,
         "cash_total_balance":   cash_total,
         "invest_total_balance": invest_total,
-        "total_balance":        cash_total + invest_total,
+        "asset_total_balance":  asset_total,
+        "total_balance":        cash_total + invest_total + asset_total,
+        "proceeds_account_options": proceeds_account_options,
     }
     context.update(extra)
     return templates.TemplateResponse(
@@ -848,6 +1088,132 @@ async def delete_account(request: Request, n: int):
             }}
         }}
     """)
+    return _render_accounts(request, deleted=True)
+
+
+# ---------------------------------------------------------------------------
+# PhysicalAsset routes (Phase 1b)
+#
+# Single URL family /accounts/asset/{label}/... where label = e.g.
+# 'PropertyAsset_3' — encodes both the concrete subclass and N. Avoids
+# needing three separate route families per subclass.
+# ---------------------------------------------------------------------------
+
+def _parse_asset_label(label: str) -> tuple[str, int] | None:
+    """Split 'PropertyAsset_3' → ('PropertyAsset', 3). Returns None for malformed
+    labels or unknown subclasses."""
+    if "_" not in label:
+        return None
+    subclass, n_str = label.rsplit("_", 1)
+    if subclass not in ASSET_SUBCLASSES:
+        return None
+    try:
+        return subclass, int(n_str)
+    except ValueError:
+        return None
+
+
+@router.post("/accounts/asset", response_class=HTMLResponse)
+async def add_asset(
+    request: Request,
+    assetSubclass:         str   = Form(...),
+    accountName:           str   = Form(...),
+    accountBalance:        float = Form(...),
+    balanceDate:           str   = Form(...),
+    accountCurrency:       str   = Form(...),
+    exchangeRateToBase:    float = Form(1.0),
+    exchangeRateDate:      str   = Form(""),
+    accountNotes:          str   = Form(""),
+    assetAppreciationRate: str   = Form(""),
+    assetSaleYear:         str   = Form(""),
+    assetSaleValue:        str   = Form(""),
+    assetProceedsAccount:  str   = Form(""),
+):
+    """Create a new PhysicalAsset of the requested subclass."""
+    from fastapi.responses import RedirectResponse
+
+    if assetSubclass not in ASSET_SUBCLASSES:
+        return RedirectResponse(url="/accounts", status_code=303)
+
+    next_n = _next_asset_n(assetSubclass)
+    if not exchangeRateDate:
+        exchangeRateDate = date.today().isoformat()
+
+    save_asset(
+        assetSubclass, next_n,
+        accountName, accountBalance, balanceDate,
+        accountCurrency, exchangeRateToBase, exchangeRateDate, accountNotes,
+        appreciation_rate=assetAppreciationRate,
+        sale_year=assetSaleYear,
+        sale_value=assetSaleValue,
+        proceeds_account=assetProceedsAccount,
+    )
+    return RedirectResponse(
+        url=f"/accounts/asset/{assetSubclass}_{next_n}/edit",
+        status_code=303,
+    )
+
+
+@router.get("/accounts/asset/{label}/edit", response_class=HTMLResponse)
+async def edit_asset_form(request: Request, label: str):
+    """Return the asset edit form pre-filled. label = e.g. 'PropertyAsset_3'."""
+    combined = get_all_accounts_combined()
+    account  = next(
+        (a for a in combined
+         if a.get("account_class") == "PhysicalAsset" and a.get("label") == label),
+        None,
+    )
+    return _render_accounts(request, edit_account=account)
+
+
+@router.post("/accounts/asset/{label}/edit", response_class=HTMLResponse)
+async def save_edit_asset(
+    request: Request,
+    label: str,
+    accountName:           str   = Form(...),
+    accountBalance:        float = Form(...),
+    balanceDate:           str   = Form(...),
+    accountCurrency:       str   = Form(...),
+    exchangeRateToBase:    float = Form(1.0),
+    exchangeRateDate:      str   = Form(""),
+    accountNotes:          str   = Form(""),
+    assetAppreciationRate: str   = Form(""),
+    assetSaleYear:         str   = Form(""),
+    assetSaleValue:        str   = Form(""),
+    assetProceedsAccount:  str   = Form(""),
+):
+    """Save edits to an existing asset. Class is locked on edit (cannot change
+    PropertyAsset → VehicleAsset, etc.) — it's encoded in the URL label."""
+    from fastapi.responses import RedirectResponse
+
+    parsed = _parse_asset_label(label)
+    if parsed is None:
+        return RedirectResponse(url="/accounts", status_code=303)
+    subclass, n = parsed
+
+    if not exchangeRateDate:
+        exchangeRateDate = date.today().isoformat()
+
+    save_asset(
+        subclass, n,
+        accountName, accountBalance, balanceDate,
+        accountCurrency, exchangeRateToBase, exchangeRateDate, accountNotes,
+        appreciation_rate=assetAppreciationRate,
+        sale_year=assetSaleYear,
+        sale_value=assetSaleValue,
+        proceeds_account=assetProceedsAccount,
+    )
+    return _render_accounts(request, saved=True)
+
+
+@router.post("/accounts/asset/{label}/delete", response_class=HTMLResponse)
+async def delete_asset_route(request: Request, label: str):
+    """Delete an asset by label."""
+    parsed = _parse_asset_label(label)
+    if parsed is None:
+        return _render_accounts(request, deleted=True)
+    subclass, n = parsed
+    delete_asset(subclass, n)
     return _render_accounts(request, deleted=True)
 
 

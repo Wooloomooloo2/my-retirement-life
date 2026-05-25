@@ -18,7 +18,7 @@
 
 {% block title %}Accounts — {{ app_name }}{% endblock %}
 {% block page_title %}Accounts{% endblock %}
-{% block page_subtitle %}Your cash accounts and investment holdings{% endblock %}
+{% block page_subtitle %}Your cash, investments and physical assets{% endblock %}
 
 {% set edit_class = edit_account.account_class if edit_account else None %}
 
@@ -89,6 +89,9 @@
                 <span class="text-xs font-normal text-base-content/40 ml-2">
                     Cash: {{ base_currency_symbol() }}{{ "{:,.0f}".format(cash_total_balance) }}
                     · Investments: {{ base_currency_symbol() }}{{ "{:,.0f}".format(invest_total_balance) }}
+                    {% if asset_total_balance %}
+                    · Assets: {{ base_currency_symbol() }}{{ "{:,.0f}".format(asset_total_balance) }}
+                    {% endif %}
                 </span>
             </h3>
             <div class="flex items-center gap-3">
@@ -123,16 +126,30 @@
                 </thead>
                 <tbody>
                     {% for account in accounts %}
-                    {% set is_cash = account.account_class == 'CashAccount' %}
-                    {% set edit_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/edit' %}
-                    {% set delete_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/delete' %}
-                    {% set detail_url = ('/accounts/' if is_cash else '/investments/') ~ account.n ~ '/projection' %}
-                    <tr class="hover {% if edit_account and edit_account.n == account.n and edit_account.account_class == account.account_class %}bg-base-200{% endif %}">
+                    {% set is_cash   = account.account_class == 'CashAccount' %}
+                    {% set is_invest = account.account_class == 'InvestmentAccount' %}
+                    {% set is_asset  = account.account_class == 'PhysicalAsset' %}
+                    {% if is_cash %}
+                        {% set edit_url   = '/accounts/' ~ account.n ~ '/edit' %}
+                        {% set delete_url = '/accounts/' ~ account.n ~ '/delete' %}
+                        {% set detail_url = '/accounts/' ~ account.n ~ '/projection' %}
+                    {% elif is_invest %}
+                        {% set edit_url   = '/investments/' ~ account.n ~ '/edit' %}
+                        {% set delete_url = '/investments/' ~ account.n ~ '/delete' %}
+                        {% set detail_url = '/investments/' ~ account.n ~ '/projection' %}
+                    {% else %}
+                        {% set edit_url   = '/accounts/asset/' ~ account.label ~ '/edit' %}
+                        {% set delete_url = '/accounts/asset/' ~ account.label ~ '/delete' %}
+                        {% set detail_url = '' %}
+                    {% endif %}
+                    <tr class="hover {% if edit_account and edit_account.get('label') == account.label %}bg-base-200{% endif %}">
                         <td class="font-medium">
                             <div class="flex items-center gap-2">
                                 <span class="inline-block w-1.5 h-1.5 rounded-full
-                                    {% if is_cash %}bg-blue-500{% else %}bg-green-500{% endif %}"
-                                    title="{{ 'Cash account' if is_cash else 'Investment account' }}"></span>
+                                    {% if is_cash %}bg-blue-500
+                                    {% elif is_invest %}bg-green-500
+                                    {% else %}bg-amber-500{% endif %}"
+                                    title="{% if is_cash %}Cash account{% elif is_invest %}Investment account{% else %}Physical asset{% endif %}"></span>
                                 {{ account.name }}
                             </div>
                         </td>
@@ -144,11 +161,18 @@
                         <td class="hidden md:table-cell text-xs">
                             {% if is_cash %}
                                 {{ account.interestRate }}%
-                            {% else %}
+                            {% elif is_invest %}
                                 <span class="text-base-content/70">{{ account.growthRate }}%</span>
                                 {% if account.dividendRate and account.dividendRate|float > 0 %}
                                 <span class="text-base-content/40">· {{ account.dividendRate }}% div</span>
                                 {% endif %}
+                            {% else %}
+                                {% if account.appreciationRate %}
+                                    {% set ar = account.appreciationRate | float %}
+                                    <span class="{% if ar < 0 %}text-error{% else %}text-base-content/70{% endif %}">
+                                        {% if ar > 0 %}+{% endif %}{{ account.appreciationRate }}%
+                                    </span>
+                                {% else %}<span class="text-base-content/30">—</span>{% endif %}
                             {% endif %}
                         </td>
                         <td class="hidden md:table-cell">
@@ -163,12 +187,17 @@
                             {% else %}—{% endif %}
                         </td>
                         <td class="hidden xl:table-cell text-xs text-base-content/50">
-                            {% if account.drawdownPriority %}
+                            {% if is_asset %}
+                                {% if account.saleYear %}
+                                    <span class="badge badge-outline badge-sm" title="Planned sale year">Sell {{ account.saleYear }}</span>
+                                {% else %}<span class="text-base-content/30">Hold</span>{% endif %}
+                            {% elif account.drawdownPriority %}
                                 <span class="badge badge-outline badge-sm">{{ account.drawdownPriority }}</span>
                             {% else %}—{% endif %}
                         </td>
                         <td class="hidden lg:table-cell text-xs text-base-content/50">
-                            {% if account.taxTreatment %}
+                            {% if is_asset %}—
+                            {% elif account.taxTreatment %}
                                 {% set tt = account.taxTreatment.replace("TaxTreatment_", "") %}
                                 {% if tt == "PostTaxTaxFreeWithdrawal" %}<span class="badge badge-success badge-sm">Tax-free</span>
                                 {% elif tt == "TaxFree" %}<span class="badge badge-success badge-sm">Tax-free</span>
@@ -178,7 +207,8 @@
                             {% else %}—{% endif %}
                         </td>
                         <td class="text-xs text-base-content/50">
-                            {% if account.contribution %}
+                            {% if is_asset %}<span class="text-base-content/30">—</span>
+                            {% elif account.contribution %}
                                 <span class="badge badge-info badge-sm badge-outline">{{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
                             {% else %}
                                 <a href="{{ edit_url }}" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
@@ -186,11 +216,13 @@
                         </td>
                         <td class="text-right">
                             <div class="flex gap-1 justify-end">
+                                {% if detail_url %}
                                 <a href="{{ detail_url }}"
                                    class="btn btn-ghost btn-xs gap-1"
                                    title="View per-account projection detail">
                                     <i class="ti ti-chart-line text-xs" aria-hidden="true"></i> Detail
                                 </a>
+                                {% endif %}
                                 <a href="{{ edit_url }}" class="btn btn-ghost btn-xs gap-1">
                                     <i class="ti ti-pencil text-xs" aria-hidden="true"></i> Edit
                                 </a>
@@ -209,8 +241,9 @@
                     <tr class="font-medium border-t border-base-200">
                         <td>Total</td>
                         <td colspan="9" class="text-base-content/60 text-xs">
-                            {{ accounts | length }} account{% if accounts | length != 1 %}s{% endif %} —
-                            drawdown priority and tax treatment set per account below
+                            {{ accounts | length }} item{% if accounts | length != 1 %}s{% endif %} —
+                            cash and investment accounts set drawdown priority and tax treatment per account below;
+                            assets set appreciation rate and planned sale year
                         </td>
                     </tr>
                 </tfoot>
@@ -234,16 +267,16 @@
             {% endif %}
         </h3>
 
-        <!-- Class selector: Cash | Investment.
+        <!-- Class selector: Cash | Investment | Asset.
              Locked when editing (preserves the existing class). -->
         <div class="tabs tabs-boxed mb-4 inline-flex">
             <button type="button"
                 id="class-tab-cash"
                 class="tab tab-sm
                     {% if not edit_class or edit_class == 'CashAccount' %}tab-active{% endif %}
-                    {% if edit_class == 'InvestmentAccount' %}opacity-40 cursor-not-allowed{% endif %}"
+                    {% if edit_class and edit_class != 'CashAccount' %}opacity-40 cursor-not-allowed{% endif %}"
                 onclick="setAccountClass('cash')"
-                {% if edit_class == 'InvestmentAccount' %}disabled{% endif %}>
+                {% if edit_class and edit_class != 'CashAccount' %}disabled{% endif %}>
                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></span>
                 Cash account
             </button>
@@ -251,11 +284,21 @@
                 id="class-tab-invest"
                 class="tab tab-sm
                     {% if edit_class == 'InvestmentAccount' %}tab-active{% endif %}
-                    {% if edit_class == 'CashAccount' %}opacity-40 cursor-not-allowed{% endif %}"
+                    {% if edit_class and edit_class != 'InvestmentAccount' %}opacity-40 cursor-not-allowed{% endif %}"
                 onclick="setAccountClass('invest')"
-                {% if edit_class == 'CashAccount' %}disabled{% endif %}>
+                {% if edit_class and edit_class != 'InvestmentAccount' %}disabled{% endif %}>
                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
                 Investment account
+            </button>
+            <button type="button"
+                id="class-tab-asset"
+                class="tab tab-sm
+                    {% if edit_class == 'PhysicalAsset' %}tab-active{% endif %}
+                    {% if edit_class and edit_class != 'PhysicalAsset' %}opacity-40 cursor-not-allowed{% endif %}"
+                onclick="setAccountClass('asset')"
+                {% if edit_class and edit_class != 'PhysicalAsset' %}disabled{% endif %}>
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+                Physical asset
             </button>
         </div>
 
@@ -266,6 +309,8 @@
             {% set form_action = '/accounts/' ~ edit_account.n ~ '/edit' %}
         {% elif edit_account and edit_class == 'InvestmentAccount' %}
             {% set form_action = '/investments/' ~ edit_account.n ~ '/edit' %}
+        {% elif edit_account and edit_class == 'PhysicalAsset' %}
+            {% set form_action = '/accounts/asset/' ~ edit_account.label ~ '/edit' %}
         {% else %}
             {% set form_action = '/accounts' %}
         {% endif %}
@@ -408,7 +453,92 @@
                     </label>
                 </div>
 
-                <div class="form-control">
+                <!-- Asset-only: subclass (Property / Vehicle / Collectible) -->
+                <div class="form-control class-field class-field-asset">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Asset type</span>
+                    </label>
+                    <select name="assetSubclass" class="select select-bordered select-sm w-full"
+                            {% if edit_class == 'PhysicalAsset' %}disabled{% endif %}>
+                        {% for key, label in asset_subclasses.items() %}
+                        <option value="{{ key }}"
+                            {% if edit_class == 'PhysicalAsset' and edit_account.asset_subclass == key %}selected
+                            {% elif not edit_account and key == 'PropertyAsset' %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if edit_class == 'PhysicalAsset' %}
+                    {# When editing, the disabled select doesn't submit — re-post the value via a hidden input. #}
+                    <input type="hidden" name="assetSubclass" value="{{ edit_account.asset_subclass }}" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Asset type is locked when editing. Delete and re-add to change.</span>
+                    </label>
+                    {% endif %}
+                </div>
+
+                <!-- Asset-only: appreciation rate -->
+                <div class="form-control class-field class-field-asset">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual appreciation rate %</span>
+                    </label>
+                    <input type="number" name="assetAppreciationRate" step="0.1" min="-30" max="30"
+                        value="{{ edit_account.appreciationRate if edit_class == 'PhysicalAsset' else '' }}"
+                        placeholder="e.g. 3 for property, -15 for car"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Positive for appreciating assets (property, art), negative for depreciating (vehicles)</span>
+                    </label>
+                </div>
+
+                <!-- Asset-only: planned sale year -->
+                <div class="form-control class-field class-field-asset">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Planned sale year <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="number" name="assetSaleYear" min="2025" max="2100" step="1"
+                        value="{{ edit_account.saleYear if edit_class == 'PhysicalAsset' else '' }}"
+                        placeholder="e.g. 2040 — leave blank to hold indefinitely"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">When set, the engine generates a managed life event in this year and routes proceeds to the account below.</span>
+                    </label>
+                </div>
+
+                <!-- Asset-only: sale value override -->
+                <div class="form-control class-field class-field-asset">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Sale value override <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <input type="number" name="assetSaleValue" min="0" step="0.01"
+                        value="{{ edit_account.saleValue if edit_class == 'PhysicalAsset' else '' }}"
+                        placeholder="Leave blank to use appreciated value"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">If blank, the engine uses current value × (1 + appreciation)^years to sale.</span>
+                    </label>
+                </div>
+
+                <!-- Asset-only: proceeds account -->
+                <div class="form-control class-field class-field-asset col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Proceeds account</span>
+                    </label>
+                    <select name="assetProceedsAccount" class="select select-bordered select-sm w-full">
+                        <option value="">— select an account —</option>
+                        {% for opt in proceeds_account_options %}
+                        <option value="{{ opt.label }}"
+                            {% if edit_class == 'PhysicalAsset' and edit_account.proceedsAccount == opt.label %}selected{% endif %}>
+                            {{ opt.name }}{% if opt.account_class == 'InvestmentAccount' %} (investment){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Where the sale proceeds land. Required when a sale year is set.</span>
+                    </label>
+                </div>
+
+                <div class="form-control class-field class-field-cash class-field-invest">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Country / jurisdiction</span>
                     </label>
@@ -467,7 +597,7 @@
                 edit_account.drawdownEarliestDate
             ) %}
 
-            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4">
+            <div class="collapse collapse-arrow border border-base-200 rounded-lg mb-4 class-field class-field-cash class-field-invest">
                 <input type="checkbox" {% if has_drawdown_tax %}checked{% endif %} />
                 <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
                     <i class="ti ti-shield-lock text-base-content/40" aria-hidden="true"></i>
@@ -661,9 +791,10 @@
         <!-- ============================================================
              Contribution panel (separate form — must be outside the
              account form above to avoid nested-form invalidity).
-             Only shown when editing an existing account.
+             Only shown when editing an existing cash or investment account.
+             Assets do not have contributions.
              ============================================================ -->
-        {% if edit_account %}
+        {% if edit_account and edit_class != 'PhysicalAsset' %}
         {% set contrib = edit_account.contribution %}
         {% set contrib_action = ('/accounts/' if edit_class == 'CashAccount' else '/investments/') ~ edit_account.n ~ '/contribution' %}
         {% set contrib_delete_action = contrib_action ~ '/delete' %}
@@ -811,47 +942,50 @@
     const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
 
     // -----------------------------------------------------------------------
-    // Account-class toggle: Cash | Investment
-    // - Show/hide class-specific field groups via .class-field-cash/-invest
-    // - Update form action attribute to point at the right endpoint when adding
-    //   a new account. Editing is class-locked at render time so this is a no-op.
+    // Account-class toggle: Cash | Investment | Asset
+    // - Each form field carries class-field plus one or more class-field-{X}
+    //   markers (e.g. class-field-cash class-field-invest for fields shared by
+    //   both financial classes but hidden for assets). The active class shows
+    //   only matching fields and enables their inputs; the rest are disabled
+    //   so duplicate-named inputs don't double-submit.
+    // - The form action is retargeted between /accounts (cash), /investments
+    //   (invest), and /accounts/asset (asset) when adding. Editing is
+    //   class-locked at render time so the action is pre-set by Jinja.
     // -----------------------------------------------------------------------
-    const EDIT_CLASS = {{ edit_class | tojson }};   // 'CashAccount' | 'InvestmentAccount' | null
+    const EDIT_CLASS = {{ edit_class | tojson }};   // 'CashAccount' | 'InvestmentAccount' | 'PhysicalAsset' | null
+    const CLASS_NAMES   = ['cash', 'invest', 'asset'];
+    const CLASS_ACTIONS = { cash: '/accounts', invest: '/investments', asset: '/accounts/asset' };
+
+    function applyClassVisibility(klass) {
+        document.querySelectorAll('.class-field').forEach(el => {
+            const matchesAny = CLASS_NAMES.some(c => el.classList.contains('class-field-' + c));
+            if (!matchesAny) return;
+            const active = el.classList.contains('class-field-' + klass);
+            el.style.display = active ? '' : 'none';
+            el.querySelectorAll('input, select, textarea')
+                .forEach(i => i.disabled = !active);
+        });
+    }
 
     function setAccountClass(klass) {
         if (EDIT_CLASS) return;   // class is locked when editing — toggle disabled
-
-        const isCash = klass === 'cash';
-        document.querySelectorAll('.class-field-cash').forEach(el => el.style.display = isCash ? '' : 'none');
-        document.querySelectorAll('.class-field-invest').forEach(el => el.style.display = isCash ? 'none' : '');
-
-        document.getElementById('class-tab-cash')  .classList.toggle('tab-active',  isCash);
-        document.getElementById('class-tab-invest').classList.toggle('tab-active', !isCash);
-
-        // Also enable/disable inputs in the hidden group so duplicate names
-        // (accountType, etc.) don't both submit.
-        document.querySelectorAll('.class-field-cash input, .class-field-cash select')
-            .forEach(el => el.disabled = !isCash);
-        document.querySelectorAll('.class-field-invest input, .class-field-invest select')
-            .forEach(el => el.disabled = isCash);
-
-        // Repoint the form to the right create endpoint.
-        document.getElementById('account-form').action = isCash ? '/accounts' : '/investments';
+        applyClassVisibility(klass);
+        CLASS_NAMES.forEach(c => {
+            const tab = document.getElementById('class-tab-' + c);
+            if (tab) tab.classList.toggle('tab-active', c === klass);
+        });
+        document.getElementById('account-form').action = CLASS_ACTIONS[klass] || '/accounts';
     }
 
     // Initialise on page load based on the active class.
     (function initClass() {
-        const initialClass = EDIT_CLASS === 'InvestmentAccount' ? 'invest' : 'cash';
-        // For editing we still need to hide the OTHER group; setAccountClass
-        // short-circuits when EDIT_CLASS is set, so apply the visibility/disable
-        // logic directly.
-        const isCash = initialClass === 'cash';
-        document.querySelectorAll('.class-field-cash').forEach(el => el.style.display = isCash ? '' : 'none');
-        document.querySelectorAll('.class-field-invest').forEach(el => el.style.display = isCash ? 'none' : '');
-        document.querySelectorAll('.class-field-cash input, .class-field-cash select')
-            .forEach(el => el.disabled = !isCash);
-        document.querySelectorAll('.class-field-invest input, .class-field-invest select')
-            .forEach(el => el.disabled = isCash);
+        let initialClass = 'cash';
+        if (EDIT_CLASS === 'InvestmentAccount') initialClass = 'invest';
+        else if (EDIT_CLASS === 'PhysicalAsset') initialClass = 'asset';
+        // setAccountClass short-circuits when EDIT_CLASS is set, so apply
+        // visibility/disable directly here (the form action is already correct
+        // because Jinja pre-set it).
+        applyClassVisibility(initialClass);
     })();
 
     // -----------------------------------------------------------------------

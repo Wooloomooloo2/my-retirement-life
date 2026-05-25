@@ -34,6 +34,25 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-25)
 
+28. **Asset model — Phase 1b (backend) + Phase 1c (UI) — DONE.** End-to-end CRUD for physical assets on the unified `/accounts` page, with no engine integration yet (assets don't move balances in the projection — that's Phase 3).
+    - `src/api/routes/accounts.py`:
+      - New `ASSET_SUBCLASSES` dict mapping `PropertyAsset` / `VehicleAsset` / `CollectibleAsset` → display labels.
+      - `_next_asset_n(subclass)`: per-subclass N counter (PropertyAsset_1, VehicleAsset_1 can coexist).
+      - `get_all_asset_accounts()`: mirrors `get_all_accounts()` pattern, iterates the three concrete subclasses, returns merged list annotated with `asset_subclass` + `label` (e.g. `PropertyAsset_3`) + asset-specific fields (`appreciationRate`, `saleYear`, `saleValue`, `proceedsAccount`).
+      - `save_asset()`: takes subclass + N + the shared Account fields + asset-specific fields. Sale value/proceeds only persisted when sale year is set. IRI = `mrl:{subclass}_{n}`.
+      - `delete_asset()`: also wipes any `mrl:sourceAsset` back-links defensively (Phase 2 will extend this to delete the linked Life Event).
+      - `_parse_asset_label()`: helper splitting `"PropertyAsset_3"` → `("PropertyAsset", 3)`.
+      - Four new routes: `POST /accounts/asset` (create), `GET /accounts/asset/{label}/edit` (load form), `POST /accounts/asset/{label}/edit` (save), `POST /accounts/asset/{label}/delete`. Single URL family avoids per-subclass route duplication.
+      - `get_all_accounts_combined()` now also returns assets annotated with `account_class="PhysicalAsset"` + `accountTypeLabel` from `ASSET_SUBCLASSES`. Also adds `label` to cash + invest entries for consistency (`CashAccount_2`, `InvestmentAccount_5`).
+      - `_render_accounts()` context now exposes: `asset_subclasses` (for the form's class-locked subclass dropdown), `asset_total_balance` (header strip), `proceeds_account_options` (asset's proceeds-account dropdown — restricted to cash + invest accounts).
+    - `src/templates/accounts.html`:
+      - Header strip now shows "Cash · Investments · Assets" totals (assets only when > 0).
+      - Table: amber dot for asset rows; subclass label in Type col; appreciation% (signed, red if negative) in Yield col; "Sell {year}" or "Hold" badge in Draw priority col for assets; "—" in tax + contribution cols; Detail link hidden for assets (no per-account projection page for them yet). Edit/Delete URLs use `/accounts/asset/{label}/...`.
+      - Class tabs: third "Physical asset" (amber dot) tab. All three tabs lock-disable when editing a different class.
+      - Generic tri-state JS toggle: `CLASS_NAMES = ['cash', 'invest', 'asset']`. New `applyClassVisibility(klass)` iterates `.class-field` elements and checks which of `.class-field-{cash|invest|asset}` they carry — supports fields that belong to MULTIPLE classes (e.g. jurisdiction is `class-field-cash class-field-invest`, hidden for asset). Form action mapping: `{cash: '/accounts', invest: '/investments', asset: '/accounts/asset'}`.
+      - Asset-specific form fields (block of 5): subclass select (Property/Vehicle/Collectible — disabled + hidden-input back-pop when editing), annual appreciation rate %, planned sale year, sale value override, proceeds account dropdown (full-width). Tax/Drawdown collapsible and Contribution panel both hidden for asset class.
+    - Verified `accounts.py` parses (no syntax issues). Templates untested in-browser — Mark to reload ontology (`python tools\reload_ontology.py`, app closed) then smoke-test before Phase 2 builds on top.
+
 27. **Asset model — Phase 1a (ontology) — DONE.** Foundation for a 4-phase project introducing physical assets (property, vehicles, collectibles) as a third account class with planned-sale support, culminating in a new net-worth dashboard chart (Phase 4). **Design decision (user, business architect):** reuse the existing pre-staged `mrl:PropertyAsset` (used by sister app MFL) under a new `mrl:PhysicalAsset` intermediate class, with two new concrete subclasses for vehicles and collectibles. **Sale model (user):** sale fields live on the asset itself (single source of truth) but the engine auto-generates a managed `LifeEventType_AssetSale` linked back via `mrl:sourceAsset` — inherits all existing Life Event visualisation without re-implementing it.
     - `docs/ontology/mrl-ontology.ttl`:
       - New `mrl:PhysicalAsset` intermediate class (subClassOf `mrl:Account`). Comment notes physical assets contribute to net worth but do NOT participate in retirement drawdown.
@@ -413,8 +432,8 @@ Multi-phase project introducing physical assets as a third account class, culmin
 | Phase | Scope | Status |
 |---|---|---|
 | 1a | Ontology — `mrl:PhysicalAsset` hierarchy + 4 properties + `LifeEventType_AssetSale` + `mrl:sourceAsset` back-link | **DONE** (item 27 — needs `tools\reload_ontology.py` run) |
-| 1b | Backend — `accounts.py` extensions: `get_all_asset_accounts()`, `save_asset()`, asset CRUD routes (`/accounts/asset/...`), extend `get_all_accounts_combined()` and `_render_accounts()` | Pending |
-| 1c | UI — third "Asset" tab on `/accounts` with class-aware form fields; orange/amber dot in unified table; hide drawdown/interest/tax columns for asset rows | Pending |
+| 1b | Backend — `accounts.py` extensions: `ASSET_SUBCLASSES`, `_next_asset_n`, `get_all_asset_accounts()`, `save_asset()`, `delete_asset()`, `_parse_asset_label()`, four asset routes (`POST /accounts/asset`, GET/POST/DELETE `/accounts/asset/{label}/...`), extended `get_all_accounts_combined()` (now adds `label` to all entries + asset block), extended `_render_accounts()` context (asset_subclasses, asset_total_balance, proceeds_account_options) | **DONE** (item 28) |
+| 1c | UI — third "Asset" (amber) tab on `/accounts` with class-aware form fields (subclass, appreciation %, sale year, sale value override, proceeds account). Generic tri-state JS toggle via `.class-field` + `.class-field-{cash\|invest\|asset}` so a field can opt into multiple classes (e.g. jurisdiction shows for cash + invest, hidden for assets). Table rows: amber dot for assets, appreciation% in Yield col, "Sell {year}" or "Hold" in Draw priority col, "—" in tax/contribution cols, Detail link hidden for assets. Tax/Drawdown collapsible + Contribution panel hidden for asset class | **DONE** (item 28) |
 | 2 | Auto-sync sale → Life Event: asset save/update/delete creates/maintains a managed `LifeEventType_AssetSale` linked via `mrl:sourceAsset`. Life Events page shows "Source: {asset name}" badge and disables inline editing on asset-sourced events | Pending |
 | 3 | Engine — `load_all_assets()`, per-year appreciation, zero-out at sale year (proceeds inherit Life Event engine path from Phase 2). Verify parity with baseline script | Pending |
 | 4 | Dashboard redesign — stacked-area net-worth chart across all three classes (cash → invest → assets), per-account legend with chip/dropdown toggle. Setup checklist rethink | Pending |
