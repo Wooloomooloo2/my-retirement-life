@@ -183,6 +183,7 @@ def get_dashboard_data() -> dict:
     from src.api.routes.projection import (
         run_projection, get_projection_settings,
         load_accounts as _load_accounts,
+        load_all_assets as _load_assets,
         load_budget_lines as _load_budget_lines,
         load_all_income_sources as _load_income,
     )
@@ -200,6 +201,9 @@ def get_dashboard_data() -> dict:
     total_balance     = sum(a["balance"] for a in accs)
     investments_list  = get_all_investment_accounts()
     investment_count  = len(investments_list)
+    assets_list       = _load_assets()
+    asset_count       = len(assets_list)
+    asset_total_balance = sum(a["balance"] for a in assets_list)
     lines             = _load_budget_lines()
     budget_line_count = len(lines)
     annual_spending   = sum(l["annual_amount"] for l in lines)
@@ -228,18 +232,58 @@ def get_dashboard_data() -> dict:
 
     proj = run_projection(proj_settings["inflation_rate"]) if prof and accs else None
 
+    # Net-worth snapshots by class (Phase 4). Three points in time —
+    # today, at retirement, and at life expectancy — split into cash /
+    # invest / assets / total. Computed from the projection so the engine
+    # is the single source of truth for these numbers.
+    snapshots = {}
+    if proj:
+        years            = [y["year"] for y in proj["years"]]
+        account_balances = proj.get("account_balances", {})
+        asset_balances   = proj.get("asset_balances",   {})
+        account_classes  = proj.get("account_classes",  {})
+
+        def _snapshot_at(idx: int) -> dict:
+            cash = sum(
+                bals[idx] for lbl, bals in account_balances.items()
+                if account_classes.get(lbl) == "CashAccount" and idx < len(bals)
+            )
+            invest = sum(
+                bals[idx] for lbl, bals in account_balances.items()
+                if account_classes.get(lbl) == "InvestmentAccount" and idx < len(bals)
+            )
+            assets = sum(
+                bals[idx] for bals in asset_balances.values() if idx < len(bals)
+            )
+            return {
+                "cash":   round(cash, 0),
+                "invest": round(invest, 0),
+                "assets": round(assets, 0),
+                "total":  round(cash + invest + assets, 0),
+            }
+
+        if years:
+            snapshots["today"] = _snapshot_at(0)
+            ret_year = proj.get("retirement_year")
+            if ret_year is not None and ret_year in years:
+                snapshots["retirement"] = _snapshot_at(years.index(ret_year))
+            snapshots["final"] = _snapshot_at(-1)
+
     return {
         "profile":             prof,
         "income_count":        income_count,
         "account_count":       account_count,
         "investment_count":    investment_count,
+        "asset_count":         asset_count,
         "total_balance":       round(total_balance, 0) if total_balance else 0,
+        "asset_total_balance": round(asset_total_balance, 0) if asset_total_balance else 0,
         "budget_line_count":   budget_line_count,
         "annual_spending":     round(annual_spending, 0) if annual_spending else 0,
         "life_event_count":    life_event_count,
         "years_to_retirement": years_to_retirement,
         "drawdown_configured": drawdown_configured,
         "projection":          proj,
+        "snapshots":           snapshots,
     }
 
 

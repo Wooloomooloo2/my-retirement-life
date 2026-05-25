@@ -34,6 +34,20 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-25)
 
+30. **Asset model — Phase 4 (dashboard redesign) — DONE.** Final phase of the asset project: replaces the old setup-checklist + balance-trajectory mini-chart layout with a net-worth-by-account hero view. **User instruction:** replace the data-present dashboard wholesale; first-run welcome state and the setup-checklist-when-incomplete card stay (onboarding survives).
+    - `src/api/app.py` `get_dashboard_data()`:
+      - Loads physical assets via `load_all_assets()` (lazy import). New context keys: `asset_count`, `asset_total_balance`.
+      - New `snapshots` dict computed from the projection — three points in time (today / retirement / final), each broken down into `cash` / `invest` / `assets` / `total`. Helper `_snapshot_at(idx)` sums per-class balances at that year index, using `projection.account_balances` + `projection.account_classes` + `projection.asset_balances` (all from Phase 3). Snapshot at retirement-year omitted if the retirement year is outside the projection range (defensive).
+    - `src/templates/dashboard.html` data-present branch rewritten:
+      - Confidence banner kept verbatim.
+      - **Four snapshot cards**: Today's net worth · Years to retirement · At retirement · At life expectancy. Each net-worth card shows the total plus an inline per-class breakdown (blue dot = cash, green = invest, amber = assets; amber dot only renders when assets ≠ 0). Macro `nw_breakdown(snap)` shared across the three monetary cards. Final-year card flips to error colour with `−` prefix if net worth is negative.
+      - **Hero net-worth chart**: full-width stacked-area Chart.js, one dataset per account + asset. Stack order cash → invest → assets so the "spendable" portion sits at the bottom and illiquid assets ride on top. Cash blue palette, invest green palette, assets amber palette. ★ marker on retirement year. Caption explains the class colour scheme.
+      - **Per-account legend**: chip filter if ≤8 datasets, dropdown filter otherwise — same adaptive pattern as `/projection`'s By Account chart. Helpers `_buildChipFilter` / `_buildDropdownFilter` / `_updateNetworthDropdownLabel` are lifted from projection.html with namespace prefixes (`networthChartInstance`, `nw-filter-lbl`).
+      - **Setup at a glance**: five compact clickable count cards replace the old vertical Quick access sidebar — Accounts · Investments · Assets · Income · Life events. Each links to the relevant section. Tabler icons coloured to match the class (blue/green/amber/primary).
+      - Removed: old "Total savings" / "Annual spending" / "Balance at retirement" three-card row, balance-trajectory mini chart, vertical Quick access sidebar, old `miniChart` JS.
+      - Kept: first-run welcome screen, setup-checklist card (when incomplete), drawdown-not-configured nudge banner.
+    - `account_balances` is unchanged from the engine perspective (Phase 3 just added `asset_balances` as a parallel key); this dashboard is the first consumer of `asset_balances`.
+
 29. **Asset model — Phase 2 (auto Life Event sync) + Phase 3 (engine) — DONE.** Asset sales now automatically generate a managed `LifeEventType_AssetSale` event linked back to the asset, and the engine projects each asset's value year-by-year and disposes it at the sale year. End-to-end: create an asset → save year → sale event auto-appears on `/life-events` and at sale year the engine zeroes the asset and credits proceeds to the destination account.
     - **`src/api/routes/life_events.py`:**
       - `EVENT_TYPE_LABELS` extended with `LifeEventType_AssetSale → "Asset sale"`. New `USER_EVENT_TYPE_OPTIONS` subset (excludes `AssetSale`) used by `_page_context()` so the form dropdown doesn't expose the auto-managed type.
@@ -459,7 +473,7 @@ Multi-phase project introducing physical assets as a third account class, culmin
 | 1c | UI — third "Asset" (amber) tab on `/accounts` with class-aware form fields (subclass, appreciation %, sale year, sale value override, proceeds account). Generic tri-state JS toggle via `.class-field` + `.class-field-{cash\|invest\|asset}` so a field can opt into multiple classes (e.g. jurisdiction shows for cash + invest, hidden for assets). Table rows: amber dot for assets, appreciation% in Yield col, "Sell {year}" or "Hold" in Draw priority col, "—" in tax/contribution cols, Detail link hidden for assets. Tax/Drawdown collapsible + Contribution panel hidden for asset class | **DONE** (item 28) |
 | 2 | Auto-sync sale → Life Event: asset save/update/delete creates/maintains a managed `LifeEventType_AssetSale` linked via `mrl:sourceAsset`. Life Events page shows "Source: {asset name}" badge and disables inline editing on asset-sourced events | **DONE** (item 29) |
 | 3 | Engine — `load_all_assets()`, per-year appreciation, zero-out at sale year (proceeds inherit Life Event engine path from Phase 2) | **DONE** (item 29) |
-| 4 | Dashboard redesign — stacked-area net-worth chart across all three classes (cash → invest → assets), per-account legend with chip/dropdown toggle. Setup checklist rethink | Pending |
+| 4 | Dashboard redesign — stacked-area net-worth chart across all three classes (cash → invest → assets), per-account legend with chip/dropdown toggle. Setup checklist rethink | **DONE** (item 30) |
 
 ### PRE-BETA — new items from end-to-end walkthrough (2026-05-23)
 All to be addressed before public beta. File(s) each will need are noted.
