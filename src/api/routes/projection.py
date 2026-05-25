@@ -37,6 +37,14 @@ FREQUENCY_MULTIPLIERS = {
     "FrequencyType_Annually":      1,
 }
 
+# ADR-013: Tax treatments whose withdrawals are wholly exempt from residence
+# income tax (e.g. ISA, Roth IRA, premium bonds). Excluded from aggregate
+# taxable income so they don't erroneously consume the personal allowance.
+RESIDENCE_EXEMPT_TREATMENTS = frozenset({
+    "TaxTreatment_PostTaxTaxFreeWithdrawal",
+    "TaxTreatment_TaxFree",
+})
+
 
 # ---------------------------------------------------------------------------
 # Low-level data helpers (unchanged from v0.2)
@@ -136,6 +144,10 @@ def load_all_income_sources() -> list:
     Converting once at load time lets the downstream engine treat every amount
     as base-currency, mirroring how account balances are pre-multiplied by
     exchangeRateToBase in load_all_accounts().
+
+    deposit_account is the local name (e.g. "CashAccount_2") of the account
+    that should receive this income each year, or None to follow surplus
+    routing (mrl:creditedToAccount, ADR-011-aligned).
     """
     type_node = og.NamedNode(f"{MRL}IncomeSource")
     quads = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
@@ -154,12 +166,16 @@ def load_all_income_sources() -> list:
             end_year = None
         raw_amount = _float(iri, "incomeAnnualAmount")
         fx_rate    = _float(iri, "incomeExchangeRateToBase", 1.0)
+        credited_qs = list(store.store.quads_for_pattern(
+            iri, og.NamedNode(f"{MRL}creditedToAccount"), None, DATA_GRAPH))
+        deposit_account = _iri_local(str(credited_qs[0].object.value)) if credited_qs else None
         sources.append({
-            "name":        _val(iri, "incomeSourceName", "Income"),
-            "amount":      raw_amount * fx_rate,
-            "growth_rate": _float(iri, "incomeGrowthRate"),
-            "start_year":  start_year,
-            "end_year":    end_year,
+            "name":            _val(iri, "incomeSourceName", "Income"),
+            "amount":          raw_amount * fx_rate,
+            "growth_rate":     _float(iri, "incomeGrowthRate"),
+            "start_year":      start_year,
+            "end_year":        end_year,
+            "deposit_account": deposit_account,
         })
     return sources
 
@@ -673,7 +689,354 @@ def _compute_residence_tax(
 
 
 # ---------------------------------------------------------------------------
-# Projection engine (ADR-011, ADR-012, ADR-013)
+# Simulation helper — shared between deterministic and Monte Carlo engines
+# (ADR-011, ADR-012, ADR-013, ADR-015)
+#
+# A single year-by-year simulation. The deterministic engine calls this with
+# zero shocks; Monte Carlo calls it N times with random per-year shocks on
+# investment growth and inflation. Both paths share the same drawdown
+# eligibility, drawdown strategy, surplus routing, tax (source + residence),
+# contributions, and life-event account routing — so MC reflects exactly the
+# same model as the deterministic projection, just stochastic.
+# ---------------------------------------------------------------------------
+
+def _simulate_run(
+    profile: dict,
+    all_accounts: list,
+    income_sources: list,
+    budget_lines: list,
+    life_events: list,
+    contributions: dict,
+    col_ratio: float,
+    inflation_rate: float,
+    proj_settings: dict,
+    return_shocks: list[float] | None = None,
+    inflation_shocks: list[float] | None = None,
+) -> dict:
+    """Run one year-by-year simulation and return the year-level history.
+
+    Shocks are per-year additive perturbations in PERCENT units (matching the
+    growth_rate / inflation_rate convention), e.g. a shock of 6.0 is +6
+    percentage points on that year's effective investment growth rate. Cash
+    interest is never shocked (ADR-012 — σ applies to investments only).
+    Negative simulated investment rates are clipped at -100% (cannot lose
+    more than the balance).
+    """
+    today           = date.today()
+    current_year    = today.year
+    birth_year      = profile["birth_year"]
+    retirement_year = birth_year + profile["retirement_age"]
+    end_year        = birth_year + profile["life_expectancy"]
+    n_years         = end_year - current_year + 1
+
+    if return_shocks is None:
+        return_shocks = [0.0] * n_years
+    if inflation_shocks is None:
+        inflation_shocks = [0.0] * n_years
+
+    drawdown_strategy  = proj_settings.get("drawdown_strategy",  "DrawdownStrategy_Proportional")
+    surplus_strategy   = proj_settings.get("surplus_strategy",   "SurplusStrategy_ReduceDrawdown")
+    spending_acc       = proj_settings.get("spending_account_label")
+    surplus_acc        = proj_settings.get("surplus_account_label")
+    personal_allowance = proj_settings.get("annual_personal_allowance", 0.0)
+    residence_rate     = proj_settings.get("residence_income_tax_rate",  0.0)
+
+    # --- Opening balances grown from balance_date to current_year ---
+    balances: dict[str, float] = {}
+    for acc in all_accounts:
+        ye = max(0, current_year - acc["balance_date"].year)
+        if acc["account_class"] == "CashAccount":
+            rate = acc["interest_rate"] / 100
+        else:
+            eff  = acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
+            rate = eff / 100
+        balances[acc["label"]] = acc["balance"] * ((1 + rate) ** ye)
+
+    # --- Non-reinvested dividend income sources (deterministic) ---
+    div_sources = []
+    for acc in all_accounts:
+        if acc["account_class"] == "InvestmentAccount" \
+                and not acc["reinvest_dividends"] \
+                and acc["dividend_rate"] > 0:
+            ye = max(0, current_year - acc["balance_date"].year)
+            div_sources.append({
+                "opening_value": acc["balance"] * ((1 + acc["growth_rate"] / 100) ** ye),
+                "growth_rate":   acc["growth_rate"],
+                "dividend_rate": acc["dividend_rate"],
+            })
+
+    # --- Weighted display rate (informational, no σ applied) ---
+    total_opening = sum(balances.values())
+    if total_opening > 0:
+        rate_num = sum(
+            balances[acc["label"]] * (
+                acc["interest_rate"] if acc["account_class"] == "CashAccount"
+                else acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
+            )
+            for acc in all_accounts
+        )
+        weighted_rate_pct = rate_num / total_opening
+    else:
+        weighted_rate_pct = 0.0
+
+    inv_opening = sum(
+        balances[acc["label"]] for acc in all_accounts
+        if acc["account_class"] == "InvestmentAccount"
+    )
+
+    # Per-account history arrays
+    account_history:              dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    account_withdrawal_history:   dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    account_return_history:       dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    account_contribution_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    projection_years         = []
+    cumulative_tax           = 0.0
+    cumulative_contributions = 0.0
+
+    for yi, year in enumerate(range(current_year, end_year + 1)):
+        years_from_start = year - current_year
+
+        # Per-year shocks (zero for deterministic runs)
+        ret_shock_pct   = return_shocks[yi]    if yi < len(return_shocks)    else 0.0
+        infl_shock_pct  = inflation_shocks[yi] if yi < len(inflation_shocks) else 0.0
+        sim_inflation   = max(0.1, inflation_rate + infl_shock_pct)
+
+        # 1. Capture opening balances
+        opening_this_year = dict(balances)
+
+        # 2. Apply growth — investments get σ, cash stays deterministic
+        for acc in all_accounts:
+            if balances[acc["label"]] <= 0:
+                continue
+            if acc["account_class"] == "CashAccount":
+                balances[acc["label"]] *= (1 + acc["interest_rate"] / 100)
+            else:
+                eff_pct     = acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
+                sim_eff_pct = max(-100.0, eff_pct + ret_shock_pct)
+                balances[acc["label"]] *= (1 + sim_eff_pct / 100)
+
+        # Returns earned this year — per-account for detail chart and total for display
+        returns_this_year = sum(
+            balances[acc["label"]] - opening_this_year[acc["label"]]
+            for acc in all_accounts
+        )
+        for acc in all_accounts:
+            account_return_history[acc["label"]].append(
+                round(balances[acc["label"]] - opening_this_year[acc["label"]], 0)
+            )
+
+        # 2b. Contributions (ADR-015) — credit balance + accumulate cashflow cost
+        year_contribution_spending = 0.0
+        for acc in all_accounts:
+            contrib = contributions.get(acc["label"])
+            contrib_this_year = 0.0
+            if contrib:
+                c_start = contrib["start_year"] if contrib["start_year"] else current_year
+                c_end   = contrib["end_year"]   if contrib["end_year"]   else retirement_year
+                if c_start <= year <= c_end:
+                    base   = contrib["annual_amount"]
+                    g_rate = contrib.get("growth_rate", 0.0)
+                    years_active = year - c_start
+                    contrib_this_year = (
+                        base * ((1 + g_rate / 100) ** years_active)
+                        if g_rate != 0.0 else base
+                    )
+                    balances[acc["label"]] += contrib_this_year
+                    year_contribution_spending += contrib_this_year
+            account_contribution_history[acc["label"]].append(round(contrib_this_year, 0))
+        cumulative_contributions += year_contribution_spending
+
+        # 3. Income (active sources + non-reinvested dividends).
+        # Income earned this year is always tracked in income_amount for display.
+        # Sources with a deposit_account land directly in that account's balance
+        # and are excluded from unrouted_income (which feeds pre_net); sources
+        # without one accumulate in unrouted_income and follow the projection's
+        # surplus routing as before. Non-reinvested dividends remain unrouted.
+        income_amount   = 0.0
+        unrouted_income = 0.0
+        for src in income_sources:
+            src_start = src["start_year"] or current_year
+            src_end   = src["end_year"]
+            if year < src_start or (src_end is not None and year > src_end):
+                continue
+            amt = src["amount"] * ((1 + src["growth_rate"] / 100) ** years_from_start)
+            income_amount += amt
+            deposit = src.get("deposit_account")
+            if deposit and deposit in balances:
+                balances[deposit] += amt
+            else:
+                unrouted_income += amt
+        for ds in div_sources:
+            pv = ds["opening_value"] * ((1 + ds["growth_rate"] / 100) ** years_from_start)
+            div_income = pv * (ds["dividend_rate"] / 100)
+            income_amount   += div_income
+            unrouted_income += div_income
+
+        # 4. Spending (sim_inflation for non-loan lines)
+        mandatory = discretionary = loans = 0.0
+        for line in budget_lines:
+            if line["start_year"]    and year < line["start_year"]: continue
+            if line["end_year"]      and year > line["end_year"]:   continue
+            if line["loan_end_year"] and year > line["loan_end_year"]: continue
+            if line["line_type"] == "BudgetLineType_Loan":
+                rate = line["change_rate"]
+            else:
+                rate = sim_inflation + line["change_rate"]
+            annual = line["annual_amount"] * ((1 + rate / 100) ** years_from_start)
+            if   line["line_type"] == "BudgetLineType_Mandatory":     mandatory     += annual
+            elif line["line_type"] == "BudgetLineType_Discretionary": discretionary += annual
+            elif line["line_type"] == "BudgetLineType_Loan":          loans         += annual
+
+        if col_ratio != 1.0 and year >= retirement_year:
+            mandatory     *= col_ratio
+            discretionary *= col_ratio
+            loans         *= col_ratio
+
+        # 5. Life events (with account routing per ADR-011 §5)
+        life_event_costs    = 0.0
+        life_event_receipts = 0.0
+        general_costs       = 0.0
+        general_receipts    = 0.0
+        for evt in life_events:
+            if evt["year"] != year:
+                continue
+            amt = evt["amount"]
+            if amt >= 0:
+                life_event_costs += amt
+                if evt["funded_by_account"] and evt["funded_by_account"] in balances:
+                    balances[evt["funded_by_account"]] = \
+                        max(0.0, balances[evt["funded_by_account"]] - amt)
+                else:
+                    general_costs += amt
+            else:
+                life_event_receipts += abs(amt)
+                if evt["received_by_account"] and evt["received_by_account"] in balances:
+                    balances[evt["received_by_account"]] += abs(amt)
+                else:
+                    general_receipts += abs(amt)
+
+        # 6. Net cashflow before drawdown.
+        # Routed income has already been credited directly to deposit accounts;
+        # only unrouted_income flows through here. The drawdown logic will then
+        # cover any shortfall from eligible accounts (including those that just
+        # received deposits, naturally).
+        total_spending = mandatory + discretionary + loans + general_costs
+        pre_net        = unrouted_income + general_receipts - total_spending - year_contribution_spending
+
+        # 7. Drawdown or surplus
+        tax_free_used: dict[str, float] = {acc["label"]: 0.0 for acc in all_accounts}
+        total_source_tax        = 0.0
+        total_taxable_at_source = 0.0
+        net_annual_tax          = 0.0
+        year_withdrawals: dict[str, float] = {}
+
+        if pre_net < 0:
+            shortfall = -pre_net
+            eligible  = [
+                acc for acc in all_accounts
+                if _is_eligible(acc, year, birth_year) and balances.get(acc["label"], 0) > 0
+            ]
+            withdrawals = _apply_drawdown(eligible, shortfall, drawdown_strategy, balances)
+
+            for acc_label, gross_draw in withdrawals.items():
+                acc = next(a for a in all_accounts if a["label"] == acc_label)
+                free_used, src_tax = _compute_source_tax(
+                    acc, gross_draw, tax_free_used[acc_label])
+                tax_free_used[acc_label] += free_used
+                total_source_tax         += src_tax
+                if acc["tax_treatment"] not in RESIDENCE_EXEMPT_TREATMENTS:
+                    total_taxable_at_source += (gross_draw - free_used)
+                balances[acc_label] = max(0.0, balances[acc_label] - gross_draw - src_tax)
+                year_withdrawals[acc_label] = gross_draw
+
+            res_tax = _compute_residence_tax(
+                total_taxable_at_source, total_source_tax,
+                personal_allowance, residence_rate)
+
+            if res_tax > 0:
+                if spending_acc and spending_acc in balances:
+                    balances[spending_acc] = max(0.0, balances[spending_acc] - res_tax)
+                elif eligible:
+                    total_el_bal = sum(balances.get(a["label"], 0) for a in eligible)
+                    if total_el_bal > 0:
+                        for a in eligible:
+                            share = (balances.get(a["label"], 0) / total_el_bal) * res_tax
+                            balances[a["label"]] = max(0.0, balances[a["label"]] - share)
+
+            net_annual_tax = total_source_tax + res_tax
+
+        else:
+            surplus = pre_net
+            if surplus_strategy == "SurplusStrategy_SweepToAccount":
+                target = surplus_acc or spending_acc
+            else:
+                target = spending_acc
+
+            if target and target in balances:
+                balances[target] += surplus
+            else:
+                first_current = next(
+                    (a["label"] for a in all_accounts
+                     if a["account_class"] == "CashAccount"
+                     and a.get("account_type_local") == "CashAccountType_Current"),
+                    None
+                )
+                first_cash = next(
+                    (a["label"] for a in all_accounts
+                     if a["account_class"] == "CashAccount"),
+                    None
+                )
+                fallback = (
+                    first_current
+                    or first_cash
+                    or (all_accounts[0]["label"] if all_accounts else None)
+                )
+                if fallback:
+                    balances[fallback] += surplus
+
+        cumulative_tax += net_annual_tax
+
+        # 8. Record closing balances per account and per-year totals
+        for acc in all_accounts:
+            account_history[acc["label"]].append(round(balances[acc["label"]], 0))
+            account_withdrawal_history[acc["label"]].append(
+                round(year_withdrawals.get(acc["label"], 0.0), 0)
+            )
+
+        total_balance = sum(balances.values())
+        projection_years.append({
+            "year":                year,
+            "balance":             round(total_balance, 0),
+            "income":              round(income_amount, 0),
+            "mandatory":           round(mandatory, 0),
+            "discretionary":       round(discretionary, 0),
+            "loans":               round(loans, 0),
+            "life_event_costs":    round(life_event_costs, 0),
+            "life_event_receipts": round(life_event_receipts, 0),
+            "interest":            round(returns_this_year, 0),
+            "tax_paid":            round(net_annual_tax, 0),
+            "is_retirement_year":  year == retirement_year,
+        })
+
+    return {
+        "years":                       projection_years,
+        "account_balances":            account_history,
+        "account_withdrawals":         account_withdrawal_history,
+        "account_returns":             account_return_history,
+        "account_contributions":       account_contribution_history,
+        "total_tax_paid":              round(cumulative_tax, 0),
+        "total_contributions":         round(cumulative_contributions, 0),
+        "opening_balance":             round(total_opening, 0),
+        "opening_investment_balance":  round(inv_opening, 0),
+        "weighted_rate":               round(weighted_rate_pct, 2),
+        "retirement_year":             retirement_year,
+        "end_year":                    end_year,
+        "current_year":                current_year,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Deterministic projection — thin wrapper over _simulate_run
 # ---------------------------------------------------------------------------
 
 def run_projection(
@@ -700,12 +1063,6 @@ def run_projection(
     if proj_settings is None:
         proj_settings = get_projection_settings()
 
-    today        = date.today()
-    current_year = today.year
-    birth_year   = profile["birth_year"]
-    retirement_year = birth_year + profile["retirement_age"]
-    end_year        = birth_year + profile["life_expectancy"]
-
     income_sources = load_all_income_sources()
     all_accounts   = load_all_accounts()
     budget_lines   = load_budget_lines()
@@ -716,291 +1073,23 @@ def run_projection(
     if not all_accounts:
         return None
 
-    drawdown_strategy = proj_settings.get("drawdown_strategy", "DrawdownStrategy_Proportional")
-    surplus_strategy  = proj_settings.get("surplus_strategy",  "SurplusStrategy_ReduceDrawdown")
-    spending_acc      = proj_settings.get("spending_account_label")
-    surplus_acc       = proj_settings.get("surplus_account_label")
-    personal_allowance = proj_settings.get("annual_personal_allowance", 0.0)
-    residence_rate     = proj_settings.get("residence_income_tax_rate",  0.0)
-
-    # --- Opening balances grown from balance_date to current_year ---
-    balances: dict[str, float] = {}
-    for acc in all_accounts:
-        ye = max(0, current_year - acc["balance_date"].year)
-        if acc["account_class"] == "CashAccount":
-            rate = acc["interest_rate"] / 100
-        else:
-            eff  = acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
-            rate = eff / 100
-        balances[acc["label"]] = acc["balance"] * ((1 + rate) ** ye)
-
-    # --- Non-reinvested dividend income sources ---
-    div_sources = []
-    for acc in all_accounts:
-        if acc["account_class"] == "InvestmentAccount" \
-                and not acc["reinvest_dividends"] \
-                and acc["dividend_rate"] > 0:
-            ye = max(0, current_year - acc["balance_date"].year)
-            div_sources.append({
-                "opening_value": acc["balance"] * ((1 + acc["growth_rate"] / 100) ** ye),
-                "growth_rate":   acc["growth_rate"],
-                "dividend_rate": acc["dividend_rate"],
-            })
-
-    # --- Weighted rate display figure ---
-    total_opening = sum(balances.values())
-    if total_opening > 0:
-        rate_num = sum(
-            balances[acc["label"]] * (
-                acc["interest_rate"] if acc["account_class"] == "CashAccount"
-                else acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
-            )
-            for acc in all_accounts
-        )
-        weighted_rate_pct = rate_num / total_opening
-    else:
-        weighted_rate_pct = 0.0
-
-    inv_opening = sum(
-        balances[acc["label"]] for acc in all_accounts
-        if acc["account_class"] == "InvestmentAccount"
+    sim = _simulate_run(
+        profile         = profile,
+        all_accounts    = all_accounts,
+        income_sources  = income_sources,
+        budget_lines    = budget_lines,
+        life_events     = life_events,
+        contributions   = contributions,
+        col_ratio       = col_ratio,
+        inflation_rate  = inflation_rate,
+        proj_settings   = proj_settings,
     )
 
-    # --- Year-by-year loop ---
-    # Per-account balance, withdrawal, return and contribution history
-    account_history: dict[str, list[float]]             = {acc["label"]: [] for acc in all_accounts}
-    account_withdrawal_history: dict[str, list[float]]  = {acc["label"]: [] for acc in all_accounts}
-    account_return_history: dict[str, list[float]]      = {acc["label"]: [] for acc in all_accounts}
-    account_contribution_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}  # ADR-015
-    projection_years    = []
-    cumulative_tax      = 0.0
-    cumulative_contributions = 0.0   # ADR-015
-
-    for year in range(current_year, end_year + 1):
-        years_from_start = year - current_year
-
-        # 1. Capture opening balances before growth (for returns calculation)
-        opening_this_year = dict(balances)
-
-        # 2. Apply growth to each account (CashAccount: interest; InvestmentAccount: capital + optional reinvested dividend)
-        for acc in all_accounts:
-            if balances[acc["label"]] <= 0:
-                continue
-            if acc["account_class"] == "CashAccount":
-                balances[acc["label"]] *= (1 + acc["interest_rate"] / 100)
-            else:
-                eff = acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)
-                balances[acc["label"]] *= (1 + eff / 100)
-
-        # Returns earned this year — total for display, and per-account for detail chart
-        returns_this_year = sum(
-            balances[acc["label"]] - opening_this_year[acc["label"]]
-            for acc in all_accounts
-        )
-        for acc in all_accounts:
-            account_return_history[acc["label"]].append(
-                round(balances[acc["label"]] - opening_this_year[acc["label"]], 0)
-            )
-
-        # 2b. Apply contributions (ADR-015)
-        # Credits each account's balance; the matching cashflow cost is deducted
-        # from pre_net below so that drawdown covers any funding shortfall.
-        # Default active window: current_year … retirement_year (inclusive).
-        year_contribution_spending = 0.0
-        for acc in all_accounts:
-            contrib = contributions.get(acc["label"])
-            contrib_this_year = 0.0
-            if contrib:
-                c_start = contrib["start_year"] if contrib["start_year"] else current_year
-                c_end   = contrib["end_year"]   if contrib["end_year"]   else retirement_year
-                if c_start <= year <= c_end:
-                    base   = contrib["annual_amount"]
-                    g_rate = contrib.get("growth_rate", 0.0)
-                    years_active = year - c_start   # 0 in first active year
-                    contrib_this_year = (
-                        base * ((1 + g_rate / 100) ** years_active)
-                        if g_rate != 0.0 else base
-                    )
-                    balances[acc["label"]] += contrib_this_year
-                    year_contribution_spending += contrib_this_year
-            account_contribution_history[acc["label"]].append(round(contrib_this_year, 0))
-        cumulative_contributions += year_contribution_spending
-
-        # 3. Income: active income sources + non-reinvested dividends
-        income_amount = 0.0
-        for src in income_sources:
-            src_start = src["start_year"] or current_year
-            src_end   = src["end_year"]
-            if year >= src_start and (src_end is None or year <= src_end):
-                income_amount += src["amount"] * ((1 + src["growth_rate"] / 100) ** years_from_start)
-        for ds in div_sources:
-            pv = ds["opening_value"] * ((1 + ds["growth_rate"] / 100) ** years_from_start)
-            income_amount += pv * (ds["dividend_rate"] / 100)
-
-        # 4. Spending
-        mandatory = discretionary = loans = 0.0
-        for line in budget_lines:
-            if line["start_year"]    and year < line["start_year"]:
-                continue
-            if line["end_year"]      and year > line["end_year"]:
-                continue
-            if line["loan_end_year"] and year > line["loan_end_year"]:
-                continue
-            if line["line_type"] == "BudgetLineType_Loan":
-                rate = line["change_rate"]
-            else:
-                rate = inflation_rate + line["change_rate"]
-            annual = line["annual_amount"] * ((1 + rate / 100) ** years_from_start)
-            if   line["line_type"] == "BudgetLineType_Mandatory":     mandatory     += annual
-            elif line["line_type"] == "BudgetLineType_Discretionary": discretionary += annual
-            elif line["line_type"] == "BudgetLineType_Loan":          loans         += annual
-
-        if col_ratio != 1.0 and year >= retirement_year:
-            mandatory     *= col_ratio
-            discretionary *= col_ratio
-            loans         *= col_ratio
-
-        # 5. Life events — route to specific accounts where designated (ADR-011 §5)
-        life_event_costs    = 0.0
-        life_event_receipts = 0.0
-        general_costs       = 0.0
-        general_receipts    = 0.0
-
-        for evt in life_events:
-            if evt["year"] != year:
-                continue
-            amt = evt["amount"]
-            if amt >= 0:  # expenditure
-                life_event_costs += amt
-                if evt["funded_by_account"] and evt["funded_by_account"] in balances:
-                    balances[evt["funded_by_account"]] = \
-                        max(0.0, balances[evt["funded_by_account"]] - amt)
-                else:
-                    general_costs += amt
-            else:  # receipt / windfall
-                life_event_receipts += abs(amt)
-                if evt["received_by_account"] and evt["received_by_account"] in balances:
-                    balances[evt["received_by_account"]] += abs(amt)
-                else:
-                    general_receipts += abs(amt)
-
-        # 6. Net cashflow before drawdown
-        # Contributions are funded from cashflow (same as mandatory spending).
-        total_spending = mandatory + discretionary + loans + general_costs
-        pre_net        = income_amount + general_receipts - total_spending - year_contribution_spending
-
-        # 7. Drawdown or surplus
-        tax_free_used: dict[str, float] = {acc["label"]: 0.0 for acc in all_accounts}
-        total_source_tax       = 0.0
-        total_taxable_at_source = 0.0
-        net_annual_tax          = 0.0
-        year_withdrawals: dict[str, float] = {}   # gross withdrawal per account this year
-
-        if pre_net < 0:
-            # Shortfall — draw from eligible accounts
-            shortfall = -pre_net
-            eligible  = [
-                acc for acc in all_accounts
-                if _is_eligible(acc, year, birth_year) and balances.get(acc["label"], 0) > 0
-            ]
-            withdrawals = _apply_drawdown(eligible, shortfall, drawdown_strategy, balances)
-
-            for acc_label, gross_draw in withdrawals.items():
-                acc = next(a for a in all_accounts if a["label"] == acc_label)
-                free_used, src_tax = _compute_source_tax(
-                    acc, gross_draw, tax_free_used[acc_label])
-                tax_free_used[acc_label]  += free_used
-                total_source_tax           += src_tax
-                total_taxable_at_source    += (gross_draw - free_used)
-                # Debit account: gross withdrawal + source tax withheld
-                balances[acc_label] = max(0.0, balances[acc_label] - gross_draw - src_tax)
-                year_withdrawals[acc_label] = gross_draw   # record for history
-
-            # Residence-level tax (ADR-013 §3)
-            res_tax = _compute_residence_tax(
-                total_taxable_at_source, total_source_tax,
-                personal_allowance, residence_rate)
-
-            if res_tax > 0:
-                # Apply residence tax to the spending account, or spread proportionally
-                if spending_acc and spending_acc in balances:
-                    balances[spending_acc] = max(0.0, balances[spending_acc] - res_tax)
-                elif eligible:
-                    total_el_bal = sum(balances.get(a["label"], 0) for a in eligible)
-                    if total_el_bal > 0:
-                        for a in eligible:
-                            share = (balances.get(a["label"], 0) / total_el_bal) * res_tax
-                            balances[a["label"]] = max(0.0, balances[a["label"]] - share)
-
-            net_annual_tax = total_source_tax + res_tax
-
-        else:
-            # Surplus — income exceeded spending + contributions this year.
-            # Always credit to the spending account (or first cash account as fallback)
-            # so that unspent income accumulates correctly rather than disappearing.
-            surplus = pre_net
-            if surplus_strategy == "SurplusStrategy_SweepToAccount":
-                target = surplus_acc or spending_acc
-            else:
-                # ReduceDrawdown: no drawdown was needed; surplus stays in the
-                # income/spending account rather than being redistributed elsewhere.
-                target = spending_acc
-
-            if target and target in balances:
-                balances[target] += surplus
-            else:
-                # No spending account configured.
-                # Priority: Current account → any cash account → any account.
-                # This avoids silently routing surplus into an ISA or investment account
-                # just because it was the first one created.
-                first_current = next(
-                    (a["label"] for a in all_accounts
-                     if a["account_class"] == "CashAccount"
-                     and a.get("account_type_local") == "CashAccountType_Current"),
-                    None
-                )
-                first_cash = next(
-                    (a["label"] for a in all_accounts
-                     if a["account_class"] == "CashAccount"),
-                    None
-                )
-                fallback = (
-                    first_current
-                    or first_cash
-                    or (all_accounts[0]["label"] if all_accounts else None)
-                )
-                if fallback:
-                    balances[fallback] += surplus
-
-        cumulative_tax += net_annual_tax
-
-        # 8. Record closing balances and withdrawal amounts per account
-        for acc in all_accounts:
-            account_history[acc["label"]].append(round(balances[acc["label"]], 0))
-            account_withdrawal_history[acc["label"]].append(
-                round(year_withdrawals.get(acc["label"], 0.0), 0)
-            )
-
-        total_balance = sum(balances.values())
-
-        projection_years.append({
-            "year":                year,
-            "balance":             round(total_balance, 0),
-            "income":              round(income_amount, 0),
-            "mandatory":           round(mandatory, 0),
-            "discretionary":       round(discretionary, 0),
-            "loans":               round(loans, 0),
-            "life_event_costs":    round(life_event_costs, 0),
-            "life_event_receipts": round(life_event_receipts, 0),
-            "interest":            round(returns_this_year, 0),
-            "tax_paid":            round(net_annual_tax, 0),
-            "is_retirement_year":  year == retirement_year,
-        })
-
-    # --- Confidence scoring (unchanged logic) ---
+    # --- Confidence scoring ---
     runs_out_year = next(
-        (y["year"] for y in projection_years if y["balance"] <= 0), None)
-    final_balance = projection_years[-1]["balance"] if projection_years else 0
+        (y["year"] for y in sim["years"] if y["balance"] <= 0), None)
+    final_balance = sim["years"][-1]["balance"] if sim["years"] else 0
+    end_year      = sim["end_year"]
 
     if runs_out_year is None:
         confidence       = "green"
@@ -1025,31 +1114,27 @@ def run_projection(
         )
 
     return {
-        # Existing keys (unchanged for backward compat)
-        "years":                     projection_years,
-        "runs_out_year":             runs_out_year,
-        "retirement_year":           retirement_year,
-        "end_year":                  end_year,
-        "current_year":              current_year,
-        "opening_balance":           round(total_opening, 0),
-        "opening_investment_balance": round(inv_opening, 0),
-        "final_balance":             round(final_balance, 0),
-        "confidence":                confidence,
-        "confidence_label":          confidence_label,
-        "confidence_message":        confidence_message,
-        "weighted_rate":             round(weighted_rate_pct, 2),
-        "col_ratio":                 col_ratio,
-        # ADR-012: per-account balance, withdrawal and return history
-        "account_balances":    account_history,
-        "account_withdrawals": account_withdrawal_history,
-        "account_returns":     account_return_history,
-        "account_contributions": account_contribution_history,    # ADR-015
-        "account_names":       {acc["label"]: acc["name"]          for acc in all_accounts},
-        "account_classes":     {acc["label"]: acc["account_class"] for acc in all_accounts},
-        # ADR-013: tax summary
-        "total_tax_paid":         round(cumulative_tax, 0),
-        # ADR-015: contribution summary
-        "total_contributions": round(cumulative_contributions, 0),
+        "years":                      sim["years"],
+        "runs_out_year":              runs_out_year,
+        "retirement_year":            sim["retirement_year"],
+        "end_year":                   end_year,
+        "current_year":               sim["current_year"],
+        "opening_balance":            sim["opening_balance"],
+        "opening_investment_balance": sim["opening_investment_balance"],
+        "final_balance":              round(final_balance, 0),
+        "confidence":                 confidence,
+        "confidence_label":           confidence_label,
+        "confidence_message":         confidence_message,
+        "weighted_rate":              sim["weighted_rate"],
+        "col_ratio":                  col_ratio,
+        "account_balances":           sim["account_balances"],
+        "account_withdrawals":        sim["account_withdrawals"],
+        "account_returns":            sim["account_returns"],
+        "account_contributions":      sim["account_contributions"],
+        "account_names":              {acc["label"]: acc["name"]          for acc in all_accounts},
+        "account_classes":            {acc["label"]: acc["account_class"] for acc in all_accounts},
+        "total_tax_paid":             sim["total_tax_paid"],
+        "total_contributions":        sim["total_contributions"],
     }
 
 
@@ -1075,199 +1160,99 @@ def _get_mc_params(profile_local: str) -> tuple[float, float]:
 
 
 def run_monte_carlo(
-    inflation_rate: float    = 2.5,
-    mc_profile_local: str    = "MonteCarloProfile_Moderate",
-    n_sims: int              = 500,
+    inflation_rate: float       = 2.5,
+    mc_profile_local: str       = "MonteCarloProfile_Moderate",
+    n_sims: int                 = 250,
+    proj_settings: dict | None  = None,
 ) -> dict | None:
-    """Monte Carlo simulation with investment-only volatility (ADR-012).
+    """Monte Carlo simulation built on the shared per-account simulation helper.
 
-    Cash accounts grow deterministically at their weighted average rate.
-    σ (return volatility) is applied only to the investment account pool.
-    All annual income / spending cashflow passes through the investment pool
-    in the simulation; cash simply compounds at its fixed rate.
+    Each simulation is one full run of _simulate_run with random per-year shocks
+    on investment growth and inflation. σ (return volatility) is applied only
+    to investment growth; cash interest stays deterministic per ADR-012.
 
-    Total balance per simulation year:
-        total[y] = cash_floor[y]  +  investment_sim[y]
+    Because both engines share _simulate_run, MC reflects the same drawdown
+    eligibility, drawdown strategy, contributions (ADR-015), life-event account
+    routing, and two-layer tax model (ADR-013) as the deterministic projection.
 
-    Where cash_floor is the same deterministic series across all simulations.
-
-    Returns P10/P50/P90 for the aggregate total, plus:
-      cash_floor — deterministic cash balance series for chart rendering.
+    Returns P10 / P50 / P90 percentiles of the total balance per year, plus
+    success_rate (% of simulations where total balance stays non-negative every
+    year).
     """
     import numpy as np
 
     profile = load_profile()
     if not profile:
         return None
+    if proj_settings is None:
+        proj_settings = get_projection_settings()
+
+    all_accounts = load_all_accounts()
+    if not any(a["account_class"] == "InvestmentAccount" for a in all_accounts):
+        # No investments → nothing stochastic to model.
+        return None
 
     return_vol, inflation_vol = _get_mc_params(mc_profile_local)
-
-    today        = date.today()
-    current_year = today.year
-    birth_year   = profile["birth_year"]
-    retirement_year = birth_year + profile["retirement_age"]
-    end_year        = birth_year + profile["life_expectancy"]
-
-    all_accounts   = load_all_accounts()
-    # No investments → nothing stochastic to model; suppress so the template
-    # doesn't show a misleading cash-floor confidence band.
-    if not any(a["account_class"] == "InvestmentAccount" for a in all_accounts):
-        return None
 
     income_sources = load_all_income_sources()
     budget_lines   = load_budget_lines()
     life_events    = load_life_events()
+    contributions  = load_all_contributions()
     col_ratio      = load_col_ratio()
 
-    year_range = list(range(current_year, end_year + 1))
-    n_years    = len(year_range)
+    today           = date.today()
+    current_year    = today.year
+    end_year        = profile["birth_year"] + profile["life_expectancy"]
+    year_range      = list(range(current_year, end_year + 1))
+    n_years         = len(year_range)
 
-    # --- Split accounts by class ---
-    cash_accounts   = [a for a in all_accounts if a["account_class"] == "CashAccount"]
-    invest_accounts = [a for a in all_accounts if a["account_class"] == "InvestmentAccount"]
-
-    def _opening(acc: dict) -> float:
-        ye   = max(0, current_year - acc["balance_date"].year)
-        rate = (
-            acc["interest_rate"] / 100 if acc["account_class"] == "CashAccount"
-            else (acc["growth_rate"] + (acc["dividend_rate"] if acc["reinvest_dividends"] else 0)) / 100
-        )
-        return acc["balance"] * ((1 + rate) ** ye)
-
-    cash_opening   = sum(_opening(a) for a in cash_accounts)
-    invest_opening = sum(_opening(a) for a in invest_accounts)
-
-    # Weighted average rates for each pool
-    cash_total = sum(a["balance"] for a in cash_accounts)
-    cash_avg_rate = (
-        sum(a["balance"] * a["interest_rate"] for a in cash_accounts) / cash_total / 100
-        if cash_total > 0 else 0.0
-    )
-
-    invest_total = sum(a["balance"] for a in invest_accounts)
-    inv_avg_rate = (
-        sum(
-            a["balance"] * (a["growth_rate"] + (a["dividend_rate"] if a["reinvest_dividends"] else 0))
-            for a in invest_accounts
-        ) / invest_total / 100
-        if invest_total > 0 else 0.0
-    )
-
-    # Non-reinvested dividend income (deterministic)
-    div_sources = []
-    for acc in invest_accounts:
-        if not acc["reinvest_dividends"] and acc["dividend_rate"] > 0:
-            ye = max(0, current_year - acc["balance_date"].year)
-            div_sources.append({
-                "opening_value": acc["balance"] * ((1 + acc["growth_rate"] / 100) ** ye),
-                "growth_rate":   acc["growth_rate"],
-                "dividend_rate": acc["dividend_rate"],
-            })
-
-    # --- Pre-compute deterministic per-year values (income, budget, life events) ---
-    income_per_year = []
-    for yi, year in enumerate(year_range):
-        total = 0.0
-        for src in income_sources:
-            src_start = src["start_year"] or current_year
-            src_end   = src["end_year"]
-            if year >= src_start and (src_end is None or year <= src_end):
-                total += src["amount"] * ((1 + src["growth_rate"] / 100) ** yi)
-        for ds in div_sources:
-            pv = ds["opening_value"] * ((1 + ds["growth_rate"] / 100) ** yi)
-            total += pv * (ds["dividend_rate"] / 100)
-        income_per_year.append(total)
-
-    # Budget: (base_annual, own_rate, line_type) tuples + post-retirement flag
-    budget_per_year = []
-    for yi, year in enumerate(year_range):
-        active = []
-        for line in budget_lines:
-            if line["start_year"]    and year < line["start_year"]:  continue
-            if line["end_year"]      and year > line["end_year"]:     continue
-            if line["loan_end_year"] and year > line["loan_end_year"]: continue
-            active.append((line["annual_amount"], line["change_rate"], line["line_type"]))
-        budget_per_year.append((active, year >= retirement_year))
-
-    life_costs = [
-        sum(e["amount"]       for e in life_events if e["year"] == y and e["amount"] >= 0)
-        for y in year_range
-    ]
-    life_receipts = [
-        sum(abs(e["amount"])  for e in life_events if e["year"] == y and e["amount"] < 0)
-        for y in year_range
-    ]
-
-    # --- Deterministic cash floor (no σ, no drawdown in this series) ---
-    # Cash simply grows at its average rate. All cashflow uncertainty is modelled
-    # in the investment pool; if investment is exhausted the simulation shows
-    # a negative investment balance, which offsets against the positive cash floor
-    # to give the correct aggregate.
-    cash_floor = []
-    cb = cash_opening
-    for yi in range(n_years):
-        cb = cb * (1 + cash_avg_rate) if cb > 0 else cb
-        cash_floor.append(round(cb, 0))
-
-    # --- Monte Carlo: simulate investment pool ---
-    rng = np.random.default_rng()
-    return_shocks   = rng.normal(0.0, return_vol / 100.0, (n_sims, n_years))
-    inflation_shocks = rng.normal(0.0, inflation_vol,      (n_sims, n_years))
+    # Shocks in PERCENT units (matching the rate convention used by _simulate_run)
+    rng              = np.random.default_rng()
+    return_shocks    = rng.normal(0.0, return_vol,    (n_sims, n_years))
+    inflation_shocks = rng.normal(0.0, inflation_vol, (n_sims, n_years))
 
     all_balances = np.empty((n_sims, n_years), dtype=np.float64)
 
     for sim in range(n_sims):
-        invest_bal = invest_opening
-
-        for yi in range(n_years):
-            sim_rate      = max(0.0, inv_avg_rate + return_shocks[sim, yi])
-            sim_inflation = max(0.1, inflation_rate + inflation_shocks[sim, yi])
-
-            # Apply investment growth (σ perturbed)
-            if invest_bal > 0:
-                invest_bal *= (1 + sim_rate)
-
-            # Spending
-            mandatory = discretionary = loans = 0.0
-            active_lines, is_post_retirement = budget_per_year[yi]
-            for base, own_rate, lt in active_lines:
-                if lt == "BudgetLineType_Loan":
-                    rate = own_rate
-                else:
-                    rate = sim_inflation + own_rate
-                annual = base * ((1 + rate / 100) ** yi)
-                if   lt == "BudgetLineType_Mandatory":     mandatory     += annual
-                elif lt == "BudgetLineType_Discretionary": discretionary += annual
-                elif lt == "BudgetLineType_Loan":          loans         += annual
-
-            if col_ratio != 1.0 and is_post_retirement:
-                mandatory     *= col_ratio
-                discretionary *= col_ratio
-                loans         *= col_ratio
-
-            total_spending = mandatory + discretionary + loans + life_costs[yi]
-            # All cashflow routes through the investment pool in the MC
-            invest_bal += income_per_year[yi] + life_receipts[yi] - total_spending
-
-            # Aggregate = deterministic cash floor + stochastic investment pool
-            all_balances[sim, yi] = cash_floor[yi] + invest_bal
+        result = _simulate_run(
+            profile          = profile,
+            all_accounts     = all_accounts,
+            income_sources   = income_sources,
+            budget_lines     = budget_lines,
+            life_events      = life_events,
+            contributions    = contributions,
+            col_ratio        = col_ratio,
+            inflation_rate   = inflation_rate,
+            proj_settings    = proj_settings,
+            return_shocks    = return_shocks[sim].tolist(),
+            inflation_shocks = inflation_shocks[sim].tolist(),
+        )
+        all_balances[sim] = [y["balance"] for y in result["years"]]
 
     p10 = np.percentile(all_balances, 10, axis=0).round(0).tolist()
     p50 = np.percentile(all_balances, 50, axis=0).round(0).tolist()
     p90 = np.percentile(all_balances, 90, axis=0).round(0).tolist()
+    # Success = total balance never reached zero (mirrors deterministic
+    # `runs_out_year` logic — balance <= 0 in any year counts as failure).
+    # Per-account balances are floored at 0 inside _simulate_run, so the total
+    # can hit 0 but never go negative; "> 0" is the correct test.
+    success_rate = round(float(np.mean(np.all(all_balances > 0, axis=1))) * 100, 1)
 
-    success_rate = round(
-        float(np.mean(np.all(all_balances >= 0, axis=1))) * 100, 1)
+    has_cash = any(a["account_class"] == "CashAccount" for a in all_accounts)
 
     return {
-        "years":        year_range,
-        "p10":          p10,
-        "p50":          p50,
-        "p90":          p90,
-        "success_rate": success_rate,
-        "n_sims":       n_sims,
-        "profile":      mc_profile_local,
-        "cash_floor":   cash_floor,  # ADR-012: deterministic cash layer for chart
+        "years":            year_range,
+        "p10":              p10,
+        "p50":              p50,
+        "p90":              p90,
+        "success_rate":     success_rate,
+        "n_sims":           n_sims,
+        "profile":          mc_profile_local,
+        # Legacy key — was the old aggregate-pool cash layer; new model integrates
+        # cash and investments coherently, so this is always empty. Kept for
+        # template backward-compat (existing checks fall through cleanly).
+        "cash_floor":       [],
+        "has_cash":         has_cash,
     }
 
 
@@ -1279,7 +1264,7 @@ def run_monte_carlo(
 async def projection_page(request: Request):
     proj_settings = get_projection_settings()
     projection    = run_projection(proj_settings["inflation_rate"], proj_settings)
-    mc            = run_monte_carlo(proj_settings["inflation_rate"], proj_settings["mc_profile"])
+    mc            = run_monte_carlo(proj_settings["inflation_rate"], proj_settings["mc_profile"], proj_settings=proj_settings)
     all_accounts  = load_all_accounts()
 
     # Determine where surplus income accumulates — mirrors the engine fallback logic —
@@ -1306,6 +1291,30 @@ async def projection_page(request: Request):
         surplus_dest_name = fallback["name"] if fallback else "not configured"
         surplus_dest_configured = False
 
+    # Tax shield summary — surface the two-layer ADR-013 model so the user can
+    # see personal allowance and per-account allowances side-by-side. They
+    # intentionally stack; this panel helps catch double-counting (e.g. same
+    # figure entered in both places).
+    shield_accounts = [
+        {
+            "name":           a["name"],
+            "amount":         a["annual_tax_free_withdrawal"],
+            "tax_treatment":  a["tax_treatment"],
+            "account_class":  a["account_class"],
+        }
+        for a in all_accounts
+        if a["annual_tax_free_withdrawal"] > 0
+    ]
+    shield_accounts_total = sum(a["amount"] for a in shield_accounts)
+    personal_allowance    = proj_settings.get("annual_personal_allowance", 0.0)
+    tax_shield_summary = {
+        "personal_allowance": personal_allowance,
+        "accounts":           shield_accounts,
+        "accounts_total":     shield_accounts_total,
+        "combined":           personal_allowance + shield_accounts_total,
+        "show":               personal_allowance > 0 or shield_accounts_total > 0,
+    }
+
     return templates.TemplateResponse(
         request=request,
         name="projection.html",
@@ -1320,6 +1329,7 @@ async def projection_page(request: Request):
             "all_accounts":           all_accounts,
             "surplus_dest_name":      surplus_dest_name,
             "surplus_dest_configured": surplus_dest_configured,
+            "tax_shield_summary":     tax_shield_summary,
         }
     )
 

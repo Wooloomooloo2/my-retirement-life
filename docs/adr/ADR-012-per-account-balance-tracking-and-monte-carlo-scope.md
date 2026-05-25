@@ -61,21 +61,22 @@ The engine return type changes from a single balance array to a structured resul
 
 ### 2. Monte Carlo scope: investment accounts only
 
-Cash accounts have deterministic trajectories and are excluded from the Monte Carlo
-simulation. The simulation runs on the **investment account pool only**.
+σ (return volatility) applies only to investment account growth. Cash accounts grow
+at their fixed interest rate in every simulation — cash savings rates are predictable
+and modelling them with equity σ would overstate uncertainty for cash-heavy
+portfolios.
 
-- Cash account balances are computed once, deterministically, per simulation year.
-- Monte Carlo generates P10/P50/P90 bands for the investment account pool under
-  the selected profile's σ (standard deviation of returns).
-- The total displayed on the aggregate chart = deterministic cash balance + investment
-  P10/P50/P90 at each year.
+A user whose wealth is entirely in cash accounts has no stochastic component, so
+Monte Carlo is suppressed for that case (the deterministic projection is the answer).
+A user with mixed cash and investments sees a Monte Carlo band that reflects
+investment uncertainty layered on top of the deterministic cash trajectory.
 
-This is financially correct: outcome uncertainty in retirement comes predominantly
-from investment return volatility, not from cash savings interest rate variation.
-
-A user whose wealth is entirely in cash accounts will show a narrow, deterministic
-confidence band — which is accurate. Their risk is drawdown rate vs interest rate,
-not market volatility.
+**[Updated 2026-05-25, see §4 below]** Monte Carlo and deterministic engines now
+share a single year-loop helper (`_simulate_run`). MC is N runs of that helper with
+random per-year shocks on investment growth and inflation; the deterministic engine
+is one run with zero shocks. This means MC inherits drawdown eligibility (ADR-011),
+two-layer tax (ADR-013), contributions (ADR-015), and life-event account routing —
+all consistent with the deterministic engine, year by year, account by account.
 
 ### 3. Projection chart modes
 
@@ -98,34 +99,59 @@ Where drawdown > return, the account is depleting. The crossover point is explic
 marked. This makes the break-even dynamic visible without requiring the user to do
 the arithmetic.
 
-### 4. Monte Carlo engine changes
+### 4. Monte Carlo engine — shared with deterministic engine (revised 2026-05-25)
 
-The existing engine pre-computes deterministic arrays for income, budget lines, and
-life events before entering the simulation loop (for performance). Cash account
-balances join this pre-computed deterministic layer. The simulation loop applies σ
-only to the investment pool.
+Both engines call one helper, `_simulate_run`, which runs a single year-loop with
+per-account balance tracking. The helper takes optional per-year shock arrays:
+
+- `return_shocks[y]` — additive perturbation (in %) on each investment account's
+  effective growth rate for year `y`. The same shock is applied across all
+  investment accounts in a given year (single market-wide move).
+- `inflation_shocks[y]` — additive perturbation (in %) on the year's inflation
+  rate, which feeds into budget growth via the `change_rate + inflation` rule.
 
 ```
-pre-computed (deterministic):
-  annual_income[y], annual_budget[y], annual_events[y]
-  cash_balance[y]   ← new: computed once before loop
+deterministic:
+  _simulate_run(..., return_shocks=zeros, inflation_shocks=zeros)
 
-simulation loop (500 iterations):
-  invest_balance[y] ← perturbed by σ each year
-  total[y] = cash_balance[y] + invest_balance[y]
+Monte Carlo (N runs):
+  shocks ~ Normal(0, σ_profile)
+  for sim in range(N):
+      result = _simulate_run(..., return_shocks=shocks[sim], inflation_shocks=...)
+      record result["years"][y]["balance"]
+  compute P10/P50/P90 percentiles across sims, per year
+  success_rate = % of sims where total balance > 0 in every year
 ```
 
-P10/P50/P90 are computed on `total[y]` across the 500 simulations.
+Earlier (pre-2026-05-25) the MC engine was a separate aggregate-pool model — cash
+grew deterministically as a "floor" while *all* spending hit a single investment
+pool. That model was structurally inconsistent with the deterministic engine: it
+ignored drawdown eligibility, tax, contributions, and life-event routing, and it
+allowed the investment pool to go arbitrarily negative because cash was never
+drained. This produced misleading success rates (often near 100% even when the
+deterministic engine showed depletion). The current shared-helper approach removes
+that discrepancy by construction.
 
-### 5. Supersession of ADR-009
+**Performance note.** With the per-account loop in pure Python, N=250 simulations
+over a 35-year horizon with ~10 accounts completes in under a second. This is the
+new default `n_sims`. The legacy implementation used N=500 with a vectorised numpy
+inner loop; trading some MC granularity for model coherence is a deliberate choice.
+Should higher N be needed for tighter percentile estimates, the inner year-loop is
+the obvious vectorisation target.
+
+### 5. Per-account history surfaces in results
+
+The simulation result includes per-account history arrays for balance, withdrawal,
+return, and contribution. The deterministic projection's result keys (e.g.
+`account_balances`, `account_withdrawals`) are unchanged from earlier versions of
+this ADR.
+
+### 6. Supersession of ADR-009
 
 ADR-009 stated: "Investment accounts [are] merged into total balance pool."
-This ADR supersedes that decision for the **deterministic engine**. The Monte Carlo
-continues to operate on a pool, now restricted to investment accounts only.
-
-ADR-009's weighted return rate approach is retained for the investment pool: the
-blended rate across investment accounts (weighted by opening balance) is used as the
-mean return μ for the Monte Carlo, with the profile σ applied around it.
+This ADR supersedes that decision for **both** engines. The Monte Carlo no longer
+operates on a separate pool — it runs the same per-account simulation as the
+deterministic engine, with stochastic shocks layered on investment growth.
 
 ---
 

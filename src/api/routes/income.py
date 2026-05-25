@@ -59,6 +59,10 @@ def get_all_income_sources() -> list:
 
         income_type   = get_local("incomeSourceType")
         currency_local = get_local("incomeCurrency")
+        credited_to    = get_val("creditedToAccount")
+        # creditedToAccount is an object property — the value is a full IRI;
+        # the template uses the local name for the <option value> match.
+        credited_local = credited_to.split("#")[-1].split("/")[-1] if credited_to else ""
         sources.append({
             "n": n,
             "iri": str(iri.value),
@@ -75,6 +79,7 @@ def get_all_income_sources() -> list:
             "currencySymbol":   _currency_symbol(currency_local),
             "exchangeRate":     get_val("incomeExchangeRateToBase"),
             "exchangeRateDate": get_val("incomeExchangeRateDate"),
+            "creditedToAccount": credited_local,
         })
     sources.sort(key=lambda s: int(s["n"]) if s["n"].isdigit() else 0)
     return sources
@@ -87,7 +92,8 @@ def save_income_source(n: int, name: str, income_type: str,
                        end_year: Optional[int],
                        currency_local: str = "",
                        exchange_rate: float = 1.0,
-                       exchange_rate_date: str = "") -> None:
+                       exchange_rate_date: str = "",
+                       credited_to_account: str = "") -> None:
     """Write or overwrite an IncomeSource_N instance in the data graph.
 
     currency_local is the Currency individual local name (e.g. "GBP", "USD").
@@ -97,6 +103,10 @@ def save_income_source(n: int, name: str, income_type: str,
     "1 unit of income currency = N units of base currency". Only persisted when
     it differs from 1.0 (i.e. income currency != base currency). Mirrors the
     account FX-rate pattern from ADR-016.
+
+    credited_to_account is the local name (e.g. "CashAccount_2") of the
+    deposit account; only persisted when set. When absent, the engine falls
+    back to surplus routing.
     """
     source_iri = f"{MRL}IncomeSource_{n}"
     person_iri = f"{MRL}Person_1"
@@ -132,6 +142,12 @@ def save_income_source(n: int, name: str, income_type: str,
         triples += f"""
         <{source_iri}> mrl:incomeExchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
                        mrl:incomeExchangeRateDate   "{exchange_rate_date}"^^xsd:date .
+        """
+
+    # Deposit account link — only persist when the user actually chose one.
+    if credited_to_account:
+        triples += f"""
+        <{source_iri}> mrl:creditedToAccount mrl:{credited_to_account} .
         """
 
     store.update(f"""
@@ -223,6 +239,7 @@ def _get_retirement_year() -> Optional[int]:
 
 
 def _page_context(request, sources, edit_source=None, **kwargs):
+    from src.api.routes.accounts import get_all_accounts_combined
     current_year = date.today().year
     return {
         "app_name": settings.app_name,
@@ -235,6 +252,7 @@ def _page_context(request, sources, edit_source=None, **kwargs):
         "currencies":      get_currencies(),
         "base_currency":   get_base_currency(),
         "today":           date.today().isoformat(),
+        "all_accounts":    get_all_accounts_combined(),
         **kwargs,
     }
 
@@ -262,6 +280,7 @@ async def add_income_source(
     incomeCurrency: str = Form(""),
     incomeExchangeRateToBase: float = Form(1.0),
     incomeExchangeRateDate: str = Form(""),
+    creditedToAccount: str = Form(""),
 ):
     existing = get_all_income_sources()
     next_n = max([int(s["n"]) for s in existing if s["n"].isdigit()], default=0) + 1
@@ -270,7 +289,8 @@ async def add_income_source(
                        incomeIsNetOfTax, incomeStartYear, incomeEndYear,
                        currency_local=incomeCurrency,
                        exchange_rate=incomeExchangeRateToBase,
-                       exchange_rate_date=incomeExchangeRateDate)
+                       exchange_rate_date=incomeExchangeRateDate,
+                       credited_to_account=creditedToAccount)
     sources = get_all_income_sources()
     return templates.TemplateResponse(
         request=request,
@@ -304,13 +324,15 @@ async def save_edit_income(
     incomeCurrency: str = Form(""),
     incomeExchangeRateToBase: float = Form(1.0),
     incomeExchangeRateDate: str = Form(""),
+    creditedToAccount: str = Form(""),
 ):
     save_income_source(n, incomeSourceName, incomeSourceType,
                        incomeAnnualAmount, incomeGrowthRate,
                        incomeIsNetOfTax, incomeStartYear, incomeEndYear,
                        currency_local=incomeCurrency,
                        exchange_rate=incomeExchangeRateToBase,
-                       exchange_rate_date=incomeExchangeRateDate)
+                       exchange_rate_date=incomeExchangeRateDate,
+                       credited_to_account=creditedToAccount)
     sources = get_all_income_sources()
     return templates.TemplateResponse(
         request=request,

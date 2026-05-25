@@ -163,9 +163,10 @@
                 <i class="ti ti-chart-dots text-base-content/40" aria-hidden="true"></i>
                 Monte Carlo simulation
                 <span class="badge badge-ghost badge-xs">{{ mc.n_sims }} runs</span>
-                {% if mc.cash_floor and mc.cash_floor | sum > 0 %}
+                {% if mc.has_cash %}
                 <span class="badge badge-outline badge-xs text-base-content/40">Investment σ only — cash is deterministic</span>
                 {% endif %}
+                <span class="badge badge-outline badge-xs text-base-content/40" title="MC and deterministic share the same per-account engine — drawdown eligibility, two-layer tax, contributions, life-event routing all consistent.">Same model as projection</span>
             </span>
             <form method="post" action="/projection/mc-profile"
                   class="flex items-center gap-2">
@@ -192,11 +193,7 @@
             <canvas id="mcChart"></canvas>
         </div>
         <p class="text-xs text-base-content/40 mt-3 text-center">
-            Shaded band = 10th–90th percentile range &nbsp;|&nbsp; Line = median (P50) outcome &nbsp;|&nbsp;
-            {% if mc.cash_floor and mc.cash_floor | sum > 0 %}
-            Dashed line = deterministic cash floor &nbsp;|&nbsp;
-            {% endif %}
-            ★ = retirement year
+            Shaded band = 10th–90th percentile range &nbsp;|&nbsp; Line = median (P50) outcome &nbsp;|&nbsp; ★ = retirement year
         </p>
     </div>
 </div>
@@ -268,6 +265,75 @@
         </div>
     </div>
 </div>
+
+<!-- Tax shield summary (ADR-013 two-layer model) -->
+{% if tax_shield_summary.show %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-shield-check text-base-content/40" aria-hidden="true"></i>
+            Tax shield summary
+            <span class="badge badge-ghost badge-xs">ADR-013 two-layer model</span>
+        </h3>
+
+        <div class="grid grid-cols-3 gap-4 mb-3">
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Personal allowance</p>
+                <p class="text-lg font-semibold">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.personal_allowance) }}
+                </p>
+                <p class="text-xs text-base-content/40 mt-0.5">Residence-level — applies to aggregate taxable income</p>
+            </div>
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Account allowances</p>
+                <p class="text-lg font-semibold">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.accounts_total) }}
+                </p>
+                <p class="text-xs text-base-content/40 mt-0.5">
+                    {% if tax_shield_summary.accounts %}
+                        Across {{ tax_shield_summary.accounts | length }}
+                        account{% if tax_shield_summary.accounts | length != 1 %}s{% endif %} — PCLS / instrument shields
+                    {% else %}
+                        None set
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Combined annual shield</p>
+                <p class="text-lg font-semibold text-primary">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.combined) }}
+                </p>
+                <p class="text-xs text-base-content/40 mt-0.5">Max tax-free withdrawal per year if all allowances are used</p>
+            </div>
+        </div>
+
+        {% if tax_shield_summary.accounts %}
+        <div class="border-t border-base-200 pt-3">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide mb-2">Per-account breakdown</p>
+            <div class="flex flex-wrap gap-2">
+                {% for acc in tax_shield_summary.accounts %}
+                <div class="badge badge-outline gap-1.5 py-3">
+                    <span class="inline-block w-2 h-2 rounded-full {% if acc.account_class == 'CashAccount' %}bg-blue-500{% else %}bg-emerald-500{% endif %}"></span>
+                    <span class="font-medium">{{ acc.name }}</span>
+                    <span class="text-base-content/60">{{ base_currency_symbol() }}{{ "{:,.0f}".format(acc.amount) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="alert alert-info text-xs mt-4">
+            <i class="ti ti-info-circle"></i>
+            <span>
+                The two layers <strong>intentionally stack</strong>: account allowances shield withdrawals
+                from each account's source tax (e.g. UK pension 25% PCLS), and the personal allowance
+                shields aggregate income from residence-country tax. If you've entered the same figure
+                in both, you're modelling more tax-free room than reality — review and clear one.
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Drawdown settings panel -->
 <div class="card bg-base-100 shadow-sm">

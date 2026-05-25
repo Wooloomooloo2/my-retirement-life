@@ -247,6 +247,25 @@
                     </label>
                 </div>
 
+                <div class="form-control col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Deposit account <span class="font-normal normal-case">(optional)</span></span>
+                    </label>
+                    <select name="creditedToAccount" class="select select-bordered select-sm w-full">
+                        <option value="">— follow projection surplus routing (default) —</option>
+                        {% for acc in all_accounts %}
+                        {% set acc_label = acc.account_class ~ '_' ~ acc.n %}
+                        <option value="{{ acc_label }}"
+                            {% if edit_source and edit_source.creditedToAccount == acc_label %}selected{% endif %}>
+                            {{ acc.name }}{% if acc.account_class == 'InvestmentAccount' %} (investment){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">The account this income lands in each year (e.g. salary → current account, pension → ISA). When unset, income behaves as before — credited to the projection's spending account.</span>
+                    </label>
+                </div>
+
                 <!-- FX rate to base — visible only when income currency != base currency -->
                 <div class="form-control col-span-2" id="fx-rate-field"
                      style="display:{% if edit_source and edit_source.currencyCode and edit_source.currencyCode != base_currency.code %}block{% else %}none{% endif %}">

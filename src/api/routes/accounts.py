@@ -538,10 +538,27 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
     )
 
     accounts = get_all_accounts_combined()
-    cash_total   = sum(float(a["balance"]) for a in accounts
-                       if a["account_class"] == "CashAccount" and a.get("balance"))
-    invest_total = sum(float(a["balance"]) for a in accounts
-                       if a["account_class"] == "InvestmentAccount" and a.get("balance"))
+
+    # Header totals are displayed in the user's base currency, so each account's
+    # balance must be FX-converted via mrl:exchangeRateToBase before summing.
+    # Same-currency accounts have an empty FX field, which defaults to 1.0.
+    def _base_balance(a: dict) -> float:
+        raw = a.get("balance") or 0
+        try:
+            bal = float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+        fx_raw = a.get("exchangeRate") or ""
+        try:
+            fx = float(fx_raw) if fx_raw else 1.0
+        except (TypeError, ValueError):
+            fx = 1.0
+        return bal * fx
+
+    cash_total   = sum(_base_balance(a) for a in accounts
+                       if a["account_class"] == "CashAccount")
+    invest_total = sum(_base_balance(a) for a in accounts
+                       if a["account_class"] == "InvestmentAccount")
 
     context = {
         "app_name":            settings.app_name,

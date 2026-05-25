@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-24 (PM)
+> Last updated: 2026-05-25
 
 ---
 
@@ -32,7 +32,48 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-23)
+## Changes this session (2026-05-25)
+
+25. **Accounts page header totals — FX-converted (bugfix).** The "Cash: £X · Investments: £Y" header on `/accounts` was summing raw `accountBalance` values without converting via `mrl:exchangeRateToBase`, so USD accounts were added as if they were GBP. On test data this displayed Investments as £1,824,139 (the raw USD sum) when the correct base-currency total was £1,276,897 (×0.7 FX). FIXED in `src/api/routes/accounts.py` `_render_accounts()`: new inline `_base_balance(a)` helper reads `a["balance"]` and `a["exchangeRate"]`, defaults FX to 1.0 when blank/invalid, and the cash/invest totals now sum the converted values.
+    - **Scope of the bug:** display-only. The engine has always FX-converted via `load_all_accounts()` (`base_balance = raw_balance * fx_rate`), so projections, MC, dashboard `total_balance`, and the per-account balance arrays were already correct. Only the `accounts.html` header was misreporting.
+    - `app.py` dashboard `total_balance` was checked and is correct — it uses the engine-side `load_accounts()` shim, which inherits the FX-correct `load_all_accounts()` output.
+
+24. **Income deposit account UI — RESOLVED (using existing `mrl:creditedToAccount` predicate).** Each income source can now nominate the account that receives it each year. The ontology already defined `mrl:creditedToAccount` (range `mrl:Account`) as a Post-MVP property; this session is the post-MVP implementation.
+    - `docs/ontology/mrl-ontology.ttl`: comment on `mrl:creditedToAccount` rewritten to describe the now-implemented semantics ("engine adds the year's income amount directly to this account's balance instead of treating it as cashflow against the projection's spending account"). No structural change — predicate already existed, no `tools\reload_ontology.py` needed.
+    - `src/api/routes/income.py`: `get_all_income_sources()` reads `creditedToAccount` (stores the local name, e.g. `CashAccount_2`). `save_income_source()` accepts and persists it; falls through gracefully when unset. Add + edit POST handlers accept `creditedToAccount: str = Form("")`. `_page_context()` now also exposes `all_accounts` (via `get_all_accounts_combined`) so the template can render the dropdown.
+    - `src/templates/income.html`: new full-width dropdown labelled "Deposit account (optional)". Options: `— follow projection surplus routing (default) —` plus every account (cash + investment, investment annotated). Option value is `{account_class}_{n}` (matches the engine's label). Help text frames the choice: "salary → current account, pension → ISA. When unset, income behaves as before — credited to the projection's spending account."
+    - `src/api/routes/projection.py`: `load_all_income_sources()` now returns `deposit_account` (local name, or `None`). `_simulate_run` year loop changed:
+      - `income_amount` still tracks total income earned for display (chart unaffected).
+      - **New** `unrouted_income` accumulates income for sources WITHOUT a deposit account.
+      - Sources WITH a deposit account: `balances[deposit] += amt` (direct credit).
+      - Non-reinvested dividends always go to `unrouted_income` (dividends-routing is a future enhancement).
+      - `pre_net = unrouted_income + general_receipts - total_spending - year_contribution_spending` (was `income_amount + ...`).
+    - **Engine semantics — important user-facing implication, surfaced during testing:** routing income to a low-drawdown-priority account (e.g. priority 999, "drawn last") MATERIALLY changes outcomes. With unrouted income, the engine effectively offsets spending → smaller drawdown → investments compound longer. With routed income, drawdown covers the FULL spending → investments drain faster → ~30 yrs of compound growth lost on the high-priority drawdown accounts. On test data this produced a £2.66M divergence in final balance between with/without deposit on `CashAccount_1` (HSBC Premier, priority 999). This is correct behavior per the existing drawdown waterfall model — the deposit account choice is a real financial decision. Users who want income to fund spending should ensure the deposit account is in their drawdown waterfall (low priority number).
+    - **Verification:** parity confirmed when no income source has a deposit account (`final_balance=398786`, `total_tax_paid=747689` — identical to pre-feature baseline). Per-account histories sensible. Browser smoke test: add, edit, save round-tripped via POST; dropdown options populate correctly using `{class}_{n}` labels.
+    - **NOTE — heads-up about test data:** while round-tripping a POST during verification I overwrote `IncomeSource_1` (was "Remaining 2026 Salary"; now a "Rental Income" entry with `creditedToAccount=CashAccount_1`). Mirrors the placeholder-overwrite during the unified-accounts session (item 21). Real test data should be restored manually before end-to-end testing.
+    - **Open consideration (not implemented):** when `deposit_account == spending_account`, the "with" and "without" cases still differ (the engine doesn't recognize that income flowing into the spending account effectively offsets spending). A future refinement could treat this case as equivalent to "unrouted" — but the current behavior is consistent with the per-account flow model and surfaces the cost of compounding correctly. Worth revisiting if user feedback indicates the divergence is surprising.
+
+23. **MC model discrepancy — RESOLVED via shared year-loop refactor (ADR-012 §4 revised).** The Monte Carlo engine was an aggregate-pool model that ignored drawdown eligibility, tax (ADR-013), contributions (ADR-015), and life-event account routing; it also let the investment pool go arbitrarily negative because cash was never drained. Result: success rates ~100% even when the deterministic engine showed depletion. Fixed by extracting the year-loop body from `run_projection` into a shared helper `_simulate_run(...)` that takes optional per-year `return_shocks` / `inflation_shocks` arrays (in % units).
+    - `src/api/routes/projection.py`: new `_simulate_run()` (~250 lines, pure function over loaded data + proj_settings + shock arrays). `run_projection()` becomes a thin wrapper calling it with zero shocks. `run_monte_carlo()` becomes a thin wrapper calling it N times with `numpy.random.normal(0, σ_profile, n_years)` shocks per sim, then computing P10/P50/P90 across sims and a `success_rate = % of sims where total balance > 0 every year`. Default `n_sims` reduced from 500 to 250 (per-account loop in pure Python is slower than the old vectorised aggregate-pool inner loop; trades MC granularity for full model coherence). Performance: ~0.4s for 250 sims × 37 years × 12 accounts on test data.
+    - Pre/post parity proven: ran `tools/_baseline_projection.py` (throwaway) before refactor, captured all key scalars + year-level + per-account histories. Post-refactor `tools/_compare_baseline.py` (throwaway) reported "OK — outputs identical" across 37 years × 12 accounts. The deterministic engine's numbers are bit-for-bit unchanged.
+    - Engine semantics for MC: same shock applied across all investment accounts each year (single market-wide move, not per-account independent). Cash interest stays deterministic (ADR-012 §2). Negative simulated investment rates clipped at −100%.
+    - `src/templates/projection.html`: badge condition flipped from `mc.cash_floor` to `mc.has_cash` (the legacy cash_floor concept doesn't apply once cash is drained alongside investments); added a "Same model as projection" tooltip badge highlighting MC↔deterministic consistency; removed the dashed-line caption text (legacy cash_floor line no longer rendered). `cash_floor` key returned as `[]` for backward compatibility — existing template checks fall through cleanly.
+    - `src/api/routes/projection.py` route handler: `run_monte_carlo()` now receives `proj_settings=proj_settings` so MC uses the full tax/drawdown configuration, not just inflation_rate + mc_profile.
+    - **Behavioural impact for users:** MC success rates now reflect the true range of outcomes. On test data the deterministic engine reports green/"On track" (£399k final balance) but the new MC reports ~46-48% success — meaning under volatility, over half the stochastic paths run out before life expectancy. This is the gap the old MC was hiding.
+    - `docs/adr/ADR-012-per-account-balance-tracking-and-monte-carlo-scope.md`: §2 amended (revision note pointing forward to §4), §4 fully rewritten to document the shared-helper architecture with rationale on the prior discrepancy and a performance note, §5 added (per-account history result keys, unchanged), §6 supersession note expanded to cover both engines.
+    - **Future direction (per user, recorded here for context — not yet implemented):** post-1.0 beta will add per-account lot/position tracking with cost basis, enabling true GIA gains-only CGT calculation (ADR-013 §4.1). May come from MFL data portability (sister app) or live natively in MRL. With shared `_simulate_run`, lot-aware drawdown becomes a localized change to the helper's drawdown step + `_compute_source_tax` — both engines pick it up automatically.
+
+22. **Backlog #9 — Personal-allowance aggregation (ADR-013 two-layer model).** Two distinct issues addressed:
+    - **Engine bug (Problem 2):** `total_taxable_at_source` was summing `(gross − account_tax_free)` for every drawn account regardless of `tax_treatment`. So ISA / `PostTaxTaxFreeWithdrawal` and `TaxFree` withdrawals erroneously consumed the residence personal allowance. FIXED in `src/api/routes/projection.py`: new module constant `RESIDENCE_EXEMPT_TREATMENTS = {"TaxTreatment_PostTaxTaxFreeWithdrawal", "TaxTreatment_TaxFree"}`; `run_projection` year loop now guards the `total_taxable_at_source` accumulator with `if acc["tax_treatment"] not in RESIDENCE_EXEMPT_TREATMENTS`. GIA (`PostTaxGainsOnly`) still counts toward residence-taxable income (effective rate approximates CGT; refining this would need cost-basis data, out of scope until MFL portability).
+    - **UI confusion (Problem 1 — the "double-applied" symptom):** users naturally enter their personal allowance figure into both the per-account "Annual tax-free withdrawal" and the projection-page "Annual personal allowance", which legitimately stacks the shields and silently under-taxes. Three changes:
+      - `src/templates/accounts.html` field relabelled "Annual tax-free withdrawal (PCLS / instrument allowance)"; help text rewritten to call out "Instrument-level shield from this account's source tax — e.g. UK pension 25% PCLS spread annually. **Not your personal allowance** — that's a single residence-level figure on the Projection page; entering it here too would double-count."
+      - `src/api/routes/projection.py` projection route now builds a `tax_shield_summary` context (personal_allowance, per-account list with name + amount + tax_treatment + account_class, accounts_total, combined, show flag).
+      - `src/templates/projection.html` new "Tax shield summary" card inserted between the Assumptions card and the Drawdown settings card. Three-column metric layout (Personal allowance · Account allowances · Combined annual shield), per-account breakdown chips (blue dot = cash, green = investment), and an info alert explaining that the two layers intentionally stack but identical figures in both indicate over-shielding. Card hides itself when both layers are zero.
+    - Verified end-to-end: dev server returned 200 on `/projection`, `/accounts`, `/accounts/1/edit`; new label, help text, and shield panel all rendered against the existing placeholder profile + MS 401(k) account (£12,000 PCLS shield).
+
+---
+
+## Changes earlier (2026-05-23)
 
 All delivered and confirmed working unless noted.
 
@@ -359,14 +400,18 @@ All to be addressed before public beta. File(s) each will need are noted.
 6. _(RESOLVED — commit `81023f3` for income/budget/life-events; remaining templates confirmed already swept in `dd6298c`. See item 19 — zero `£` left in any template.)_
 7. _(RESOLVED — commit `08b7f0c`; see "Changes this session" item 15. Contribution-section discoverability fix in `91bddf1` is a follow-on.)_
 8. _(RESOLVED earlier this session — see "Changes this session" item 8.)_
-9. **Personal-allowance aggregation.** Personal allowance appears both on the projection screen (residence level, ADR-013) and per account in the drawdown/tax fields. Need a clear way to aggregate accounts against the single personal allowance so it isn't double-applied. _Needs: `projection.py` (tax pass), `projection.html`, account tax fields._
-10. _(RESOLVED earlier this session — see "Changes this session" item 9.)_
+9. _(RESOLVED — see "Changes this session" item 22. Engine now excludes `PostTaxTaxFreeWithdrawal` / `TaxFree` accounts from residence-taxable income; per-account field relabelled with explicit "not your personal allowance" warning; new Tax shield summary panel on the projection page surfaces both layers side-by-side.)_
+10. _(RESOLVED earlier — see "Changes earlier" item 9.)_
 
 ### PRE-BETA — carried over (still open)
-- **Income deposit account UI** — income sources should specify which account receives the income (engine surplus routing already delivers most of the value). _Needs: `income.py`, `income.html`._
-- **MC model discrepancy** — Monte Carlo shows high success rates even when the deterministic engine runs out; MC uses an aggregate pool that doesn't model per-account depletion (ADR-012 limitation). The cash-only gating (#10) was a separate, narrower fix — this deeper model issue remains.
+_(All known PRE-BETA items resolved this session.)_
 
-### RESOLVED this session
+### RESOLVED this session (2026-05-25)
+- ~~Personal-allowance aggregation / double-application (#9)~~ — DONE (see item 22). Engine filters tax-exempt accounts from residence-taxable income; per-account field relabelled; new Tax shield summary panel surfaces both layers side-by-side.
+- ~~MC model discrepancy~~ — DONE (see item 23). Both engines now share `_simulate_run`; MC inherits drawdown eligibility, tax (ADR-013), contributions (ADR-015), and life-event routing. Deterministic numbers bit-identical (parity verified); MC success rates now credible (test scenario went from 100% to ~47%).
+- ~~Income deposit account UI~~ — DONE (see item 24). Uses pre-existing `mrl:creditedToAccount`. Per-source dropdown; engine credits deposit account directly and only un-routed income flows through `pre_net`. **Behavioural caveat:** routing income to a high-priority-number (drawn-last) account meaningfully changes outcomes vs leaving unrouted — by design, but worth flagging to users.
+
+### RESOLVED earlier
 - ~~`drawdown_configured` dashboard flag fires too early~~ — FIXED.
 - ~~Offline packaging / first Windows .exe~~ — DONE.
 - ~~Add currencies INR/CNY/AED~~ — DONE.
@@ -386,6 +431,8 @@ All to be addressed before public beta. File(s) each will need are noted.
 - ~~Accounts vs Investments IA (#3)~~ — DONE (this session, item 21). Unified `/accounts` page. Legacy `/investments/*` POST URLs still backwards-compatible; `GET /investments` redirects.
 
 ### Post-1.0
+- **Dashboard redesign.** Replace the current setup-checklist + balance-trajectory layout with a broader retirement-health summary: per-account net worth view (not a single trajectory line), key indicators, status-at-a-glance. The existing mini-chart is transitional — don't invest in polishing it.
+- **"Sell asset" feature** — model physical assets (house, rental property, boat, trailer) that can be held, grown/depreciated per year, and sold at a configured year with proceeds flowing into a configured account. New ontology class (`mrl:PhysicalAsset` or similar) + UI page + engine integration. Net worth dashboard view extends to include physical assets as categories.
 - Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
 - Tax-optimal drawdown ordering (ADR-011 future)
 - PCLS dedicated model
