@@ -20,7 +20,7 @@ My Retirement Life is built from the ground up to handle the real complexity of 
 
 - **Full financial picture** — cash savings, investments, pensions (state and private), property, other assets, and future windfalls — in any currency
 - **Income planning** — current income, expected trajectory, working years remaining
-- **Budget modelling** — mandatory and discretionary spending, loans, inflation adjustments
+- **Budget modelling** — mandatory and discretionary spending, loans, and account contributions; tag lines with your own categories (Housing, Food, Travel…); model life-stage changes as multiple time-bounded stages within a single line (e.g. groceries lower as a single person, higher with kids, lower again in empty-nest); toggle the chart between today's £ and inflation-adjusted nominal £
 - **Life events** — model the financial impact of children leaving home, university fees, buying or selling property, moving abroad, caring for family, early retirement, and more
 - **Retirement projections** — visual burndown charts showing your cash position year by year through retirement
 - **Confidence scoring** — a clear indicator of how likely your retirement plan is to succeed given your assumptions

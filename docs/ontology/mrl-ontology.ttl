@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.1" .
+    owl:versionInfo "1.0.2" .
 
 
 # ===========================================================================
@@ -1212,13 +1212,41 @@ mrl:OtherAsset a owl:Class ;
 
 
 # ===========================================================================
+# BUDGET CATEGORY (ADR-017)
+# Instance pattern: mrl:BudgetCategory_N
+# ===========================================================================
+
+mrl:BudgetCategory a owl:Class ;
+    rdfs:label "Budget category"@en ;
+    rdfs:comment "A user-created spending category that groups budget lines on the /budget chart (e.g. Housing, Food, Travel). The category list is user-defined — no fixed vocabulary — though the UI surfaces a small set of starter suggestions (Housing, Food, Transport, Travel, Health, Subscriptions, Personal, Bills, Taxes) that materialise as instances only when adopted. Account contributions (mrl:AccountContribution) are NOT BudgetCategory instances: they are derived at render time from contribution data and rendered as a separate synthetic 'Account contributions' group. See ADR-017."@en .
+
+mrl:categoryName a owl:DatatypeProperty ;
+    rdfs:label "category name"@en ;
+    rdfs:comment "Display name of the budget category, e.g. 'Food'. The name 'Account contributions' is reserved — the UI rejects user-defined categories with this name to avoid collision with the synthetic system group."@en ;
+    rdfs:domain mrl:BudgetCategory ;
+    rdfs:range xsd:string .
+
+mrl:categoryDisplayOrder a owl:DatatypeProperty ;
+    rdfs:label "category display order"@en ;
+    rdfs:comment "Optional integer for manual ordering on the chart legend; ties broken alphabetically by categoryName when absent."@en ;
+    rdfs:domain mrl:BudgetCategory ;
+    rdfs:range xsd:integer .
+
+mrl:categorySource a owl:DatatypeProperty ;
+    rdfs:label "category source"@en ;
+    rdfs:comment "Provenance of the category — 'user' (default, created in the MRL UI) or 'mfl-level-1' when imported from the sister My Financial Life app (ADR-010). Reserved for the future MFL ingest path; not surfaced in the v1 UI."@en ;
+    rdfs:domain mrl:BudgetCategory ;
+    rdfs:range xsd:string .
+
+
+# ===========================================================================
 # BUDGET LINE
 # Instance pattern: mrl:BudgetLine_<uuid>
 # ===========================================================================
 
 mrl:BudgetLine a owl:Class ;
     rdfs:label "Budget line"@en ;
-    rdfs:comment "A single line item in the user's budget."@en .
+    rdfs:comment "A single line item in the user's budget. From ontology 1.0.2 (ADR-017), the amount, frequency, time window, and growth rate live on one or more mrl:BudgetLineSegment instances linked via mrl:segmentOwner; the line itself retains identity (name, type, category, owner) but no per-period data. The legacy line-level properties (budgetLineAmount, budgetLineFrequency, annualChangeRate, budgetStartYear, budgetEndYear, loanEndYear) are deprecated — kept on the class for migration safety but no longer written by new code."@en .
 
 mrl:budgetLineName a owl:DatatypeProperty ;
     rdfs:label "budget line name"@en ;
@@ -1227,7 +1255,7 @@ mrl:budgetLineName a owl:DatatypeProperty ;
 
 mrl:budgetLineAmount a owl:DatatypeProperty ;
     rdfs:label "budget line amount"@en ;
-    rdfs:comment "Annual amount in base currency."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] Annual amount in base currency. Superseded by mrl:segmentAmount on mrl:BudgetLineSegment. Retained on the class to support migration of pre-1.0.2 data."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:decimal .
 
@@ -1239,31 +1267,31 @@ mrl:budgetLineType a owl:ObjectProperty ;
 
 mrl:budgetLineFrequency a owl:ObjectProperty ;
     rdfs:label "budget line frequency"@en ;
-    rdfs:comment "How often the amount recurs. Points to a skos:Concept in mrlx:FrequencyTypeScheme. The projection engine multiplies the stored amount by the frequency multiplier to get the annual equivalent."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] How often the amount recurs. Superseded by mrl:segmentFrequency on mrl:BudgetLineSegment. Retained on the class to support migration of pre-1.0.2 data."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range skos:Concept .
 
 mrl:annualChangeRate a owl:DatatypeProperty ;
     rdfs:label "annual change rate"@en ;
-    rdfs:comment "Default annual percentage increase or decrease applied to this budget line, e.g. 2.5 for 2.5% inflation. Used by the MVP projection engine. For time-segmented rates see mrl:BudgetLineSegment (post-MVP)."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] Default annual percentage change. Superseded by mrl:segmentChangeRate on mrl:BudgetLineSegment. Retained on the class to support migration of pre-1.0.2 data."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:decimal .
 
 mrl:loanEndYear a owl:DatatypeProperty ;
     rdfs:label "loan end year"@en ;
-    rdfs:comment "For mrlx:BudgetLineType_Loan: the calendar year in which repayments cease."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] For mrlx:BudgetLineType_Loan: the calendar year in which repayments cease. Migration folds this into mrl:segmentEndYear on the line's sole segment."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:integer .
 
 mrl:budgetStartYear a owl:DatatypeProperty ;
     rdfs:label "budget start year"@en ;
-    rdfs:comment "The first calendar year this budget line applies. If absent, the line is active from the current projection year. Use this to model future spending that has not yet begun, e.g. school fees starting in 2027."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] The first calendar year this budget line applies. Superseded by mrl:segmentStartYear on mrl:BudgetLineSegment. Retained on the class to support migration of pre-1.0.2 data."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:integer .
 
 mrl:budgetEndYear a owl:DatatypeProperty ;
     rdfs:label "budget end year"@en ;
-    rdfs:comment "The last calendar year this budget line applies. If absent, the line continues indefinitely. For loan repayments prefer mrl:loanEndYear so the line type badge displays correctly; budgetEndYear is for general time-bounded spending, e.g. school fees ending in 2033."@en ;
+    rdfs:comment "[DEPRECATED in 1.0.2 — see ADR-017] The last calendar year this budget line applies. Superseded by mrl:segmentEndYear on mrl:BudgetLineSegment. Retained on the class to support migration of pre-1.0.2 data."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:integer .
 
@@ -1272,49 +1300,66 @@ mrl:budgetOwner a owl:ObjectProperty ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range mrl:Person .
 
+mrl:budgetCategory a owl:ObjectProperty ;
+    rdfs:label "budget category"@en ;
+    rdfs:comment "Optional link to a mrl:BudgetCategory grouping this line on the by-category chart (ADR-017). Applies to all line types including Loan — a mortgage is categorised as e.g. Housing alongside utilities and insurance, not in a separate 'Loans' band. Lines without a category fall into a synthetic 'Uncategorised' group until the user assigns one."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range mrl:BudgetCategory .
 
-# ---------------------------------------------------------------------------
-# BudgetLineSegment — post-MVP time-segmented growth rates
+
+# ===========================================================================
+# BUDGET LINE SEGMENT (ADR-017)
 #
-# Allows a budget line to have different growth rates over different periods.
-# For example: holidays up 5%/year until 2035, then up 50%/year until 2040,
-# then reduced to zero. The MVP uses mrl:annualChangeRate on mrl:BudgetLine
-# as a single default rate. BudgetLineSegment is declared here for future use.
+# Each budget line has one or more time-bounded segments. A segment carries
+# the amount, frequency, time window, and real-growth rate for one stage of
+# the line's life. Example — Groceries:
+#   Segment_1: 2026–2030 · £500/mo  · 0% real growth   (single-person stage)
+#   Segment_2: 2031–2048 · £1500/mo · 0% real growth   (family stage)
+#   Segment_3: 2049–end  · £600/mo  · 0% real growth   (empty-nest stage)
+# Gaps between segments are permitted and render as years of zero on the
+# stacked chart — e.g. pausing 'Travel' for two years to pay down a mortgage
+# faster. Overlapping segments are rejected by the UI.
 #
-# Instance pattern: mrl:BudgetLineSegment_<uuid>
-# ---------------------------------------------------------------------------
+# Instance pattern: mrl:BudgetLineSegment_N
+# ===========================================================================
 
 mrl:BudgetLineSegment a owl:Class ;
     rdfs:label "Budget line segment"@en ;
-    rdfs:comment "A time-bounded segment of a budget line with its own annual change rate. Enables modelling of spending that grows at different rates in different periods, or stops entirely at a future date. Post-MVP."@en .
+    rdfs:comment "A time-bounded amount within a budget line. A line has one or more segments; in any given year at most one segment is active. The segment is the source of truth for amount, frequency, window and growth rate — the legacy line-level properties (budgetLineAmount, budgetLineFrequency, annualChangeRate, budgetStartYear, budgetEndYear, loanEndYear) are deprecated as of 1.0.2. See ADR-017."@en .
 
 mrl:segmentStartYear a owl:DatatypeProperty ;
     rdfs:label "segment start year"@en ;
-    rdfs:comment "The first calendar year this segment applies."@en ;
+    rdfs:comment "First calendar year this segment is active. Required."@en ;
     rdfs:domain mrl:BudgetLineSegment ;
     rdfs:range xsd:integer .
 
 mrl:segmentEndYear a owl:DatatypeProperty ;
     rdfs:label "segment end year"@en ;
-    rdfs:comment "The last calendar year this segment applies. Null means the segment continues indefinitely."@en ;
+    rdfs:comment "Last calendar year this segment is active. Optional — open-ended segments run to the end of the projection."@en ;
     rdfs:domain mrl:BudgetLineSegment ;
     rdfs:range xsd:integer .
 
+mrl:segmentAmount a owl:DatatypeProperty ;
+    rdfs:label "segment amount"@en ;
+    rdfs:comment "Amount per period in base currency for this segment. Multiply by the segment's frequency to obtain the annualised value."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range xsd:decimal .
+
+mrl:segmentFrequency a owl:ObjectProperty ;
+    rdfs:label "segment frequency"@en ;
+    rdfs:comment "How often this segment's amount recurs. Points to a skos:Concept in mrlx:FrequencyTypeScheme. The projection engine multiplies the stored amount by the frequency multiplier to get the annual equivalent."@en ;
+    rdfs:domain mrl:BudgetLineSegment ;
+    rdfs:range skos:Concept .
+
 mrl:segmentChangeRate a owl:DatatypeProperty ;
     rdfs:label "segment change rate"@en ;
-    rdfs:comment "Annual percentage change applied during this segment. Positive = increase, negative = decrease, zero = frozen."@en ;
+    rdfs:comment "Real annual growth rate (above inflation) applied during this segment. Positive = real growth, negative = real decline, zero = held flat in real terms. Default 0."@en ;
     rdfs:domain mrl:BudgetLineSegment ;
     rdfs:range xsd:decimal .
 
-mrl:segmentAmountOverride a owl:DatatypeProperty ;
-    rdfs:label "segment amount override"@en ;
-    rdfs:comment "Optional: replaces the budget line amount entirely for this segment rather than applying a growth rate. Useful for modelling a sudden change in spending level."@en ;
-    rdfs:domain mrl:BudgetLineSegment ;
-    rdfs:range xsd:decimal .
-
-mrl:segmentOfLine a owl:ObjectProperty ;
-    rdfs:label "segment of line"@en ;
-    rdfs:comment "The budget line this segment belongs to."@en ;
+mrl:segmentOwner a owl:ObjectProperty ;
+    rdfs:label "segment owner"@en ;
+    rdfs:comment "The budget line this segment belongs to. Mirrors the mrl:contributionOwner pattern on mrl:AccountContribution (ADR-015)."@en ;
     rdfs:domain mrl:BudgetLineSegment ;
     rdfs:range mrl:BudgetLine .
 

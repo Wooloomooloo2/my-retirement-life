@@ -20,16 +20,35 @@
 </div>
 {% endif %}
 
-<!-- Annual spending over time -->
+{% if category_error %}
+<div class="alert alert-warning mb-4">
+    <i class="ti ti-alert-triangle"></i>
+    <span>{{ category_error }}</span>
+</div>
+{% endif %}
+
+<!-- ====================================================================== -->
+<!-- Annual spending over time — by category by default, with by-line toggle -->
+<!-- ====================================================================== -->
 {% if lines %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-base-200">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-base-200 flex-wrap gap-2">
             <h3 class="text-sm font-medium flex items-center gap-2">
                 <i class="ti ti-chart-area text-base-content/40" aria-hidden="true"></i>
                 Annual spending over time
-                <span class="text-xs font-normal text-base-content/40 ml-2">in today's {{ base_currency_code() }} — projection page applies inflation</span>
+                <span class="text-xs font-normal text-base-content/40 ml-2" id="chart-mode-hint">in today's {{ base_currency_code() }} — toggle "With inflation" for nominal projection</span>
             </h3>
+            <div class="flex items-center gap-3">
+                <label class="cursor-pointer flex items-center gap-1 text-xs">
+                    <input type="checkbox" id="inflation-toggle" class="checkbox checkbox-xs" />
+                    <span>With inflation ({{ "{:.1f}".format(inflation_rate) }}%/yr)</span>
+                </label>
+                <div class="join">
+                    <button type="button" id="grp-category-btn" class="btn btn-xs join-item btn-primary">Category</button>
+                    <button type="button" id="grp-line-btn"     class="btn btn-xs join-item">Line</button>
+                </div>
+            </div>
         </div>
 
         <!-- Snapshot metrics row — total = spending + contributions, with a
@@ -60,15 +79,18 @@
             {{ snapshot_card('At retirement', metrics.retirement) }}
             {{ snapshot_card('Peak',          metrics.peak) }}
         </div>
+        <p class="text-xs text-base-content/40 mb-2"><i class="ti ti-info-circle"></i> Snapshot figures above are in today's {{ base_currency_code() }}; the chart toggle controls whether year-by-year bars are shown in real or nominal terms.</p>
 
-        <div style="position:relative; height:220px">
+        <div style="position:relative; height:240px">
             <canvas id="budgetChart"></canvas>
         </div>
     </div>
 </div>
 {% endif %}
 
-<!-- Budget lines table -->
+<!-- ====================================================================== -->
+<!-- Budget lines table                                                     -->
+<!-- ====================================================================== -->
 {% if lines %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
@@ -82,45 +104,61 @@
                     <tr class="text-xs uppercase tracking-wide text-base-content/40">
                         <th>Name</th>
                         <th>Type</th>
-                        <th>Amount</th>
-                        <th>Frequency</th>
-                        <th>Annual total</th>
+                        <th>Category</th>
+                        <th>Schedule</th>
+                        <th>Annual total <span class="font-normal normal-case text-base-content/30">(today)</span></th>
                         <th>Real growth</th>
-                        <th>Active</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for line in lines %}
+                    {% set seg_count = (line.segments | length) %}
                     <tr class="hover {% if edit_line and edit_line.n == line.n %}bg-base-200{% endif %}">
-                        <td class="font-medium">{{ line.name }}</td>
-                        <td>
-                            {% if line.lineType == 'BudgetLineType_Mandatory' %}
-                                <span class="badge badge-error badge-sm badge-outline">Mandatory</span>
-                            {% elif line.lineType == 'BudgetLineType_Discretionary' %}
-                                <span class="badge badge-warning badge-sm badge-outline">Discretionary</span>
-                            {% elif line.lineType == 'BudgetLineType_Loan' %}
-                                <span class="badge badge-info badge-sm badge-outline">Loan{% if line.loanEndYear %} ends {{ line.loanEndYear }}{% endif %}</span>
+                        <td class="font-medium">
+                            {{ line.name }}
+                            {% if seg_count > 1 %}
+                            <span class="badge badge-ghost badge-sm ml-1" title="This line has {{ seg_count }} stages over its lifetime">{{ seg_count }} stages</span>
                             {% endif %}
                         </td>
-                        <td>{{ base_currency_symbol() }}{{ "{:,.2f}".format(line.amount | float) }}</td>
-                        <td class="text-base-content/60 text-xs">{{ line.frequencyLabel }}</td>
-                        <td class="font-medium">{{ base_currency_symbol() }}{{ "{:,.0f}".format(line.annualAmount) }}</td>
                         <td>
-                            {% if line.changeRate and line.changeRate != '0' and line.changeRate != '0.0' %}
-                                <span class="text-xs {% if line.changeRate | float > 0 %}text-error{% else %}text-success{% endif %}">
-                                    {% if line.changeRate | float > 0 %}+{% endif %}{{ line.changeRate }}%/yr
-                                </span>
+                            {% if line.lineType == 'BudgetLineType_Mandatory' %}
+                                <span class="badge badge-error badge-sm" title="Mandatory">M</span>
+                            {% elif line.lineType == 'BudgetLineType_Discretionary' %}
+                                <span class="badge badge-warning badge-sm" title="Discretionary">D</span>
+                            {% elif line.lineType == 'BudgetLineType_Loan' %}
+                                <span class="badge badge-info badge-sm" title="Loan repayment">L</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if line.categoryName %}
+                                <span class="text-xs">{{ line.categoryName }}</span>
                             {% else %}
                                 <span class="text-xs text-base-content/30">—</span>
                             {% endif %}
                         </td>
+                        <td class="text-xs text-base-content/60">
+                            {% if seg_count > 1 %}
+                                {{ line.segments[0].startYear }} → {{ line.segments[-1].endYear if line.segments[-1].endYear else '∞' }}
+                                <span class="text-base-content/40">({{ seg_count }} stages)</span>
+                            {% else %}
+                                {% set s = line.segments[0] if line.segments else line %}
+                                {{ s.startYear if s.startYear else 'now' }}
+                                →
+                                {{ s.endYear if s.endYear else '∞' }}
+                            {% endif %}
+                        </td>
+                        <td class="font-medium">
+                            {% if seg_count <= 1 %}
+                                {{ base_currency_symbol() }}{{ "{:,.0f}".format(line.annualAmount) }}
+                            {% else %}
+                                <span class="text-xs text-base-content/40">multi-stage</span>
+                            {% endif %}
+                        </td>
                         <td>
-                            {% if line.startYear or line.endYear %}
-                                <span class="text-xs text-base-content/50">
-                                    {{ line.startYear if line.startYear else '…' }}
-                                    →
-                                    {{ line.endYear if line.endYear else '∞' }}
+                            {% if seg_count <= 1 and line.changeRate and line.changeRate != '0' and line.changeRate != '0.0' %}
+                                <span class="text-xs {% if line.changeRate | float > 0 %}text-error{% else %}text-success{% endif %}">
+                                    {% if line.changeRate | float > 0 %}+{% endif %}{{ line.changeRate }}%/yr
                                 </span>
                             {% else %}
                                 <span class="text-xs text-base-content/30">—</span>
@@ -147,13 +185,15 @@
         </div>
         <p class="text-xs text-base-content/40 mt-3">
             <i class="ti ti-info-circle"></i>
-            "Annual total" is each line's amount at today's level — start/end years control when it actually applies. The chart above shows the combined spending year by year.
+            Annual total is at today's level — the chart above shows how the line scales over time with real growth. Multi-stage lines have different amounts in different periods (e.g. groceries: lower as a single person, higher with kids, lower again in empty nest).
         </p>
     </div>
 </div>
 {% endif %}
 
-<!-- Account contributions (ADR-015) — read-only, managed via Accounts/Investments pages -->
+<!-- ====================================================================== -->
+<!-- Account contributions (ADR-015) — read-only, managed via Accounts pages -->
+<!-- ====================================================================== -->
 {% if contributions %}
 <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
@@ -205,8 +245,13 @@
 </div>
 {% endif %}
 
-<!-- Add / Edit form -->
-<div class="card bg-base-100 shadow-sm">
+<!-- ====================================================================== -->
+<!-- Add / Edit form — Schedule (multi-segment) + Category (ADR-017)        -->
+<!-- ====================================================================== -->
+{% set default_seg = {'startYear': current_year, 'endYear': '', 'amount': '', 'frequency': 'FrequencyType_Monthly', 'changeRate': '0'} %}
+{% set form_segments = edit_line.segments if (edit_line and edit_line.segments) else [default_seg] %}
+
+<div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
         <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
             <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
@@ -217,18 +262,18 @@
               action="{% if edit_line %}/budget/{{ edit_line.n }}/edit{% else %}/budget{% endif %}"
               id="budget-form">
 
-            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+            <!-- Name (full row) -->
+            <div class="form-control mb-3">
+                <label class="label py-0.5">
+                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Name</span>
+                </label>
+                <input type="text" name="budgetLineName" required
+                    value="{{ edit_line.name if edit_line else '' }}"
+                    placeholder="e.g. Mortgage, Groceries, Netflix"
+                    class="input input-bordered input-sm w-full" />
+            </div>
 
-                <!-- Name -->
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Name</span>
-                    </label>
-                    <input type="text" name="budgetLineName" required
-                        value="{{ edit_line.name if edit_line else '' }}"
-                        placeholder="e.g. Mortgage, Groceries, Netflix"
-                        class="input input-bordered input-sm w-full" />
-                </div>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
                 <!-- Type -->
                 <div class="form-control">
@@ -236,8 +281,7 @@
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
                     </label>
                     <select name="budgetLineType" id="line-type"
-                            class="select select-bordered select-sm w-full"
-                            onchange="toggleLoanFields()">
+                            class="select select-bordered select-sm w-full">
                         <option value="BudgetLineType_Mandatory"
                             {% if edit_line and edit_line.lineType == 'BudgetLineType_Mandatory' %}selected{% elif not edit_line %}selected{% endif %}>
                             Mandatory
@@ -251,104 +295,120 @@
                             Loan repayment
                         </option>
                     </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Loans don't inflate — fixed nominal payments. Mandatory and Discretionary inflate with the projection rate.</span>
+                    </label>
                 </div>
 
-                <!-- Amount -->
+                <!-- Category -->
                 <div class="form-control">
                     <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Category</span>
                     </label>
-                    <input type="number" name="budgetLineAmount" required
-                        min="0" step="0.01"
-                        value="{{ edit_line.amount if edit_line else '' }}"
-                        placeholder="e.g. 500"
-                        class="input input-bordered input-sm w-full"
-                        id="amount-input"
-                        oninput="updateAnnual()" />
-                </div>
-
-                <!-- Frequency -->
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
-                    </label>
-                    <select name="budgetLineFrequency" id="freq-select"
-                            class="select select-bordered select-sm w-full"
-                            onchange="updateAnnual()">
-                        {% for key, label in frequency_options.items() %}
-                        <option value="{{ key }}"
-                            {% if edit_line and edit_line.frequency == key %}selected
-                            {% elif not edit_line and key == 'FrequencyType_Monthly' %}selected{% endif %}>
-                            {{ label }}
-                        </option>
+                    <input type="text" name="budgetCategoryName" id="category-input"
+                        list="category-suggestions"
+                        value="{{ edit_line.categoryName if edit_line else '' }}"
+                        placeholder="e.g. Housing, Food — or type a new one"
+                        class="input input-bordered input-sm w-full" />
+                    <datalist id="category-suggestions">
+                        {% for c in categories %}<option value="{{ c.name }}"></option>{% endfor %}
+                    </datalist>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        {% for chip in category_suggestions %}
+                        <button type="button" onclick="setCategory('{{ chip }}')"
+                            class="btn btn-xs btn-ghost btn-outline">{{ chip }}</button>
                         {% endfor %}
-                    </select>
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40" id="annual-hint"></span>
-                    </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- =========================================================== -->
+            <!-- SCHEDULE — one or more time-bounded segments                -->
+            <!-- =========================================================== -->
+            <div class="border-t border-base-200 pt-3 mb-3">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-medium uppercase tracking-wide text-base-content/60 flex items-center gap-2">
+                        <i class="ti ti-calendar-event text-base-content/40" aria-hidden="true"></i>
+                        Schedule
+                    </h4>
+                    <button type="button" id="add-stage-btn" class="btn btn-ghost btn-xs gap-1">
+                        <i class="ti ti-plus text-xs"></i> Add stage
+                    </button>
+                </div>
+                <p class="text-xs text-base-content/40 mb-2">
+                    One stage covers a fixed amount over a time window. Add stages when the amount changes (e.g. groceries lower as a single person → higher with kids → lower in empty nest). Gaps between stages contribute zero — useful for pausing a category (e.g. travel) to pay down debt.
+                </p>
+
+                <div id="segments-container">
+                    {% for seg in form_segments %}
+                    <div class="segment-row border border-base-200 rounded-md p-2 mb-2">
+                        <div class="grid grid-cols-12 gap-2 items-end">
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Start year</span>
+                                </label>
+                                <input type="number" name="segmentStartYear" required
+                                    min="1900" max="2200"
+                                    value="{{ seg.startYear if seg.startYear else current_year }}"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">End year <span class="text-base-content/30">(∞ blank)</span></span>
+                                </label>
+                                <input type="number" name="segmentEndYear"
+                                    min="1900" max="2200"
+                                    value="{{ seg.endYear if seg.endYear else '' }}"
+                                    placeholder="∞"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Amount</span>
+                                </label>
+                                <input type="number" name="segmentAmount" required
+                                    min="0" step="0.01"
+                                    value="{{ seg.amount if seg.amount else '' }}"
+                                    placeholder="0.00"
+                                    class="input input-bordered input-xs w-full segment-amount" />
+                            </div>
+                            <div class="form-control col-span-3">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Frequency</span>
+                                </label>
+                                <select name="segmentFrequency"
+                                        class="select select-bordered select-xs w-full segment-frequency">
+                                    {% for key, label in frequency_options.items() %}
+                                    <option value="{{ key }}"
+                                        {% if seg.frequency == key %}selected
+                                        {% elif not seg.frequency and key == 'FrequencyType_Monthly' %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Real growth %</span>
+                                </label>
+                                <input type="number" name="segmentChangeRate"
+                                    step="0.1" min="-100" max="100"
+                                    value="{{ seg.changeRate if seg.changeRate else '0' }}"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-1 flex items-end">
+                                <button type="button" class="btn btn-ghost btn-xs text-error remove-stage-btn"
+                                        onclick="removeStage(this)" title="Remove this stage">
+                                    <i class="ti ti-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-base-content/40 mt-1 px-1 segment-hint"></p>
+                    </div>
+                    {% endfor %}
                 </div>
 
-                <!-- Real growth rate (above inflation) -->
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Real growth rate % <span class="font-normal normal-case">(above inflation)</span></span>
-                    </label>
-                    <input type="number" name="annualChangeRate"
-                        step="0.1" min="-100" max="100"
-                        value="{{ edit_line.changeRate if edit_line else '0' }}"
-                        placeholder="e.g. 2 for 2% above inflation"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">0 = grows with inflation only. Positive = real increase. Negative = real decrease (e.g. -2.5 holds the line flat in nominal terms when inflation is 2.5%).</span>
-                    </label>
-                </div>
-
-                <!-- Loan end year (shown only for loans) -->
-                <div class="form-control" id="loan-end-year-field"
-                     style="{% if not edit_line or edit_line.lineType != 'BudgetLineType_Loan' %}display:none{% endif %}">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Loan end year</span>
-                    </label>
-                    <input type="number" name="loanEndYear"
-                        min="2024" max="2100"
-                        value="{{ edit_line.loanEndYear if edit_line else '' }}"
-                        placeholder="e.g. 2031"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Year repayments stop</span>
-                    </label>
-                </div>
-
-                <!-- Start year -->
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
-                    </label>
-                    <input type="number" name="budgetStartYear"
-                        min="2020" max="2100"
-                        value="{{ edit_line.startYear if edit_line and edit_line.startYear else '' }}"
-                        placeholder="e.g. 2027"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Leave blank to start immediately</span>
-                    </label>
-                </div>
-
-                <!-- End year -->
-                <div class="form-control">
-                    <label class="label py-0.5">
-                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
-                    </label>
-                    <input type="number" name="budgetEndYear"
-                        min="2020" max="2100"
-                        value="{{ edit_line.endYear if edit_line and edit_line.endYear else '' }}"
-                        placeholder="e.g. 2033"
-                        class="input input-bordered input-sm w-full" />
-                    <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Leave blank to continue indefinitely</span>
-                    </label>
-                </div>
-
+                <p class="text-xs text-base-content/40 mt-1" id="schedule-validation"></p>
             </div>
 
             <div class="flex justify-between items-center">
@@ -367,31 +427,101 @@
     </div>
 </div>
 
+<!-- ====================================================================== -->
+<!-- Manage categories — rename / delete inline (ADR-017)                   -->
+<!-- ====================================================================== -->
+{% if categories %}
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-tags text-base-content/40" aria-hidden="true"></i>
+            Manage categories
+            <span class="text-xs font-normal text-base-content/40 ml-1">— delete only succeeds when no line still references the category</span>
+        </h3>
+        <div class="grid grid-cols-2 gap-2">
+            {% for c in categories %}
+            <div class="flex items-center gap-2 border border-base-200 rounded-md p-2">
+                <form method="post" action="/budget/categories/{{ c.n }}/rename"
+                      class="flex items-center gap-2 flex-1">
+                    <input type="text" name="categoryName" required
+                        value="{{ c.name }}"
+                        class="input input-bordered input-xs w-full" />
+                    <button type="submit" class="btn btn-ghost btn-xs" title="Rename">
+                        <i class="ti ti-check"></i>
+                    </button>
+                </form>
+                <form method="post" action="/budget/categories/{{ c.n }}/delete"
+                      onsubmit="return confirm('Delete category &quot;{{ c.name }}&quot;?');">
+                    <button type="submit" class="btn btn-ghost btn-xs text-error" title="Delete">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
+
 {% block scripts %}
-{% if lines %}
 <script>
 (function () {
     const BASE_SYMBOL    = {{ base_currency_symbol() | tojson }};
-    const years          = {{ series.years         | tojson }};
-    const mandatory      = {{ series.mandatory     | tojson }};
-    const discretionary  = {{ series.discretionary | tojson }};
-    const loans          = {{ series.loans         | tojson }};
-    const contributions  = {{ series.contributions | tojson }};
+    const BASE_CODE      = {{ base_currency_code()   | tojson }};
+    const INFLATION_RATE = {{ inflation_rate         | tojson }};
+    const chartSeries    = {{ chart_series | tojson }};
     const retirementYear = {{ retirement_year if retirement_year else 'null' }};
 
-    const ctx = document.getElementById('budgetChart').getContext('2d');
-    new Chart(ctx, {
+    // All four pre-computed shapes share the same `years` axis, so we can
+    // pull it from any one of them.
+    const years   = chartSeries.by_category.real.years;
+    const hasData = years && years.length > 0;
+    const ctxEl   = document.getElementById('budgetChart');
+    if (!hasData || !ctxEl) return;
+
+    let currentGrouping  = 'category';   // 'category' | 'line'
+    let currentInflation = false;        // false = real, true = nominal
+
+    function currentPayload() {
+        const key = currentInflation ? 'nominal' : 'real';
+        return chartSeries[`by_${currentGrouping}`][key];
+    }
+
+    function datasetsFor(payload) {
+        return payload.groups.map((g, idx) => ({
+            label:           g.name,
+            data:            g.values,
+            borderColor:     g.border,
+            backgroundColor: g.fill,
+            fill:            idx === 0 ? 'origin' : '-1',
+            tension:         0.15,
+            pointRadius:     0,
+            stack:           'spend',
+        }));
+    }
+
+    function yAxisTitle() {
+        return currentInflation
+            ? `Annual spending (nominal ${BASE_SYMBOL}, ${INFLATION_RATE.toFixed(1)}% inflation)`
+            : `Annual spending (today's ${BASE_SYMBOL})`;
+    }
+
+    function updateModeHint() {
+        const el = document.getElementById('chart-mode-hint');
+        if (!el) return;
+        el.textContent = currentInflation
+            ? `nominal ${BASE_CODE} including ${INFLATION_RATE.toFixed(1)}%/yr inflation — matches the projection page`
+            : `in today's ${BASE_CODE} — toggle "With inflation" for nominal projection`;
+    }
+
+    const chart = new Chart(ctxEl.getContext('2d'), {
         type: 'line',
         data: {
-            labels: years,
-            datasets: [
-                { label: 'Mandatory',     data: mandatory,     borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.35)',  fill: 'origin', tension: 0.15, pointRadius: 0 },
-                { label: 'Discretionary', data: discretionary, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.35)', fill: '-1',     tension: 0.15, pointRadius: 0 },
-                { label: 'Loans',         data: loans,         borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.35)', fill: '-1',     tension: 0.15, pointRadius: 0 },
-                { label: 'Contributions to savings', data: contributions, borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.35)', fill: '-1', tension: 0.15, pointRadius: 0 },
-            ],
+            labels:   years,
+            datasets: datasetsFor(currentPayload()),
         },
         options: {
             responsive: true,
@@ -424,47 +554,190 @@
                     beginAtZero: true,
                     ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                     grid: { color: 'rgba(0,0,0,0.04)' },
-                    title: { display: true, text: "Annual spending (today's " + BASE_SYMBOL + ")", font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
+                    title: { display: true, text: yAxisTitle(), font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
                 },
             },
         },
     });
+
+    function rebuild() {
+        chart.data.datasets               = datasetsFor(currentPayload());
+        chart.options.scales.y.title.text = yAxisTitle();
+        chart.update();
+        document.getElementById('grp-category-btn').classList.toggle('btn-primary', currentGrouping === 'category');
+        document.getElementById('grp-line-btn')    .classList.toggle('btn-primary', currentGrouping === 'line');
+        updateModeHint();
+    }
+
+    document.getElementById('grp-category-btn').addEventListener('click', () => {
+        currentGrouping = 'category'; rebuild();
+    });
+    document.getElementById('grp-line-btn').addEventListener('click', () => {
+        currentGrouping = 'line';     rebuild();
+    });
+    document.getElementById('inflation-toggle').addEventListener('change', (e) => {
+        currentInflation = e.target.checked; rebuild();
+    });
+
+    updateModeHint();
 })();
 </script>
-{% endif %}
 
 <script>
-    const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
-    const multipliers = {
-        FrequencyType_Weekly: 52,
-        FrequencyType_Fortnightly: 26,
-        FrequencyType_TwiceMonthly: 24,
-        FrequencyType_Monthly: 12,
-        FrequencyType_Quarterly: 4,
-        FrequencyType_Annually: 1,
-    };
+// ============================================================================
+// Segment editor (multi-stage scheduling) + category chip helper (ADR-017)
+// ============================================================================
+const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
+const CURRENT_YEAR = {{ current_year }};
+const FREQ_LABELS = {{ frequency_options | tojson }};
 
-    function updateAnnual() {
-        const amount = parseFloat(document.getElementById('amount-input').value) || 0;
-        const freq = document.getElementById('freq-select').value;
-        const multiplier = multipliers[freq] || 12;
-        const annual = amount * multiplier;
-        const hint = document.getElementById('annual-hint');
-        if (amount > 0) {
-            hint.textContent = `Annual equivalent: ${BASE_SYMBOL}${annual.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
-        } else {
-            hint.textContent = '';
+function setCategory(name) {
+    document.getElementById('category-input').value = name;
+}
+
+function buildSegmentRowHTML(defaults) {
+    const freqOptions = Object.entries(FREQ_LABELS).map(([k, v]) =>
+        `<option value="${k}" ${k === defaults.frequency ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    return `
+        <div class="grid grid-cols-12 gap-2 items-end">
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Start year</span></label>
+                <input type="number" name="segmentStartYear" required min="1900" max="2200"
+                       value="${defaults.startYear}" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">End year <span class="text-base-content/30">(∞ blank)</span></span></label>
+                <input type="number" name="segmentEndYear" min="1900" max="2200"
+                       value="${defaults.endYear}" placeholder="∞" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Amount</span></label>
+                <input type="number" name="segmentAmount" required min="0" step="0.01"
+                       value="${defaults.amount}" placeholder="0.00" class="input input-bordered input-xs w-full segment-amount" />
+            </div>
+            <div class="form-control col-span-3">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Frequency</span></label>
+                <select name="segmentFrequency" class="select select-bordered select-xs w-full segment-frequency">
+                    ${freqOptions}
+                </select>
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Real growth %</span></label>
+                <input type="number" name="segmentChangeRate" step="0.1" min="-100" max="100"
+                       value="${defaults.changeRate}" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-1 flex items-end">
+                <button type="button" class="btn btn-ghost btn-xs text-error remove-stage-btn"
+                        onclick="removeStage(this)" title="Remove this stage">
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        </div>
+        <p class="text-xs text-base-content/40 mt-1 px-1 segment-hint"></p>`;
+}
+
+function addStage() {
+    const container = document.getElementById('segments-container');
+    const rows      = container.querySelectorAll('.segment-row');
+    const last      = rows[rows.length - 1];
+
+    // Sensible defaults: start year = (previous end year + 1) or previous start + 1;
+    // amount/frequency/rate carry over from the previous stage as a starting point.
+    let defaultStart = CURRENT_YEAR, defaultAmount = '', defaultFreq = 'FrequencyType_Monthly', defaultRate = '0';
+    if (last) {
+        const prevStart  = parseInt(last.querySelector('input[name="segmentStartYear"]').value) || CURRENT_YEAR;
+        const prevEnd    = parseInt(last.querySelector('input[name="segmentEndYear"]').value);
+        const prevAmount = last.querySelector('input[name="segmentAmount"]').value;
+        const prevFreq   = last.querySelector('select[name="segmentFrequency"]').value;
+        const prevRate   = last.querySelector('input[name="segmentChangeRate"]').value;
+        defaultStart  = (Number.isFinite(prevEnd) ? prevEnd : prevStart) + 1;
+        defaultAmount = prevAmount;
+        defaultFreq   = prevFreq;
+        defaultRate   = prevRate;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'segment-row border border-base-200 rounded-md p-2 mb-2';
+    row.innerHTML = buildSegmentRowHTML({
+        startYear:  defaultStart,
+        endYear:    '',
+        amount:     defaultAmount,
+        frequency:  defaultFreq,
+        changeRate: defaultRate,
+    });
+    container.appendChild(row);
+    refreshHints();
+    validateSchedule();
+}
+
+function removeStage(btn) {
+    const container = document.getElementById('segments-container');
+    const rows      = container.querySelectorAll('.segment-row');
+    if (rows.length <= 1) {
+        alert('A budget line needs at least one stage.');
+        return;
+    }
+    btn.closest('.segment-row').remove();
+    refreshHints();
+    validateSchedule();
+}
+
+function refreshHints() {
+    document.querySelectorAll('#segments-container .segment-row').forEach(row => {
+        const amtEl  = row.querySelector('input[name="segmentAmount"]');
+        const freqEl = row.querySelector('select[name="segmentFrequency"]');
+        const hintEl = row.querySelector('.segment-hint');
+        const amount = parseFloat(amtEl.value) || 0;
+        const multipliers = { FrequencyType_Weekly:52, FrequencyType_Fortnightly:26, FrequencyType_TwiceMonthly:24, FrequencyType_Monthly:12, FrequencyType_Quarterly:4, FrequencyType_Annually:1 };
+        const m = multipliers[freqEl.value] || 12;
+        if (amount > 0 && hintEl) {
+            hintEl.textContent = `Annual: ${BASE_SYMBOL}${(amount * m).toLocaleString('en-GB', {maximumFractionDigits:0})}`;
+        } else if (hintEl) {
+            hintEl.textContent = '';
         }
-    }
+    });
+}
 
-    function toggleLoanFields() {
-        const type = document.getElementById('line-type').value;
-        const loanField = document.getElementById('loan-end-year-field');
-        loanField.style.display = type === 'BudgetLineType_Loan' ? 'block' : 'none';
+function validateSchedule() {
+    // Reject overlapping segments. Gaps and open-ended end years are allowed.
+    const rows = document.querySelectorAll('#segments-container .segment-row');
+    const ranges = [];
+    rows.forEach(row => {
+        const s = parseInt(row.querySelector('input[name="segmentStartYear"]').value);
+        const eRaw = row.querySelector('input[name="segmentEndYear"]').value;
+        const e = eRaw ? parseInt(eRaw) : Number.POSITIVE_INFINITY;
+        if (Number.isFinite(s)) ranges.push({s, e, row});
+    });
+    let conflict = null;
+    for (let i = 0; i < ranges.length; i++) {
+        for (let j = i + 1; j < ranges.length; j++) {
+            const a = ranges[i], b = ranges[j];
+            if (a.s <= b.e && b.s <= a.e) { conflict = [a, b]; break; }
+        }
+        if (conflict) break;
     }
+    const validationEl = document.getElementById('schedule-validation');
+    const submitBtn    = document.querySelector('#budget-form button[type="submit"]');
+    if (conflict) {
+        validationEl.innerHTML = '<i class="ti ti-alert-triangle"></i> Stages overlap — adjust the years so each year is covered by at most one stage. (Gaps are fine: the line just contributes zero in those years.)';
+        validationEl.className = 'text-xs text-error mt-1';
+        if (submitBtn) submitBtn.disabled = true;
+    } else {
+        validationEl.textContent = '';
+        validationEl.className = 'text-xs text-base-content/40 mt-1';
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
 
-    // Run on page load to set initial state
-    updateAnnual();
-    toggleLoanFields();
+document.getElementById('add-stage-btn')?.addEventListener('click', addStage);
+
+// Wire change/input listeners to all current rows + future ones (event delegation).
+document.getElementById('segments-container')?.addEventListener('input',  () => { refreshHints(); validateSchedule(); });
+document.getElementById('segments-container')?.addEventListener('change', () => { refreshHints(); validateSchedule(); });
+
+// Initial pass on page load.
+refreshHints();
+validateSchedule();
 </script>
 {% endblock %}

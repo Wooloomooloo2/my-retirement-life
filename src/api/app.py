@@ -186,6 +186,7 @@ def get_dashboard_data() -> dict:
         load_all_assets as _load_assets,
         load_budget_lines as _load_budget_lines,
         load_all_income_sources as _load_income,
+        find_active_segment,
     )
     from src.api.routes.investments import get_all_investment_accounts
     from src.api.routes.profile import get_profile
@@ -206,7 +207,14 @@ def get_dashboard_data() -> dict:
     asset_total_balance = sum(a["balance"] for a in assets_list)
     lines             = _load_budget_lines()
     budget_line_count = len(lines)
-    annual_spending   = sum(l["annual_amount"] for l in lines)
+    # ADR-017: "today's annual spending" is the sum of each line's currently-
+    # active segment (or zero for lines whose schedule doesn't cover today).
+    _today_year       = date.today().year
+    annual_spending   = 0.0
+    for _line in lines:
+        _seg = find_active_segment(_line, _today_year)
+        if _seg is not None:
+            annual_spending += _seg["annual_amount"]
 
     type_node = og.NamedNode(f"{MRL}LifeEvent")
     life_event_count = len(list(store.store.quads_for_pattern(

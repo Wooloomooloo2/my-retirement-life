@@ -400,43 +400,93 @@ def load_all_assets() -> list:
 # Budget lines (unchanged from v0.2)
 # ---------------------------------------------------------------------------
 
+def _int_or_none(raw: str) -> int | None:
+    try:
+        return int(raw) if raw else None
+    except (ValueError, TypeError):
+        return None
+
+
+def find_active_segment(line: dict, year: int) -> dict | None:
+    """Return the segment of `line` whose [start_year, end_year] window
+    contains `year`, or None if no segment is active (line contributes
+    zero — typical in a gap between segments or before/after the line's
+    lifetime). Segments are pre-sorted by start_year in load_budget_lines().
+    Per ADR-017 the UI rejects overlapping segments, so at most one is
+    active for any given year.
+    """
+    for seg in line["segments"]:
+        if seg["start_year"] is not None and year < seg["start_year"]:
+            continue
+        if seg["end_year"] is not None and year > seg["end_year"]:
+            continue
+        return seg
+    return None
+
+
 def load_budget_lines() -> list:
+    """Load all BudgetLine instances with their segments (ADR-017).
+
+    Each returned line has:
+      - line_type: "BudgetLineType_Mandatory" | "_Discretionary" | "_Loan"
+      - segments:  list of {annual_amount, change_rate, start_year, end_year},
+                   sorted ascending by start_year
+
+    Backwards compatible with pre-1.0.2 data: if a line has no segment
+    instances yet, the legacy line-level amount / frequency / window /
+    annualChangeRate / loanEndYear are synthesised into a single in-memory
+    segment so the engine produces correct numbers even before
+    migrate_legacy_budget_lines_to_segments() has had a chance to persist
+    them (which happens on the next GET /budget render).
+    """
     type_node = og.NamedNode(f"{MRL}BudgetLine")
-    quads = store.store.quads_for_pattern(None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    quads = store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
     lines = []
+
+    seg_owner_pred = og.NamedNode(f"{MRL}segmentOwner")
+
     for q in quads:
-        iri = q.subject
-        freq       = _local(iri, "budgetLineFrequency")
-        multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
-        amount     = _float(iri, "budgetLineAmount")
-        line_type  = _local(iri, "budgetLineType")
+        line_iri  = q.subject
+        line_type = _local(line_iri, "budgetLineType")
 
-        loan_end_raw = _val(iri, "loanEndYear", "")
-        try:
-            loan_end = int(loan_end_raw) if loan_end_raw else None
-        except ValueError:
-            loan_end = None
+        segments = []
+        for sq in store.store.quads_for_pattern(
+                None, seg_owner_pred, line_iri, DATA_GRAPH):
+            seg_iri    = sq.subject
+            freq       = _local(seg_iri, "segmentFrequency") or "FrequencyType_Monthly"
+            multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
+            amount     = _float(seg_iri, "segmentAmount")
+            segments.append({
+                "annual_amount": amount * multiplier,
+                "change_rate":   _float(seg_iri, "segmentChangeRate"),
+                "start_year":    _int_or_none(_val(seg_iri, "segmentStartYear", "")),
+                "end_year":      _int_or_none(_val(seg_iri, "segmentEndYear",   "")),
+            })
+        segments.sort(key=lambda s: s["start_year"] if s["start_year"] is not None else 0)
 
-        start_raw = _val(iri, "budgetStartYear", "")
-        try:
-            start_year = int(start_raw) if start_raw else None
-        except ValueError:
-            start_year = None
-
-        end_raw = _val(iri, "budgetEndYear", "")
-        try:
-            end_year = int(end_raw) if end_raw else None
-        except ValueError:
-            end_year = None
+        # Fallback: synthesise a single in-memory segment from the legacy
+        # line-level fields when no BudgetLineSegment instance exists yet.
+        # Folds loanEndYear into segment end_year (ADR-017 unified model).
+        if not segments:
+            freq       = _local(line_iri, "budgetLineFrequency") or "FrequencyType_Monthly"
+            multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
+            amount     = _float(line_iri, "budgetLineAmount")
+            start_year = _int_or_none(_val(line_iri, "budgetStartYear", ""))
+            end_year   = _int_or_none(_val(line_iri, "budgetEndYear",   ""))
+            loan_end   = _int_or_none(_val(line_iri, "loanEndYear",     ""))
+            segments.append({
+                "annual_amount": amount * multiplier,
+                "change_rate":   _float(line_iri, "annualChangeRate"),
+                "start_year":    start_year,
+                "end_year":      end_year if end_year is not None else loan_end,
+            })
 
         lines.append({
-            "annual_amount": amount * multiplier,
-            "change_rate":   _float(iri, "annualChangeRate"),
-            "line_type":     line_type,
-            "loan_end_year": loan_end,
-            "start_year":    start_year,
-            "end_year":      end_year,
+            "line_type": line_type,
+            "segments":  segments,
         })
+
     return lines
 
 
@@ -966,16 +1016,22 @@ def _simulate_run(
             unrouted_income += div_income
 
         # 4. Spending (sim_inflation for non-loan lines)
+        # ADR-017: each line has 1+ segments; find_active_segment() returns
+        # the one whose [start_year, end_year] window contains `year`, or
+        # None if no segment is active (gap or before/after the line's life).
+        # The growth exponent stays `years_from_start` (the projection's own
+        # year offset) so single-segment migrated lines produce bit-identical
+        # numbers to the pre-ADR-017 engine.
         mandatory = discretionary = loans = 0.0
         for line in budget_lines:
-            if line["start_year"]    and year < line["start_year"]: continue
-            if line["end_year"]      and year > line["end_year"]:   continue
-            if line["loan_end_year"] and year > line["loan_end_year"]: continue
+            seg = find_active_segment(line, year)
+            if seg is None:
+                continue
             if line["line_type"] == "BudgetLineType_Loan":
-                rate = line["change_rate"]
+                rate = seg["change_rate"]
             else:
-                rate = sim_inflation + line["change_rate"]
-            annual = line["annual_amount"] * ((1 + rate / 100) ** years_from_start)
+                rate = sim_inflation + seg["change_rate"]
+            annual = seg["annual_amount"] * ((1 + rate / 100) ** years_from_start)
             if   line["line_type"] == "BudgetLineType_Mandatory":     mandatory     += annual
             elif line["line_type"] == "BudgetLineType_Discretionary": discretionary += annual
             elif line["line_type"] == "BudgetLineType_Loan":          loans         += annual

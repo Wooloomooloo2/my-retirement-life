@@ -1,14 +1,32 @@
 """
-Budget routes — manage the user's budget lines.
+Budget routes — manage the user's budget lines, segments, and categories.
 
-GET  /budget              — list all budget lines + add form
-POST /budget              — create a new budget line
-GET  /budget/{n}/edit     — load edit form for budget line N
-POST /budget/{n}/edit     — save edits to budget line N
-POST /budget/{n}/delete   — delete budget line N
+GET  /budget                       — list all budget lines + add form
+POST /budget                       — create a new budget line
+GET  /budget/{n}/edit              — load edit form for budget line N
+POST /budget/{n}/edit              — save edits to budget line N
+POST /budget/{n}/delete            — delete budget line N (+ its segments)
+
+POST /budget/categories            — create a new BudgetCategory          (ADR-017)
+POST /budget/categories/{n}/rename — rename BudgetCategory_N              (ADR-017)
+POST /budget/categories/{n}/delete — delete BudgetCategory_N              (ADR-017)
+
+ADR-017 notes:
+- Each BudgetLine has one or more BudgetLineSegment instances linked via
+  mrl:segmentOwner; the segment is the source of truth for amount,
+  frequency, time window, and real-growth rate.
+- Phase 1b shape: single segment per save (Phase 3 will extend the editor
+  to multiple segments). get_all_budget_lines() exposes a flattened
+  first-segment view at the top level for backwards-compatible templates.
+- Categories are user-created on demand. "Account contributions" is
+  reserved for the synthetic chart group derived from AccountContribution
+  instances (ADR-015).
+- migrate_legacy_budget_lines_to_segments() runs idempotently on the first
+  /budget render after the 1.0.2 ontology bump; deprecated line-level
+  properties are left in place per ADR-017 §3.
 """
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
@@ -19,7 +37,11 @@ from src.store.graph import store, MRL, DATA_GRAPH
 router = APIRouter()
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-MRL_EXT = "https://myretirementlife.app/ontology/ext#"
+MRL_EXT  = "https://myretirementlife.app/ontology/ext#"
+
+# Reserved category names — case-insensitive. "Account contributions" is the
+# synthetic system group derived from AccountContribution instances (ADR-015).
+RESERVED_CATEGORY_NAMES = {"account contributions"}
 
 # Frequency multipliers for normalising to annual amounts
 FREQUENCY_MULTIPLIERS = {
@@ -40,6 +62,43 @@ FREQUENCY_LABELS = {
     "FrequencyType_Annually": "Annually",
 }
 
+# Starter chip suggestions surfaced in the line form (ADR-017). These are NOT
+# pre-created — they only materialise as BudgetCategory_N instances when the
+# user actually adopts one.
+CATEGORY_SUGGESTIONS = [
+    "Housing", "Food", "Transport", "Travel", "Health",
+    "Subscriptions", "Personal", "Bills", "Taxes",
+]
+
+ACCOUNT_CONTRIBUTIONS_LABEL = "Account contributions"  # synthetic system group
+UNCATEGORISED_LABEL         = "Uncategorised"           # fallback group
+
+
+def _category_palette(name: str) -> tuple[str, str]:
+    """Return (fill_rgba, border_color) for a category name.
+
+    System groups have pinned colours:
+      - Account contributions → teal (matches the existing 4th-band convention)
+      - Uncategorised         → neutral gray
+
+    User categories get a deterministic HSL palette keyed off the lowercased
+    name, so the same category always renders in the same colour across
+    sessions even though categories are user-created.
+    """
+    if name == ACCOUNT_CONTRIBUTIONS_LABEL:
+        return "rgba(20,184,166,0.45)", "#14b8a6"
+    if name == UNCATEGORISED_LABEL:
+        return "rgba(156,163,175,0.45)", "#9ca3af"
+    import hashlib
+    h   = int(hashlib.md5(name.lower().encode("utf-8")).hexdigest()[:6], 16)
+    hue = h % 360
+    return f"hsla({hue}, 65%, 55%, 0.45)", f"hsl({hue}, 55%, 45%)"
+
+
+def _escape(s: str) -> str:
+    """Minimal SPARQL literal escaping — backslash + double-quote."""
+    return (s or "").replace("\\", "\\\\").replace('"', '\\"')
+
 
 def to_annual(amount: float, frequency_local: str) -> float:
     """Convert an amount at a given frequency to its annual equivalent."""
@@ -47,42 +106,419 @@ def to_annual(amount: float, frequency_local: str) -> float:
     return round(amount * multiplier, 2)
 
 
-def get_all_budget_lines() -> list:
-    """Return all BudgetLine instances from the data graph."""
-    type_node = og.NamedNode(f"{MRL}BudgetLine")
+# ===========================================================================
+# BUDGET CATEGORY (ADR-017)
+# ===========================================================================
+
+def get_all_categories() -> list[dict]:
+    """Return all BudgetCategory instances, sorted by displayOrder then name."""
+    type_node = og.NamedNode(f"{MRL}BudgetCategory")
     quads = store.store.quads_for_pattern(
         None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
-    lines = []
+    cats = []
     for q in quads:
         iri = q.subject
-        n = str(iri.value).split("BudgetLine_")[-1]
+        suffix = str(iri.value).split("BudgetCategory_")[-1]
+        if not suffix.isdigit():
+            continue
 
-        def get_val(prop):
+        def gv(prop):
             qs = list(store.store.quads_for_pattern(
                 iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
             return str(qs[0].object.value) if qs else ""
 
-        def get_local(prop):
-            v = get_val(prop)
+        cats.append({
+            "n":            suffix,
+            "iri":          str(iri.value),
+            "name":         gv("categoryName"),
+            "displayOrder": gv("categoryDisplayOrder"),
+            "source":       gv("categorySource") or "user",
+        })
+    cats.sort(key=lambda c: (
+        int(c["displayOrder"]) if c["displayOrder"].isdigit() else 999_999,
+        c["name"].lower(),
+    ))
+    return cats
+
+
+def get_category_by_name(name: str) -> Optional[dict]:
+    """Case-insensitive lookup by display name."""
+    target = (name or "").strip().lower()
+    if not target:
+        return None
+    for c in get_all_categories():
+        if c["name"].strip().lower() == target:
+            return c
+    return None
+
+
+def _next_category_n() -> int:
+    cats = get_all_categories()
+    nums = [int(c["n"]) for c in cats if c["n"].isdigit()]
+    return max(nums, default=0) + 1
+
+
+def create_category(name: str) -> dict:
+    """Create a BudgetCategory with the given display name. If a category
+    with the same name (case-insensitive) already exists, return it
+    unchanged. Raises ValueError if the name is empty or reserved.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Category name cannot be empty.")
+    if name.lower() in RESERVED_CATEGORY_NAMES:
+        raise ValueError(f"'{name}' is reserved for the system group.")
+    existing = get_category_by_name(name)
+    if existing:
+        return existing
+    n = _next_category_n()
+    cat_iri = f"{MRL}BudgetCategory_{n}"
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{cat_iri}> a mrl:BudgetCategory ;
+                    mrl:categoryName "{_escape(name)}" ;
+                    mrl:categorySource "user" .
+            }}
+        }}
+    """)
+    return {
+        "n": str(n), "iri": cat_iri, "name": name,
+        "displayOrder": "", "source": "user",
+    }
+
+
+def rename_category(n: int, new_name: str) -> None:
+    new_name = (new_name or "").strip()
+    if not new_name:
+        raise ValueError("Category name cannot be empty.")
+    if new_name.lower() in RESERVED_CATEGORY_NAMES:
+        raise ValueError(f"'{new_name}' is reserved.")
+    cat_iri = f"{MRL}BudgetCategory_{n}"
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{cat_iri}> mrl:categoryName ?o .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{cat_iri}> mrl:categoryName "{_escape(new_name)}" .
+            }}
+        }}
+    """)
+
+
+def get_lines_using_category(cat_n: int) -> list[str]:
+    """Return the BudgetLine N values that reference this category."""
+    cat_iri = og.NamedNode(f"{MRL}BudgetCategory_{cat_n}")
+    pred    = og.NamedNode(f"{MRL}budgetCategory")
+    quads   = store.store.quads_for_pattern(None, pred, cat_iri, DATA_GRAPH)
+    return [str(q.subject.value).split("BudgetLine_")[-1] for q in quads]
+
+
+def delete_category(n: int) -> None:
+    """Delete a BudgetCategory by N. Errors if any line still references it."""
+    using = get_lines_using_category(n)
+    if using:
+        raise ValueError(
+            f"Category is still used by {len(using)} line(s); "
+            "reassign them before deleting."
+        )
+    cat_iri = f"{MRL}BudgetCategory_{n}"
+    store.update(f"""
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{cat_iri}> ?p ?o .
+            }}
+        }}
+    """)
+
+
+# ===========================================================================
+# BUDGET LINE SEGMENT (ADR-017)
+# ===========================================================================
+
+def get_segments_for_line(line_n: int) -> list[dict]:
+    """All segments owned by BudgetLine_N, sorted by startYear ascending."""
+    line_iri = og.NamedNode(f"{MRL}BudgetLine_{line_n}")
+    pred     = og.NamedNode(f"{MRL}segmentOwner")
+    quads    = store.store.quads_for_pattern(None, pred, line_iri, DATA_GRAPH)
+    segs = []
+    for q in quads:
+        seg_iri = q.subject
+        suffix = str(seg_iri.value).split("BudgetLineSegment_")[-1]
+        if not suffix.isdigit():
+            continue
+
+        def gv(prop):
+            qs = list(store.store.quads_for_pattern(
+                seg_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+            return str(qs[0].object.value) if qs else ""
+
+        def gl(prop):
+            v = gv(prop)
             return v.split("#")[-1] if "#" in v else v
 
-        freq = get_local("budgetLineFrequency")
-        amount = get_val("budgetLineAmount")
-        annual = to_annual(float(amount), freq) if amount else 0
+        freq   = gl("segmentFrequency")
+        amount = gv("segmentAmount")
+        try:
+            annual = to_annual(float(amount), freq) if amount else 0.0
+        except (ValueError, TypeError):
+            annual = 0.0
+        segs.append({
+            "n":              suffix,
+            "iri":            str(seg_iri.value),
+            "startYear":      gv("segmentStartYear"),
+            "endYear":        gv("segmentEndYear"),
+            "amount":         amount,
+            "frequency":      freq,
+            "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
+            "annualAmount":   annual,
+            "changeRate":     gv("segmentChangeRate"),
+        })
+    segs.sort(key=lambda s: int(s["startYear"]) if s["startYear"].isdigit() else 0)
+    return segs
+
+
+def _next_segment_n() -> int:
+    type_node = og.NamedNode(f"{MRL}BudgetLineSegment")
+    quads = store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+    nums = []
+    for q in quads:
+        suffix = str(q.subject.value).split("BudgetLineSegment_")[-1]
+        if suffix.isdigit():
+            nums.append(int(suffix))
+    return max(nums, default=0) + 1
+
+
+def delete_segments_for_line(line_n: int) -> None:
+    """Wipe every segment whose mrl:segmentOwner is BudgetLine_N."""
+    line_iri = f"{MRL}BudgetLine_{line_n}"
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE {{
+            GRAPH <{DATA_GRAPH.value}> {{ ?seg ?p ?o . }}
+        }}
+        WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                ?seg mrl:segmentOwner <{line_iri}> ;
+                     ?p ?o .
+            }}
+        }}
+    """)
+
+
+def save_segment(n: int, line_n: int, start_year: int,
+                 end_year: Optional[int], amount: float,
+                 frequency: str, change_rate: float) -> None:
+    """Write or overwrite BudgetLineSegment_N owned by BudgetLine_N."""
+    seg_iri  = f"{MRL}BudgetLineSegment_{n}"
+    line_iri = f"{MRL}BudgetLine_{line_n}"
+
+    store.update(f"""
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{seg_iri}> ?p ?o .
+            }}
+        }}
+    """)
+
+    end_line = (
+        f' ;\n                    mrl:segmentEndYear "{int(end_year)}"^^xsd:integer'
+        if end_year else ""
+    )
+    store.update(f"""
+        PREFIX mrl:  <{MRL}>
+        PREFIX mrlx: <{MRL_EXT}>
+        PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{seg_iri}> a mrl:BudgetLineSegment ;
+                    mrl:segmentOwner <{line_iri}> ;
+                    mrl:segmentStartYear "{int(start_year)}"^^xsd:integer ;
+                    mrl:segmentAmount "{amount}"^^xsd:decimal ;
+                    mrl:segmentFrequency mrlx:{frequency} ;
+                    mrl:segmentChangeRate "{change_rate}"^^xsd:decimal{end_line} .
+            }}
+        }}
+    """)
+
+
+# ===========================================================================
+# MIGRATION — legacy line-level fields → BudgetLineSegment (ADR-017 §3)
+# ===========================================================================
+
+def migrate_legacy_budget_lines_to_segments() -> int:
+    """Idempotent migration. Returns the number of lines migrated this call.
+
+    Guard 1 — any BudgetLineSegment already exists → return 0 (already done).
+    Guard 2 — no BudgetLine has budgetLineAmount    → return 0 (nothing to do).
+
+    For each legacy line with budgetLineAmount, create ONE BudgetLineSegment_N
+    copying amount / frequency / change_rate / startYear (or current year) /
+    endYear (or loanEndYear). The deprecated line-level properties are LEFT
+    IN PLACE on the original line per ADR-017 §3. Called on every GET /budget;
+    both guards are cheap quad-pattern queries so the steady-state cost is
+    two store reads per page render.
+    """
+    seg_type = og.NamedNode(f"{MRL}BudgetLineSegment")
+    if list(store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), seg_type, DATA_GRAPH)):
+        return 0
+
+    amount_pred = og.NamedNode(f"{MRL}budgetLineAmount")
+    legacy = list(store.store.quads_for_pattern(
+        None, amount_pred, None, DATA_GRAPH))
+    if not legacy:
+        return 0
+
+    from datetime import date
+    current_year = date.today().year
+    next_n = _next_segment_n()
+    count  = 0
+
+    for q in legacy:
+        line_iri = q.subject
+        line_n_s = str(line_iri.value).split("BudgetLine_")[-1]
+        if not line_n_s.isdigit():
+            continue
+        line_n = int(line_n_s)
+
+        def gv(prop):
+            qs = list(store.store.quads_for_pattern(
+                line_iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+            return str(qs[0].object.value) if qs else ""
+        def gl(prop):
+            v = gv(prop)
+            return v.split("#")[-1] if "#" in v else v
+
+        amount = gv("budgetLineAmount")
+        if not amount:
+            continue
+        freq        = gl("budgetLineFrequency") or "FrequencyType_Monthly"
+        change_rate = gv("annualChangeRate") or "0"
+        start_year  = gv("budgetStartYear")
+        end_year    = gv("budgetEndYear") or gv("loanEndYear")
+
+        try:
+            save_segment(
+                n=next_n,
+                line_n=line_n,
+                start_year=int(start_year) if start_year else current_year,
+                end_year=int(end_year) if end_year else None,
+                amount=float(amount),
+                frequency=freq,
+                change_rate=float(change_rate),
+            )
+            next_n += 1
+            count  += 1
+        except (ValueError, TypeError):
+            continue
+
+    return count
+
+
+# ===========================================================================
+# BUDGET LINE — reads
+# ===========================================================================
+
+def get_all_budget_lines() -> list:
+    """Return all BudgetLine instances with their segments + category.
+
+    Each line also exposes a flattened first-segment view at the top level
+    (amount, frequency, annualAmount, changeRate, startYear, endYear,
+    loanEndYear) for backwards-compatible template rendering. Phase 3's
+    multi-segment editor will consume the `segments` list directly. For
+    lines that have not yet been migrated (no segments), the flattened
+    view falls back to the deprecated line-level fields.
+    """
+    type_node = og.NamedNode(f"{MRL}BudgetLine")
+    quads = store.store.quads_for_pattern(
+        None, og.NamedNode(RDF_TYPE), type_node, DATA_GRAPH)
+
+    cats_by_iri = {c["iri"]: c for c in get_all_categories()}
+    lines = []
+
+    for q in quads:
+        iri = q.subject
+        n_s = str(iri.value).split("BudgetLine_")[-1]
+        if not n_s.isdigit():
+            continue
+        n = int(n_s)
+
+        def gv(prop):
+            qs = list(store.store.quads_for_pattern(
+                iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH))
+            return str(qs[0].object.value) if qs else ""
+        def gl(prop):
+            v = gv(prop)
+            return v.split("#")[-1] if "#" in v else v
+
+        cat_qs = list(store.store.quads_for_pattern(
+            iri, og.NamedNode(f"{MRL}budgetCategory"), None, DATA_GRAPH))
+        category = None
+        if cat_qs:
+            category = cats_by_iri.get(str(cat_qs[0].object.value))
+
+        segments  = get_segments_for_line(n)
+        line_type = gl("budgetLineType")
+
+        if segments:
+            first = segments[0]
+            amount       = first["amount"]
+            frequency    = first["frequency"]
+            annual       = first["annualAmount"]
+            change_rate  = first["changeRate"]
+            start_year   = first["startYear"]
+            end_year_val = first["endYear"]
+        else:
+            amount       = gv("budgetLineAmount")
+            frequency    = gl("budgetLineFrequency")
+            try:
+                annual = to_annual(float(amount), frequency) if amount else 0.0
+            except (ValueError, TypeError):
+                annual = 0.0
+            change_rate  = gv("annualChangeRate")
+            start_year   = gv("budgetStartYear")
+            end_year_val = gv("budgetEndYear")
+
+        # Loan lines: surface the end year under both `loanEndYear` (legacy
+        # template key) and the new segment-end model. Non-loan lines keep
+        # endYear and a separate loanEndYear (legacy, typically empty).
+        if line_type == "BudgetLineType_Loan":
+            loan_end         = end_year_val
+            end_year_display = ""
+        else:
+            loan_end         = gv("loanEndYear")
+            end_year_display = end_year_val
 
         lines.append({
-            "n": n,
-            "iri": str(iri.value),
-            "name": get_val("budgetLineName"),
-            "amount": amount,
-            "frequency": freq,
-            "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
-            "annualAmount": annual,
-            "lineType": get_local("budgetLineType"),
-            "changeRate": get_val("annualChangeRate"),
-            "loanEndYear": get_val("loanEndYear"),
-            "startYear": get_val("budgetStartYear"),
-            "endYear": get_val("budgetEndYear"),
+            "n":             str(n),
+            "iri":           str(iri.value),
+            "name":          gv("budgetLineName"),
+            "lineType":      line_type,
+            # ADR-017 category
+            "categoryN":     category["n"]    if category else "",
+            "categoryName":  category["name"] if category else "",
+            # ADR-017 segments list (for Phase 3 multi-segment UI)
+            "segments":      segments,
+            # Backwards-compat flattened first-segment view
+            "amount":         amount,
+            "frequency":      frequency,
+            "frequencyLabel": FREQUENCY_LABELS.get(frequency, frequency),
+            "annualAmount":   annual,
+            "changeRate":     change_rate,
+            "startYear":      start_year,
+            "endYear":        end_year_display,
+            "loanEndYear":    loan_end,
         })
     lines.sort(key=lambda l: int(l["n"]) if l["n"].isdigit() else 0)
     return lines
@@ -109,15 +545,14 @@ def get_all_contributions_for_budget() -> list:
             v = gv(prop)
             return v.split("#")[-1] if "#" in v else v
 
-        # Resolve account name via contributionOwner
         owner_qs = list(store.store.quads_for_pattern(
             c_iri, og.NamedNode(f"{MRL}contributionOwner"), None, DATA_GRAPH))
-        owner_label = ""
+        owner_label  = ""
         account_name = ""
         if owner_qs:
-            owner_iri = owner_qs[0].object
-            owner_label = str(owner_iri.value).split("#")[-1]
-            name_qs = list(store.store.quads_for_pattern(
+            owner_iri    = owner_qs[0].object
+            owner_label  = str(owner_iri.value).split("#")[-1]
+            name_qs      = list(store.store.quads_for_pattern(
                 owner_iri, og.NamedNode(f"{MRL}accountName"), None, DATA_GRAPH))
             account_name = str(name_qs[0].object.value) if name_qs else owner_label
 
@@ -131,16 +566,16 @@ def get_all_contributions_for_budget() -> list:
         annual = round(amount * multiplier, 2)
 
         results.append({
-            "accountLabel": owner_label,
-            "accountName":  account_name,
-            "amount":       amount_str,
-            "frequency":    freq,
+            "accountLabel":   owner_label,
+            "accountName":    account_name,
+            "amount":         amount_str,
+            "frequency":      freq,
             "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
-            "annualAmount": annual,
-            "startYear":    gv("contributionStartYear"),
-            "endYear":      gv("contributionEndYear"),
-            "growthRate":   gv("contributionGrowthRate"),
-            "note":         gv("contributionNote"),
+            "annualAmount":   annual,
+            "startYear":      gv("contributionStartYear"),
+            "endYear":        gv("contributionEndYear"),
+            "growthRate":     gv("contributionGrowthRate"),
+            "note":           gv("contributionNote"),
         })
 
     results.sort(key=lambda x: x["accountName"])
@@ -180,16 +615,35 @@ def _horizon() -> tuple[int, int, int | None]:
     return current_year, current_year + 40, None
 
 
+def _find_active_segment_dict(segments: list, year: int) -> dict | None:
+    """Return the segment dict (as exposed by get_segments_for_line()) whose
+    [startYear, endYear] window contains `year`, or None if no segment is
+    active (line contributes zero — gap, or before/after the line's life).
+    Mirrors `find_active_segment()` in projection.py but reads the dict
+    shape produced by budget.py's segment loader.
+    """
+    for seg in segments:
+        start = _int_or_none(seg.get("startYear"))
+        end   = _int_or_none(seg.get("endYear"))
+        if start is not None and year < start: continue
+        if end   is not None and year > end:   continue
+        return seg
+    return None
+
+
 def compute_annual_spending_series(lines: list, current_year: int, end_year: int) -> dict:
     """Per-year spending arrays in today's pounds, broken out by line type.
 
-    For each line, applies its `change_rate` (real growth above inflation) but
-    NOT the base inflation rate — the budget page is conceptually a real-terms
-    plan. The projection engine layers inflation on top of this when computing
-    actual nominal cash outflows.
+    ADR-017: walks each line's `segments` list. The active segment for the
+    year provides the amount and change_rate; lines with no active segment
+    in a given year contribute zero (gaps render naturally as £0 bands on
+    the stacked chart). Growth exponent is the projection year offset `i`
+    — matching the deterministic engine in projection.py, so the chart and
+    the projection page agree on the same numbers.
 
-    Respects each line's start_year / end_year / loan_end_year so non-
-    overlapping lines no longer double-count in any single year.
+    Real-terms only — base inflation is NOT applied here (the budget page
+    is conceptually a real-terms plan; the projection layers inflation on
+    top).
     """
     years         = list(range(current_year, end_year + 1))
     n             = len(years)
@@ -198,18 +652,15 @@ def compute_annual_spending_series(lines: list, current_year: int, end_year: int
     loans         = [0.0] * n
 
     for line in lines:
-        annual      = _float_or_zero(line.get("annualAmount"))
-        change_rate = _float_or_zero(line.get("changeRate"))
-        start       = _int_or_none(line.get("startYear"))
-        end         = _int_or_none(line.get("endYear"))
-        loan_end    = _int_or_none(line.get("loanEndYear"))
-        line_type   = line.get("lineType", "")
-
+        line_type = line.get("lineType", "")
+        segments  = line.get("segments") or []
         for i, year in enumerate(years):
-            if start    is not None and year < start:    continue
-            if end      is not None and year > end:      continue
-            if loan_end is not None and year > loan_end: continue
-            amount = annual * ((1 + change_rate / 100) ** i)
+            seg = _find_active_segment_dict(segments, year)
+            if seg is None:
+                continue
+            annual      = _float_or_zero(seg.get("annualAmount"))
+            change_rate = _float_or_zero(seg.get("changeRate"))
+            amount      = annual * ((1 + change_rate / 100) ** i)
             if   line_type == "BudgetLineType_Mandatory":     mandatory[i]     += amount
             elif line_type == "BudgetLineType_Discretionary": discretionary[i] += amount
             elif line_type == "BudgetLineType_Loan":          loans[i]         += amount
@@ -229,17 +680,21 @@ def compute_annual_contributions_series(
     current_year: int,
     end_year: int,
     retirement_year: int | None,
+    inflation_rate: float = 0.0,
 ) -> list:
-    """Per-year contributions array in today's pounds.
+    """Per-year contributions array.
 
     Mirrors the engine's logic in `projection.py`:
       - Default active window: current_year … retirement_year (inclusive)
-      - Growth: base × (1 + g/100) ** years_active, where years_active is
-        zero in the first active year
+      - Per-contribution growth: base × (1 + g/100) ** years_active, where
+        years_active is zero in the first active year
 
-    Returned in real terms (no inflation lift), matching the budget-spending
-    series convention. Contributions are a cashflow commitment alongside
-    spending — the chart stacks them on top of the spending categories.
+    `inflation_rate` defaults to 0 (real-terms view — today's £). Passing a
+    positive value adds an additional `(1 + inflation/100)^(year -
+    current_year)` lift on top of the per-contribution growth, yielding
+    the nominal view. (Contributions inflate — they are future cash
+    commitments the user intends to scale with inflation unless they
+    explicitly set a different growth rate.)
     """
     years = list(range(current_year, end_year + 1))
     series = [0.0] * len(years)
@@ -255,9 +710,146 @@ def compute_annual_contributions_series(
             if year < start or year > end:
                 continue
             years_active = year - start
-            series[i] += annual * ((1 + g_rate / 100) ** years_active)
+            value        = annual * ((1 + g_rate / 100) ** years_active)
+            if inflation_rate:
+                value *= (1 + inflation_rate / 100) ** i
+            series[i] += value
 
     return [round(x, 0) for x in series]
+
+
+def _sum_lines_per_year(lines: list, years: list, inflation_rate: float = 0.0) -> list:
+    """Sum the active segment's amount across all `lines` for each year.
+
+    `inflation_rate` defaults to 0 (real-terms view — today's £). Passing a
+    positive value adds that inflation lift to non-loan lines per year,
+    yielding the nominal view. **Loans are kept fixed-nominal** (no
+    inflation lift) so the chart agrees with the projection engine, which
+    treats loan repayments as fixed nominal commitments.
+    """
+    result = [0.0] * len(years)
+    for line in lines:
+        segments = line.get("segments") or []
+        is_loan  = line.get("lineType") == "BudgetLineType_Loan"
+        for i, year in enumerate(years):
+            seg = _find_active_segment_dict(segments, year)
+            if seg is None:
+                continue
+            annual      = _float_or_zero(seg.get("annualAmount"))
+            change_rate = _float_or_zero(seg.get("changeRate"))
+            rate = change_rate if is_loan else (inflation_rate + change_rate)
+            result[i] += annual * ((1 + rate / 100) ** i)
+    return [round(x, 0) for x in result]
+
+
+def compute_annual_spending_by_category(
+    lines: list,
+    contributions: list,
+    current_year: int,
+    end_year: int,
+    retirement_year: int | None,
+    inflation_rate: float = 0.0,
+) -> dict:
+    """Per-category per-year spending series for the by-category chart (ADR-017).
+
+    Groups:
+      - one per user-defined `mrl:BudgetCategory` actually referenced by a
+        line, sorted alphabetically;
+      - "Uncategorised" (if any line lacks a category), rendered in neutral
+        gray and sorted to the end of user groups;
+      - "Account contributions" (always last when any contribution exists),
+        the synthetic system group derived from mrl:AccountContribution
+        instances and pinned to teal.
+
+    Each group entry is {name, values, fill, border, is_system}.
+    """
+    years = list(range(current_year, end_year + 1))
+
+    by_cat: dict[str, list] = {}
+    for line in lines:
+        cat_name = (line.get("categoryName") or "").strip() or UNCATEGORISED_LABEL
+        by_cat.setdefault(cat_name, []).append(line)
+
+    groups = []
+    user_cats = sorted(k for k in by_cat if k != UNCATEGORISED_LABEL)
+    for name in user_cats:
+        fill, border = _category_palette(name)
+        groups.append({
+            "name":      name,
+            "values":    _sum_lines_per_year(by_cat[name], years, inflation_rate),
+            "fill":      fill,
+            "border":    border,
+            "is_system": False,
+        })
+    if UNCATEGORISED_LABEL in by_cat:
+        fill, border = _category_palette(UNCATEGORISED_LABEL)
+        groups.append({
+            "name":      UNCATEGORISED_LABEL,
+            "values":    _sum_lines_per_year(by_cat[UNCATEGORISED_LABEL], years, inflation_rate),
+            "fill":      fill,
+            "border":    border,
+            "is_system": False,
+        })
+
+    contrib_series = compute_annual_contributions_series(
+        contributions, current_year, end_year, retirement_year, inflation_rate)
+    if any(v > 0 for v in contrib_series):
+        fill, border = _category_palette(ACCOUNT_CONTRIBUTIONS_LABEL)
+        groups.append({
+            "name":      ACCOUNT_CONTRIBUTIONS_LABEL,
+            "values":    contrib_series,
+            "fill":      fill,
+            "border":    border,
+            "is_system": True,
+        })
+
+    total = [sum(g["values"][i] for g in groups) for i in range(len(years))]
+    return {"years": years, "groups": groups, "total": total}
+
+
+def compute_annual_spending_by_line(
+    lines: list,
+    contributions: list,
+    current_year: int,
+    end_year: int,
+    retirement_year: int | None,
+    inflation_rate: float = 0.0,
+) -> dict:
+    """Per-line per-year series for the by-line chart toggle.
+
+    Each budget line becomes its own group; multi-segment lines still
+    collapse to a single continuous series (gaps render as £0). Account
+    contributions stay aggregated into one synthetic group, matching the
+    by-category view.
+    """
+    years = list(range(current_year, end_year + 1))
+
+    groups = []
+    for line in sorted(lines, key=lambda l: (l.get("name") or "").lower()):
+        nm = line.get("name") or f"Line {line.get('n','?')}"
+        fill, border = _category_palette(nm)
+        groups.append({
+            "name":      nm,
+            "values":    _sum_lines_per_year([line], years, inflation_rate),
+            "fill":      fill,
+            "border":    border,
+            "is_system": False,
+        })
+
+    contrib_series = compute_annual_contributions_series(
+        contributions, current_year, end_year, retirement_year, inflation_rate)
+    if any(v > 0 for v in contrib_series):
+        fill, border = _category_palette(ACCOUNT_CONTRIBUTIONS_LABEL)
+        groups.append({
+            "name":      ACCOUNT_CONTRIBUTIONS_LABEL,
+            "values":    contrib_series,
+            "fill":      fill,
+            "border":    border,
+            "is_system": True,
+        })
+
+    total = [sum(g["values"][i] for g in groups) for i in range(len(years))]
+    return {"years": years, "groups": groups, "total": total}
 
 
 def get_budget_metrics(series: dict, retirement_year: int | None) -> dict:
@@ -297,15 +889,41 @@ def get_budget_metrics(series: dict, retirement_year: int | None) -> dict:
     return {"today": today, "retirement": retirement, "peak": peak}
 
 
-def save_budget_line(n: int, name: str, amount: float, frequency: str,
-                     line_type: str, change_rate: float,
-                     loan_end_year: Optional[int],
-                     start_year: Optional[int] = None,
-                     end_year: Optional[int] = None) -> None:
-    """Write or overwrite a BudgetLine_N instance in the data graph."""
-    line_iri = f"{MRL}BudgetLine_{n}"
+# ===========================================================================
+# BUDGET LINE — writes
+# ===========================================================================
+
+def save_budget_line_segments(
+    n: int,
+    name: str,
+    line_type: str,
+    category_name: str,
+    segments: list,
+) -> None:
+    """Write or overwrite BudgetLine_N together with all its segments.
+
+    `segments` is a list of dicts: {start_year, end_year, amount, frequency,
+    change_rate}. Empty `end_year` (None) means open-ended. Empty
+    `category_name` leaves the line uncategorised; a non-empty name resolves
+    to an existing BudgetCategory by case-insensitive match, creating one on
+    the fly if necessary.
+    """
+    if not segments:
+        raise ValueError("A budget line needs at least one segment.")
+
+    line_iri   = f"{MRL}BudgetLine_{n}"
     person_iri = f"{MRL}Person_1"
 
+    category_iri = None
+    if category_name and category_name.strip():
+        try:
+            cat = get_category_by_name(category_name) or create_category(category_name)
+            category_iri = cat["iri"]
+        except ValueError:
+            # Reserved name — silently drop category rather than fail the save
+            category_iri = None
+
+    # Wipe existing line-level triples + segments
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -313,69 +931,110 @@ def save_budget_line(n: int, name: str, amount: float, frequency: str,
             }}
         }}
     """)
+    delete_segments_for_line(n)
 
+    cat_clause = (
+        f' ;\n                    mrl:budgetCategory <{category_iri}>'
+        if category_iri else ""
+    )
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
         PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-
         INSERT DATA {{
             GRAPH <{DATA_GRAPH.value}> {{
                 <{line_iri}> a mrl:BudgetLine ;
-                    mrl:budgetLineName "{name}" ;
-                    mrl:budgetLineAmount "{amount}"^^xsd:decimal ;
-                    mrl:budgetLineFrequency mrlx:{frequency} ;
+                    mrl:budgetLineName "{_escape(name)}" ;
                     mrl:budgetLineType mrlx:{line_type} ;
-                    mrl:annualChangeRate "{change_rate}"^^xsd:decimal ;
-                    mrl:budgetOwner <{person_iri}> .
+                    mrl:budgetOwner <{person_iri}>{cat_clause} .
             }}
         }}
     """)
 
-    if loan_end_year:
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{line_iri}> mrl:loanEndYear "{loan_end_year}"^^xsd:integer .
-                }}
-            }}
-        """)
+    next_n = _next_segment_n()
+    for seg in segments:
+        save_segment(
+            n=next_n,
+            line_n=n,
+            start_year=int(seg["start_year"]),
+            end_year=int(seg["end_year"]) if seg.get("end_year") else None,
+            amount=float(seg["amount"]),
+            frequency=seg["frequency"] or "FrequencyType_Monthly",
+            change_rate=float(seg.get("change_rate") or 0),
+        )
+        next_n += 1
 
-    if start_year:
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{line_iri}> mrl:budgetStartYear "{start_year}"^^xsd:integer .
-                }}
-            }}
-        """)
 
-    if end_year:
-        store.update(f"""
-            PREFIX mrl: <{MRL}>
-            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            INSERT DATA {{
-                GRAPH <{DATA_GRAPH.value}> {{
-                    <{line_iri}> mrl:budgetEndYear "{end_year}"^^xsd:integer .
-                }}
-            }}
-        """)
+def _segments_from_form(
+    start_years: list,
+    end_years: list,
+    amounts: list,
+    frequencies: list,
+    change_rates: list,
+) -> list:
+    """Zip together five parallel form-field lists into a list of segment
+    dicts ready for save_budget_line_segments(). Empty end_year strings
+    become None (open-ended). Raises ValueError if the lists differ in
+    length.
+    """
+    n = len(start_years)
+    if not (len(end_years) == n == len(amounts) == len(frequencies) == len(change_rates)):
+        raise ValueError("Segment form field arrays are different lengths.")
+    out = []
+    for i in range(n):
+        end_raw = end_years[i]
+        if isinstance(end_raw, str):
+            end_raw = end_raw.strip() or None
+        out.append({
+            "start_year":  start_years[i],
+            "end_year":    end_raw,
+            "amount":      amounts[i],
+            "frequency":   frequencies[i],
+            "change_rate": change_rates[i],
+        })
+    return out
 
 
 def _page_context(request, lines, edit_line=None, **kwargs):
     contributions = get_all_contributions_for_budget()
+    categories    = get_all_categories()
     current_year, end_year, retirement_year = _horizon()
+
+    # Inflation rate from projection settings — used to precompute the
+    # "with inflation" (nominal) variants of the chart series. Default is
+    # the same fallback the projection engine uses (2.5%) when no settings
+    # row exists yet.
+    try:
+        from src.api.routes.projection import get_projection_settings
+        inflation_rate = float(get_projection_settings().get("inflation_rate", 2.5) or 2.5)
+    except Exception:
+        inflation_rate = 2.5
 
     spending_series      = compute_annual_spending_series(lines, current_year, end_year)
     contributions_series = compute_annual_contributions_series(
         contributions, current_year, end_year, retirement_year)
 
-    # Combined series: spending categories + contributions, plus a single
-    # spending-only total and a combined grand-total for the snapshot cards.
+    # ADR-017: precompute four chart shapes — {Category, Line} × {Real, Nominal}.
+    # Real-terms = today's £, no inflation lift; matches the deterministic
+    # engine's interpretation of the user's segment amounts. Nominal applies
+    # the projection inflation rate to non-loan lines and to contributions;
+    # loan-type lines stay fixed-nominal (matching projection.py loan
+    # treatment) so the chart agrees with the projection page.
+    chart_series = {
+        "by_category": {
+            "real":    compute_annual_spending_by_category(
+                lines, contributions, current_year, end_year, retirement_year, 0.0),
+            "nominal": compute_annual_spending_by_category(
+                lines, contributions, current_year, end_year, retirement_year, inflation_rate),
+        },
+        "by_line": {
+            "real":    compute_annual_spending_by_line(
+                lines, contributions, current_year, end_year, retirement_year, 0.0),
+            "nominal": compute_annual_spending_by_line(
+                lines, contributions, current_year, end_year, retirement_year, inflation_rate),
+        },
+    }
+
     spending_total = spending_series["total"]
     grand_total    = [s + c for s, c in zip(spending_total, contributions_series)]
 
@@ -391,23 +1050,32 @@ def _page_context(request, lines, edit_line=None, **kwargs):
     metrics = get_budget_metrics(series, retirement_year)
 
     return {
-        "app_name":          settings.app_name,
-        "active":            "budget",
-        "lines":             lines,
-        "series":            series,
-        "metrics":           metrics,
-        "retirement_year":   retirement_year,
-        "current_year":      current_year,
-        "end_year":          end_year,
-        "frequency_options": FREQUENCY_LABELS,
-        "edit_line":         edit_line,
-        "contributions":     contributions,
+        "app_name":             settings.app_name,
+        "active":               "budget",
+        "lines":                lines,
+        "series":               series,
+        "chart_series":         chart_series,
+        "inflation_rate":       inflation_rate,
+        "metrics":              metrics,
+        "retirement_year":      retirement_year,
+        "current_year":         current_year,
+        "end_year":             end_year,
+        "frequency_options":    FREQUENCY_LABELS,
+        "edit_line":            edit_line,
+        "contributions":        contributions,
+        "categories":           categories,
+        "category_suggestions": CATEGORY_SUGGESTIONS,
         **kwargs,
     }
 
 
+# ===========================================================================
+# ROUTES — budget lines
+# ===========================================================================
+
 @router.get("/budget", response_class=HTMLResponse)
 async def budget_page(request: Request):
+    migrate_legacy_budget_lines_to_segments()
     lines = get_all_budget_lines()
     return templates.TemplateResponse(
         request=request,
@@ -420,20 +1088,24 @@ async def budget_page(request: Request):
 async def add_budget_line(
     request: Request,
     budgetLineName: str = Form(...),
-    budgetLineAmount: float = Form(...),
-    budgetLineFrequency: str = Form("FrequencyType_Monthly"),
     budgetLineType: str = Form(...),
-    annualChangeRate: float = Form(0.0),
-    loanEndYear: Optional[int] = Form(None),
-    budgetStartYear: Optional[int] = Form(None),
-    budgetEndYear: Optional[int] = Form(None),
+    budgetCategoryName: str = Form(""),
+    segmentStartYear: list[int]   = Form(...),
+    segmentEndYear:   list[str]   = Form(...),
+    segmentAmount:    list[float] = Form(...),
+    segmentFrequency: list[str]   = Form(...),
+    segmentChangeRate: list[float] = Form(...),
 ):
     existing = get_all_budget_lines()
-    next_n = max([int(l["n"]) for l in existing if l["n"].isdigit()], default=0) + 1
-    save_budget_line(next_n, budgetLineName, budgetLineAmount,
-                     budgetLineFrequency, budgetLineType,
-                     annualChangeRate, loanEndYear,
-                     budgetStartYear, budgetEndYear)
+    next_n   = max([int(l["n"]) for l in existing if l["n"].isdigit()], default=0) + 1
+    segments = _segments_from_form(
+        segmentStartYear, segmentEndYear, segmentAmount,
+        segmentFrequency, segmentChangeRate,
+    )
+    save_budget_line_segments(
+        next_n, budgetLineName, budgetLineType,
+        budgetCategoryName, segments,
+    )
     lines = get_all_budget_lines()
     return templates.TemplateResponse(
         request=request,
@@ -444,7 +1116,7 @@ async def add_budget_line(
 
 @router.get("/budget/{n}/edit", response_class=HTMLResponse)
 async def edit_budget_line_form(request: Request, n: int):
-    lines = get_all_budget_lines()
+    lines     = get_all_budget_lines()
     edit_line = next((l for l in lines if l["n"] == str(n)), None)
     return templates.TemplateResponse(
         request=request,
@@ -458,18 +1130,22 @@ async def save_edit_budget_line(
     request: Request,
     n: int,
     budgetLineName: str = Form(...),
-    budgetLineAmount: float = Form(...),
-    budgetLineFrequency: str = Form("FrequencyType_Monthly"),
     budgetLineType: str = Form(...),
-    annualChangeRate: float = Form(0.0),
-    loanEndYear: Optional[int] = Form(None),
-    budgetStartYear: Optional[int] = Form(None),
-    budgetEndYear: Optional[int] = Form(None),
+    budgetCategoryName: str = Form(""),
+    segmentStartYear: list[int]   = Form(...),
+    segmentEndYear:   list[str]   = Form(...),
+    segmentAmount:    list[float] = Form(...),
+    segmentFrequency: list[str]   = Form(...),
+    segmentChangeRate: list[float] = Form(...),
 ):
-    save_budget_line(n, budgetLineName, budgetLineAmount,
-                     budgetLineFrequency, budgetLineType,
-                     annualChangeRate, loanEndYear,
-                     budgetStartYear, budgetEndYear)
+    segments = _segments_from_form(
+        segmentStartYear, segmentEndYear, segmentAmount,
+        segmentFrequency, segmentChangeRate,
+    )
+    save_budget_line_segments(
+        n, budgetLineName, budgetLineType,
+        budgetCategoryName, segments,
+    )
     lines = get_all_budget_lines()
     return templates.TemplateResponse(
         request=request,
@@ -481,6 +1157,7 @@ async def save_edit_budget_line(
 @router.post("/budget/{n}/delete", response_class=HTMLResponse)
 async def delete_budget_line(request: Request, n: int):
     line_iri = f"{MRL}BudgetLine_{n}"
+    delete_segments_for_line(n)
     store.update(f"""
         DELETE WHERE {{
             GRAPH <{DATA_GRAPH.value}> {{
@@ -494,3 +1171,50 @@ async def delete_budget_line(request: Request, n: int):
         name="budget.html",
         context=_page_context(request, lines, deleted=True),
     )
+
+
+# ===========================================================================
+# ROUTES — categories (ADR-017)
+# ===========================================================================
+
+@router.post("/budget/categories", response_class=HTMLResponse)
+async def add_category(request: Request, categoryName: str = Form(...)):
+    """Create a new BudgetCategory and redirect back to /budget."""
+    try:
+        create_category(categoryName)
+        return RedirectResponse(url="/budget", status_code=303)
+    except ValueError as e:
+        lines = get_all_budget_lines()
+        return templates.TemplateResponse(
+            request=request,
+            name="budget.html",
+            context=_page_context(request, lines, category_error=str(e)),
+        )
+
+
+@router.post("/budget/categories/{n}/rename", response_class=HTMLResponse)
+async def rename_category_route(request: Request, n: int, categoryName: str = Form(...)):
+    try:
+        rename_category(n, categoryName)
+        return RedirectResponse(url="/budget", status_code=303)
+    except ValueError as e:
+        lines = get_all_budget_lines()
+        return templates.TemplateResponse(
+            request=request,
+            name="budget.html",
+            context=_page_context(request, lines, category_error=str(e)),
+        )
+
+
+@router.post("/budget/categories/{n}/delete", response_class=HTMLResponse)
+async def delete_category_route(request: Request, n: int):
+    try:
+        delete_category(n)
+        return RedirectResponse(url="/budget", status_code=303)
+    except ValueError as e:
+        lines = get_all_budget_lines()
+        return templates.TemplateResponse(
+            request=request,
+            name="budget.html",
+            context=_page_context(request, lines, category_error=str(e)),
+        )

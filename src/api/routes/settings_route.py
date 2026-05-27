@@ -218,7 +218,24 @@ def export_all_data() -> dict:
         })
     investment_accounts.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
+    # Budget categories (ADR-017)
+    budget_categories = []
+    for q in store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), og.NamedNode(f"{MRL}BudgetCategory"), DATA_GRAPH):
+        iri = q.subject
+        n   = str(iri.value).split("BudgetCategory_")[-1]
+        budget_categories.append({
+            "n":            n,
+            "name":         _val(iri, "categoryName"),
+            "displayOrder": _int_val(iri, "categoryDisplayOrder"),
+            "source":       _val(iri, "categorySource") or "user",
+        })
+    budget_categories.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
+
     # Budget lines
+    # Legacy line-level amount/frequency/window/changeRate kept on the export
+    # for backwards compatibility with pre-1.0.2 backups and to support the
+    # one-shot migration on restore (ADR-017 §3).
     budget_lines = []
     for q in store.store.quads_for_pattern(
             None, og.NamedNode(RDF_TYPE), og.NamedNode(f"{MRL}BudgetLine"), DATA_GRAPH):
@@ -234,8 +251,27 @@ def export_all_data() -> dict:
             "loanEndYear":     _int_val(iri, "loanEndYear"),
             "budgetStartYear": _int_val(iri, "budgetStartYear"),
             "budgetEndYear":   _int_val(iri, "budgetEndYear"),
+            # ADR-017: category link (local name of BudgetCategory_N, or empty)
+            "categoryN":       _local(iri, "budgetCategory"),
         })
     budget_lines.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
+
+    # Budget line segments (ADR-017)
+    budget_line_segments = []
+    for q in store.store.quads_for_pattern(
+            None, og.NamedNode(RDF_TYPE), og.NamedNode(f"{MRL}BudgetLineSegment"), DATA_GRAPH):
+        iri = q.subject
+        n   = str(iri.value).split("BudgetLineSegment_")[-1]
+        budget_line_segments.append({
+            "n":          n,
+            "ownerLabel": _local(iri, "segmentOwner"),  # e.g. "BudgetLine_3"
+            "startYear":  _int_val(iri, "segmentStartYear"),
+            "endYear":    _int_val(iri, "segmentEndYear"),
+            "amount":     _float_val(iri, "segmentAmount"),
+            "frequency":  _local(iri, "segmentFrequency"),
+            "changeRate": _float_val(iri, "segmentChangeRate"),
+        })
+    budget_line_segments.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
     # Life events
     life_events = []
@@ -286,7 +322,9 @@ def export_all_data() -> dict:
             "accounts":              accounts,
             "account_contributions": account_contributions,   # ADR-015
             "investment_accounts":   investment_accounts,
+            "budget_categories":     budget_categories,        # ADR-017
             "budget_lines":          budget_lines,
+            "budget_line_segments":  budget_line_segments,     # ADR-017
             "life_events":           life_events,
             "projection_settings":   projection_settings,
         }
@@ -513,25 +551,61 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {triples} }} }}
             """)
 
+        # --- Budget categories (ADR-017) ---
+        # Restored BEFORE budget lines so the line's budgetCategory IRI is valid.
+        for cat in data.get("budget_categories", []):
+            cat_n   = cat.get("n", "1")
+            cat_iri = f"{MRL}BudgetCategory_{cat_n}"
+            safe_name = (cat.get("name") or "").replace("\\", "\\\\").replace('"', '\\"')
+            triples = f"""
+        <{cat_iri}> a mrl:BudgetCategory ;
+            mrl:categoryName "{safe_name}" ;
+            mrl:categorySource "{cat.get('source', 'user')}" .
+            """
+            if cat.get("displayOrder") is not None:
+                triples += (f'\n        <{cat_iri}> mrl:categoryDisplayOrder '
+                            f'"{cat["displayOrder"]}"^^xsd:integer .')
+            store.update(f"""
+                PREFIX mrl: <{MRL}>
+                PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {triples} }} }}
+            """)
+
         # --- Budget lines ---
+        # Legacy line-level fields (amount, frequency, changeRate, window) are
+        # still restored verbatim for pre-1.0.2 backups; for new backups they
+        # may be absent but the segments block below will populate everything.
+        # On any restore that lacks segments, migrate_legacy_budget_lines_to_segments()
+        # will run on the next /budget render (ADR-017 §3).
         for line in data.get("budget_lines", []):
             n        = line.get("n", "1")
             line_iri = f"{MRL}BudgetLine_{n}"
+            safe_line_name = (line.get("name") or "").replace("\\", "\\\\").replace('"', '\\"')
+            base_triples = f"""
+        <{line_iri}> a mrl:BudgetLine ;
+            mrl:budgetLineName "{safe_line_name}" ;
+            mrl:budgetLineType mrlx:{line.get('lineType', 'BudgetLineType_Mandatory')} ;
+            mrl:budgetOwner <{person_iri}> .
+            """
+            # Legacy line-level fields — only emitted when actually present
+            # in the backup. Newer backups (Phase 1b+) put these on segments.
+            if line.get("amount") is not None:
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineAmount '
+                                 f'"{line["amount"]}"^^xsd:decimal .')
+            if line.get("frequency"):
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineFrequency '
+                                 f'mrlx:{line["frequency"]} .')
+            if line.get("changeRate") is not None:
+                base_triples += (f'\n        <{line_iri}> mrl:annualChangeRate '
+                                 f'"{line["changeRate"]}"^^xsd:decimal .')
+            if line.get("categoryN"):
+                base_triples += (f'\n        <{line_iri}> mrl:budgetCategory '
+                                 f'<{MRL}{line["categoryN"]}> .')
             store.update(f"""
                 PREFIX mrl:  <{MRL}>
                 PREFIX mrlx: <{MRL_EXT}>
                 PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-                INSERT DATA {{
-                    GRAPH <{DATA_GRAPH.value}> {{
-                        <{line_iri}> a mrl:BudgetLine ;
-                            mrl:budgetLineName "{line.get('name', '')}" ;
-                            mrl:budgetLineAmount "{line.get('amount', 0)}"^^xsd:decimal ;
-                            mrl:budgetLineFrequency mrlx:{line.get('frequency', 'FrequencyType_Monthly')} ;
-                            mrl:budgetLineType mrlx:{line.get('lineType', 'BudgetLineType_Mandatory')} ;
-                            mrl:annualChangeRate "{line.get('changeRate', 0)}"^^xsd:decimal ;
-                            mrl:budgetOwner <{person_iri}> .
-                    }}
-                }}
+                INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {base_triples} }} }}
             """)
             if line.get("loanEndYear"):
                 store.update(f"""
@@ -551,6 +625,32 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                     INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
                         <{line_iri}> mrl:budgetEndYear "{line['budgetEndYear']}"^^xsd:integer . }} }}
                 """)
+
+        # --- Budget line segments (ADR-017) ---
+        # Restored AFTER budget lines so the segmentOwner IRI is valid.
+        for seg in data.get("budget_line_segments", []):
+            seg_n   = seg.get("n", "1")
+            owner   = seg.get("ownerLabel")
+            if not owner:
+                continue
+            seg_iri = f"{MRL}BudgetLineSegment_{seg_n}"
+            seg_triples = f"""
+        <{seg_iri}> a mrl:BudgetLineSegment ;
+            mrl:segmentOwner <{MRL}{owner}> ;
+            mrl:segmentStartYear "{seg.get('startYear', 0)}"^^xsd:integer ;
+            mrl:segmentAmount "{seg.get('amount', 0)}"^^xsd:decimal ;
+            mrl:segmentFrequency mrlx:{seg.get('frequency', 'FrequencyType_Monthly')} ;
+            mrl:segmentChangeRate "{seg.get('changeRate', 0)}"^^xsd:decimal .
+            """
+            if seg.get("endYear") is not None:
+                seg_triples += (f'\n        <{seg_iri}> mrl:segmentEndYear '
+                                f'"{seg["endYear"]}"^^xsd:integer .')
+            store.update(f"""
+                PREFIX mrl:  <{MRL}>
+                PREFIX mrlx: <{MRL_EXT}>
+                PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+                INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {seg_triples} }} }}
+            """)
 
         # --- Life events ---
         for event in data.get("life_events", []):

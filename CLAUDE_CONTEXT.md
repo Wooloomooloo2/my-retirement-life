@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-26
+> Last updated: 2026-05-27
 
 ---
 
@@ -15,7 +15,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
 - **Platform:** Windows (VS Code), repo at `C:\Projects\my-retirement-life`, `.venv` present. May migrate to Linux.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version 1.0.1 + ADR-015 additions + 3 new currencies (INR, CNY, AED). 17 `Currency` individuals total.
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.2** (ADR-017 budget restructure). 17 `Currency` individuals total.
 
 ---
 
@@ -32,7 +32,61 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-25)
+## Changes this session (2026-05-26 → 2026-05-27)
+
+37. **Budget chart — inflation toggle (loan-aware).** Follow-on to Phase 3 after Mark observed the chart staying flat over time. New "With inflation (X.X%/yr)" checkbox on the chart card sits next to the Category/Line toggle; default off (real terms — preserves Phase 3 behaviour). When on, the chart shows nominal £ — non-loan lines lifted by `(1 + inflation/100)^years_from_start`, loan-type lines kept fixed-nominal (matches the projection engine's loan treatment so the budget chart and projection page agree on the same numbers).
+    - `budget.py`: `_sum_lines_per_year()`, `compute_annual_contributions_series()`, `compute_annual_spending_by_category()`, and `compute_annual_spending_by_line()` all gain an `inflation_rate: float = 0.0` parameter. `_page_context` now lazy-imports `get_projection_settings` (fallback 2.5% inflation) and precomputes four chart shapes — `chart_series = {by_category: {real, nominal}, by_line: {real, nominal}}`. Loans use only their `segmentChangeRate`; non-loans add `inflation_rate + segmentChangeRate` per year. Contributions inflate too (they're future cash commitments).
+    - `budget.html`: chart card header gains the inflation checkbox; the dataset key on the chart `{{ chart_series | tojson }}` replaces the old `{{ by_category | tojson }}` + `{{ by_line | tojson }}` pair. JS tracks two state booleans (`currentGrouping`, `currentInflation`) and picks from the precomputed shapes on toggle change. Y-axis title and the chart's mode hint update with the toggle ("Annual spending (today's £)" ↔ "Annual spending (nominal £, X.X% inflation)"). Snapshot metrics are kept in real terms with a small footnote — swapping them too was scope creep and they're identical in both modes for the "Today" snapshot anyway.
+    - **Why loans don't inflate on the chart**: the projection engine treats `BudgetLineType_Loan` as fixed nominal (item 8 in this CLAUDE_CONTEXT — "Loan-line inflation"). If the chart applied inflation uniformly, the chart and projection page would silently disagree for any plan with a mortgage or car loan. The loan-aware lift here is the correct behaviour and saves a future "why doesn't the chart match the projection" bug report.
+
+36. **Dashboard `KeyError: 'annual_amount'` — FIXED.** Phase 2's engine refactor moved `annual_amount` from each `BudgetLine` dict onto its segments, but `app.py:209` (`get_dashboard_data()`) still summed `l["annual_amount"]` to build the "today's annual spending" headline figure. On first launch after the 1.0.2 ontology + Phase 2 deploy the dashboard 500'd. Fixed by importing `find_active_segment` from `projection.py` and computing `annual_spending` from each line's currently-active segment (lines whose schedule doesn't cover today contribute zero — semantically more correct than the pre-Phase 2 behaviour, which summed every line's raw amount regardless of `budgetStartYear`). Grep'd the rest of `src/` for any remaining line-level reads of the old `annual_amount` / `change_rate` / `start_year` / `end_year` / `loan_end_year` keys — that was the only occurrence outside `projection.py` itself.
+
+35. **Budget restructure (ADR-017) — Phase 3 (UI) — DONE.** Final phase. `src/templates/budget.html` rewritten end-to-end. Highlights:
+    - **Chart toggle** "Category / Line" (join-button, top-right of the chart card). Default = Category. Datasets computed server-side via `compute_annual_spending_by_category()` / `compute_annual_spending_by_line()` in `budget.py`; JS swaps Chart.js datasets in-place via `chart.update()` (no rebuild). Each category band gets a deterministic HSL colour from `_category_palette()` keyed off the category name (stable across sessions). System group **"Account contributions"** pinned to teal (rgba 20,184,166 — matches the existing 4th-band convention). **"Uncategorised"** group pinned to neutral gray (rgba 156,163,175).
+    - **Schedule editor** — replaces the old single-row amount/freq/start/end/changeRate. One segment row by default; "+ Add stage" button appends a new row pre-populated from the previous (start = prev end + 1, amount/freq/rate carried over). Per-row "×" remove (refuses to delete the last remaining stage). Per-row annual-equivalent hint updates live. **Client-side overlap validation**: O(n²) pairwise check on submit/change; conflicting ranges disable Save and show a red `ti-alert-triangle` notice. Gaps between stages are intentional and pass validation cleanly.
+    - **Category combobox** — HTML5 `<input list>` + `<datalist>` of all existing `mrl:BudgetCategory` names (renames flow through automatically since the input fires off a name-based lookup at save). Below the input: 9 starter chip buttons (Housing, Food, Transport, Travel, Health, Subscriptions, Personal, Bills, Taxes) — clicking a chip sets the input value via `setCategory(name)`. Chips materialise as `BudgetCategory_N` instances ONLY when the user clicks Save with the chip's name in the input.
+    - **Table changes** — new **Category** column (text only when set; "—" when uncategorised). Type column collapsed to a single-letter badge (M / D / L) with hover tooltip. Multi-segment lines: a `N stages` ghost badge next to the name, "multi-stage" placeholder in Annual total, range collapsed to first-segment-start → last-segment-end in the Schedule column.
+    - **Manage categories card** — small grid of inline rename/delete forms, one per existing category. Rename POSTs to `/budget/categories/{n}/rename`; delete POSTs to `/budget/categories/{n}/delete` and refuses (server-side) if any line still references the category.
+    - Removed: separate "Loan end year" field (folded into segment end year). The legacy single-amount form is gone — the form now ONLY accepts the segment list shape, so `POST /budget` and `POST /budget/{n}/edit` route signatures change. Form submission contract: parallel `segmentStartYear[]`, `segmentEndYear[]` (str so blanks → None), `segmentAmount[]`, `segmentFrequency[]`, `segmentChangeRate[]` lists plus the scalar `budgetLineName`, `budgetLineType`, `budgetCategoryName`. FastAPI `list[T] = Form(...)` handles the parsing.
+    - Backend additions in `src/api/routes/budget.py`: `CATEGORY_SUGGESTIONS` constant; `ACCOUNT_CONTRIBUTIONS_LABEL` / `UNCATEGORISED_LABEL`; `_category_palette(name)`; `_sum_lines_per_year()`; `compute_annual_spending_by_category()` / `compute_annual_spending_by_line()`; `save_budget_line_segments()` (replaces `save_budget_line`); `_segments_from_form()` helper.
+
+34. **Budget restructure (ADR-017) — Phase 2 (engine) — DONE.** `src/api/routes/projection.py` and `src/api/routes/budget.py` switched to segment-walking.
+    - `projection.py`: new module helpers `_int_or_none()` and `find_active_segment(line, year)`. Rewrote `load_budget_lines()` to read each line's `mrl:BudgetLineSegment` instances via the `mrl:segmentOwner` back-link, returning `{line_type, segments: [{annual_amount, change_rate, start_year, end_year}, ...]}`. **Backwards-compatible fallback**: lines with no segments (pre-migration data or projection runs before `/budget` has triggered migration) get an in-memory single segment synthesised from the legacy line-level fields. The year-loop body in `_simulate_run()` replaced the three start/end/loan-end skip checks with a single `find_active_segment()` call; gap years naturally contribute zero. Loan-line semantics preserved (no inflation lift when `line_type == BudgetLineType_Loan`).
+    - `budget.py`: rewrote `compute_annual_spending_series()` to walk `line.segments` via a local `_find_active_segment_dict()` helper. Behaviour is real-terms only — base inflation is NOT applied here (the budget page is conceptually a real-terms plan; the projection layers inflation on top).
+    - **Parity argument**: growth exponent stays `years_from_start = year - current_year` (NOT `year - segment.start_year`), so single-segment migrated lines produce bit-identical numbers to the pre-ADR-017 engine. A line specified as £6000/yr at +2.5% real in 3% inflation, starting in 2031 with current_year=2026: pre-ADR-017 gave `6000 × 1.055^5 = 7,847` in 2031; post-ADR-017 same number. For multi-segment lines, each segment's amount is interpreted as "in today's £ at the projection start, switched in at segment.start_year" — matching the user's mental model ("in 2049 when the kids leave home, my groceries drop to £600 in today's money" → engine inflates £600 to 2049 nominal terms).
+    - `loanEndYear` is folded into `segment.end_year` during migration; the engine no longer distinguishes the two (they meant the same thing — "this line ends here").
+
+33. **Budget restructure (ADR-017) — Phase 1b (backend CRUD + migration) — DONE.** `src/api/routes/budget.py` rewritten end-to-end; `src/api/routes/settings_route.py` extended for export/restore.
+    - **BudgetCategory CRUD** (5 functions): `get_all_categories()`, `get_category_by_name()`, `_next_category_n()`, `create_category()` (raises ValueError on empty or reserved name; case-insensitive dedup), `rename_category()`, `delete_category()` (refuses if any line still references it), `get_lines_using_category()`. Reserved name set: `RESERVED_CATEGORY_NAMES = {"account contributions"}` — case-insensitive, blocks UI-defined collision with the synthetic system group.
+    - **BudgetLineSegment CRUD** (4 functions): `get_segments_for_line(line_n)`, `_next_segment_n()`, `delete_segments_for_line(line_n)` (SPARQL DELETE WHERE on the `segmentOwner` back-link), `save_segment(n, line_n, …)`.
+    - **Idempotent migration** `migrate_legacy_budget_lines_to_segments()` — called on every `GET /budget` render. Two guards (both cheap quad-pattern queries): if any `BudgetLineSegment` exists already, no-op; if no `BudgetLine` has `budgetLineAmount`, no-op. For each legacy line, creates ONE `BudgetLineSegment_N` copying amount / frequency (or `FrequencyType_Monthly`) / change_rate (or 0) / startYear (or current_year) / endYear (or loanEndYear). **Deprecated line-level properties are LEFT IN PLACE** per ADR-017 §3 — survives a re-run from a re-restored old backup. Originally had an in-memory `_migration_checked` cache; removed it once realised it would prevent re-migration after a backup restore wipes the data graph mid-session.
+    - `get_all_budget_lines()` rewritten: reads each line's segments + category, returns the new shape AND a flattened first-segment view at the top level (`amount`, `frequency`, `annualAmount`, `changeRate`, `startYear`, `endYear`, `loanEndYear`) for backwards-compatible template rendering. Pre-migration legacy lines fall through to reading line-level fields directly.
+    - `save_budget_line()` (Phase 1b version — superseded in Phase 3): accepts `category_name`, wipes existing line-level triples + segments, writes only `budgetLineName` / `budgetLineType` / `budgetOwner` / optional `budgetCategory` to the line, then writes ONE segment. Category resolution: case-insensitive lookup, create on demand if no match.
+    - `_page_context` exposes `categories` and `category_suggestions`.
+    - 3 new routes: `POST /budget/categories`, `POST /budget/categories/{n}/rename`, `POST /budget/categories/{n}/delete`. All return 303 redirect on success, re-render with `category_error` context key on `ValueError`.
+    - `delete_budget_line` now calls `delete_segments_for_line(n)` before wiping the line itself.
+    - **settings_route.py**: export adds `budget_categories` and `budget_line_segments` lists + `categoryN` field on each budget line. Restore order: **categories → lines → segments** so the linking IRIs are valid. Old v0.3 backups (no categories, no segments) still restore cleanly — legacy line fields are written, migration creates segments on next `/budget` render. New backups omit the legacy line-level fields (Phase 1b's save clears them); the segments block carries the truth.
+    - Module re-parses cleanly; import-up-to-store-lock succeeded.
+
+32. **Budget restructure (ADR-017) — Phase 1a (ontology) — DONE.** `docs/ontology/mrl-ontology.ttl`.
+    - Version bumped 1.0.1 → 1.0.2.
+    - New class `mrl:BudgetCategory` with 3 properties: `categoryName` (xsd:string; "Account contributions" name reserved for the synthetic system group), `categoryDisplayOrder` (xsd:integer, optional manual ordering), `categorySource` (xsd:string; reserved for future MFL Level-1 ingest — "user" by default, "mfl-level-1" when imported).
+    - New property `mrl:budgetCategory` on `mrl:BudgetLine` (range `mrl:BudgetCategory`, optional). Applies to all line types incl. Loan — a mortgage is categorised as Housing alongside utilities, not in a separate Loans band.
+    - 6 line-level properties marked `[DEPRECATED in 1.0.2 — see ADR-017]` in their comments (kept on the class for migration safety): `budgetLineAmount`, `budgetLineFrequency`, `annualChangeRate`, `loanEndYear`, `budgetStartYear`, `budgetEndYear`.
+    - Repurposed the pre-existing post-MVP `mrl:BudgetLineSegment` stub. Section header rewritten (no longer "post-MVP" — quotes the family-stage groceries example from the ADR). Class comment rewritten. Property changes: dropped `segmentAmountOverride` (legacy "override" concept inconsistent with segments-as-source-of-truth), renamed `segmentOfLine` → `segmentOwner` (symmetric with `mrl:contributionOwner` on AccountContribution, ADR-015). Added: `segmentAmount` (required), `segmentFrequency` (object → skos:Concept). Existing `segmentStartYear` / `segmentEndYear` / `segmentChangeRate` kept with refreshed comments.
+    - **rdflib parsed the result cleanly — 1286 triples, no syntax errors.**
+    - **Requires `python tools\reload_ontology.py` (app closed)** before Phases 1b/2/3 can function.
+
+31. **ADR-017 — Budget line segments and user-defined categories — drafted and Accepted.** Mark (business architect) flagged the budget shortcoming during planning: the current `mrl:BudgetLine` cannot represent life-stage spending changes continuously (e.g. groceries: £500/mo single → £1500/mo with kids for 18 years → £600/mo empty-nest) without splitting one logical category into multiple discontinuous lines, which then fragments the future by-category chart.
+    - **Two coupled additions in one ADR** since they restructure the same `BudgetLine` shape:
+      1. `mrl:BudgetCategory` (user-created, NOT a fixed enum). Categories are first-class instances so a rename is one edit; UI offers 9 starter chip suggestions that materialise only when adopted. Reserved name `"Account contributions"` collides with the synthetic system group (derived at render from `mrl:AccountContribution` instances, ADR-015) — UI rejects user-defined categories with that name. **Loans are NOT a system category** (Mark's call): a mortgage takes the Housing category like any other line. Line type (Mandatory / Discretionary / Loan) drives engine math only; category drives chart grouping. `mrl:categorySource` reserves provenance for a future MFL Level-1 ingest path (ADR-010).
+      2. `mrl:BudgetLineSegment` linked via `mrl:segmentOwner` (mirrors `mrl:contributionOwner` from ADR-015). A line has one-or-more segments; in any given year at most one is active. Gaps between segments contribute £0 in that year — by design (Mark's example: pausing the Travel category for two years to pay down a mortgage faster).
+    - **Decisions captured** (in addition to the two main ones): existing budget lines migrate idempotently on startup (one segment per legacy line, deprecated fields left in place); categories are optional for ALL line types (lines without one fall into the synthetic "Uncategorised" group on the chart); category management is inline only (no dedicated admin page) for v1; categories without references are NOT auto-deleted, but the delete endpoint refuses while references exist; chart default flips to by-category (Mandatory/Discretionary/Loans grouping retired).
+    - `docs/adr/ADR-017-budget-line-segments-and-user-defined-categories.md` drafted, revised once on Mark's feedback (loans-not-a-system-group, chip list updated to 9 incl. Bills + Taxes, drop "Other" chip, no warning UI on gaps), flipped to Accepted. `docs/adr/README.md` index row + summary paragraph added.
+
+---
+
+## Changes earlier (2026-05-25)
 
 30. **Asset model — Phase 4 (dashboard redesign) — DONE.** Final phase of the asset project: replaces the old setup-checklist + balance-trajectory mini-chart layout with a net-worth-by-account hero view. **User instruction:** replace the data-present dashboard wholesale; first-run welcome state and the setup-checklist-when-incomplete card stay (onboarding survives).
     - `src/api/app.py` `get_dashboard_data()`:
@@ -308,6 +362,7 @@ my-retirement-life/
 | 014 | Scenario management | Implemented |
 | 015 | Account contributions | Implemented |
 | 016 | Live exchange rates (open.er-api.com) | Accepted |
+| 017 | Budget line segments and user-defined categories | Accepted |
 
 ---
 
@@ -335,7 +390,8 @@ my-retirement-life/
 load_all_accounts()           → list (cash + investment, all ADR-011/012/013 fields
                                 + account_type_local e.g. "CashAccountType_Current")
 load_all_income_sources()
-load_budget_lines()
+load_budget_lines()           → list of {line_type, segments: [{annual_amount,
+                                change_rate, start_year, end_year}]} — ADR-017
 load_life_events()
 load_all_contributions()      → {account_label: {annual_amount, start_year, end_year, growth_rate}}
 get_projection_settings() / save_projection_settings()
@@ -366,7 +422,7 @@ run_monte_carlo(inflation_rate, proj_settings=None)
 3. Record per-account returns = closing_after_growth − opening
 4. **Apply contributions** (ADR-015): credit account balance + accumulate `year_contribution_spending`
 5. Sum active income sources + non-reinvested dividends
-6. Sum active budget lines (inflation-adjusted, COL ratio in retirement)
+6. Sum active budget lines — ADR-017: `find_active_segment(line, year)` returns the segment whose [start_year, end_year] window contains `year`, or None for gap years (line contributes 0). Single growth exponent `years_from_start = year - current_year` applied to the segment's amount; loans skip the inflation lift. COL ratio in retirement.
 7. Process life events (cost/receipt; account-specific if fundedBy/receivedBy set)
 8. `pre_net = income + receipts − spending − year_contribution_spending`
 9. If `pre_net < 0`: drawdown via `_apply_drawdown()` + `_compute_source_tax()`; residence tax
@@ -462,19 +518,21 @@ ONTOLOGY_GRAPH = NamedNode("https://myretirementlife.app/ontology/graph")
 
 ## Current backlog
 
-### RECENTLY SHIPPED — Asset model + Net-worth dashboard (2026-05-25 evening — all phases complete)
+### RECENTLY SHIPPED — Budget restructure: line segments + user-defined categories (2026-05-26 → 2026-05-27 — all phases complete)
 
-Multi-phase project introducing physical assets as a third account class, culminating in a redesigned dashboard. Four commits, all four phases landed:
-`434717d` Phase 1a · `9564416` Phase 1bc · `36f0d4e` Phase 2+3 · `e44fc9f` Phase 4. Awaiting end-to-end smoke test.
+ADR-017. Solves two coupled budget shortcomings: (1) life-stage spending changes couldn't be modelled continuously (had to split one logical category into multiple discontinuous lines), and (2) the chart's Mandatory/Discretionary/Loans grouping showed how the engine treats lines, not what the money is for. Awaiting end-to-end smoke test.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1a | Ontology — `mrl:PhysicalAsset` hierarchy + 4 properties + `LifeEventType_AssetSale` + `mrl:sourceAsset` back-link | **DONE** (item 27 — needs `tools\reload_ontology.py` run) |
-| 1b | Backend — `accounts.py` extensions: `ASSET_SUBCLASSES`, `_next_asset_n`, `get_all_asset_accounts()`, `save_asset()`, `delete_asset()`, `_parse_asset_label()`, four asset routes (`POST /accounts/asset`, GET/POST/DELETE `/accounts/asset/{label}/...`), extended `get_all_accounts_combined()` (now adds `label` to all entries + asset block), extended `_render_accounts()` context (asset_subclasses, asset_total_balance, proceeds_account_options) | **DONE** (item 28) |
-| 1c | UI — third "Asset" (amber) tab on `/accounts` with class-aware form fields (subclass, appreciation %, sale year, sale value override, proceeds account). Generic tri-state JS toggle via `.class-field` + `.class-field-{cash\|invest\|asset}` so a field can opt into multiple classes (e.g. jurisdiction shows for cash + invest, hidden for assets). Table rows: amber dot for assets, appreciation% in Yield col, "Sell {year}" or "Hold" in Draw priority col, "—" in tax/contribution cols, Detail link hidden for assets. Tax/Drawdown collapsible + Contribution panel hidden for asset class | **DONE** (item 28) |
-| 2 | Auto-sync sale → Life Event: asset save/update/delete creates/maintains a managed `LifeEventType_AssetSale` linked via `mrl:sourceAsset`. Life Events page shows "Source: {asset name}" badge and disables inline editing on asset-sourced events | **DONE** (item 29) |
-| 3 | Engine — `load_all_assets()`, per-year appreciation, zero-out at sale year (proceeds inherit Life Event engine path from Phase 2) | **DONE** (item 29) |
-| 4 | Dashboard redesign — stacked-area net-worth chart across all three classes (cash → invest → assets), per-account legend with chip/dropdown toggle. Setup checklist rethink | **DONE** (item 30) |
+| 1a | Ontology — `mrl:BudgetCategory` + 3 properties (`categoryName`, `categoryDisplayOrder`, `categorySource`); `mrl:budgetCategory` on `BudgetLine`; repurpose post-MVP `BudgetLineSegment` stub (rename `segmentOfLine`→`segmentOwner`, drop `segmentAmountOverride`, add required `segmentAmount` + `segmentFrequency`); 6 line-level properties marked `[DEPRECATED in 1.0.2]`. Version 1.0.1 → 1.0.2. | **DONE** (item 32 — needs `tools\reload_ontology.py` run) |
+| 1b | Backend — full CRUD on categories + segments in `budget.py`; idempotent `migrate_legacy_budget_lines_to_segments()` called on every `GET /budget`; `get_all_budget_lines()` returns segments + category + flattened first-segment view for backwards-compat templates; `save_budget_line()` (Phase 1b version) writes one segment per save; reserved name `"Account contributions"` blocked from user creation; 3 new category routes. `settings_route.py` export adds `budget_categories` and `budget_line_segments`; restore order: categories → lines → segments. Old backups still restore cleanly. | **DONE** (item 33) |
+| 2 | Engine — `projection.py` `load_budget_lines()` returns each line with `segments`; new `find_active_segment(line, year)` helper; year-loop body replaces three skip checks with one segment lookup; gap years naturally contribute zero. Backwards-compat fallback synthesises one in-memory segment from legacy fields when no segments exist yet. `budget.py` `compute_annual_spending_series()` mirrors the change. **Parity preserved**: growth exponent stays `years_from_start`, so single-segment migrated lines produce bit-identical numbers. | **DONE** (item 34) |
+| 3 | UI — `budget.html` rewritten. Chart toggle "Category / Line" (default Category) with deterministic HSL palette per category; teal pinned for synthetic "Account contributions" group; gray for "Uncategorised". Schedule editor (multi-segment), "+ Add stage" / "×" remove, client-side overlap validation, per-row annual-equivalent hint. Category combobox with `<datalist>` + 9 starter chips (Housing, Food, Transport, Travel, Health, Subscriptions, Personal, Bills, Taxes). Table: Category column + Type collapsed to M/D/L badge + multi-segment "N stages" indicator. "Manage categories" card with inline rename + delete. **Form contract changed**: routes now accept parallel `segmentStartYear[]`/`segmentEndYear[]`/`segmentAmount[]`/`segmentFrequency[]`/`segmentChangeRate[]` lists. `save_budget_line()` superseded by `save_budget_line_segments()`. | **DONE** (item 35) |
+
+### PREVIOUSLY SHIPPED — Asset model + Net-worth dashboard (2026-05-25)
+
+Multi-phase project introducing physical assets as a third account class, culminating in a redesigned dashboard. Four commits, all four phases landed:
+`434717d` Phase 1a · `9564416` Phase 1bc · `36f0d4e` Phase 2+3 · `e44fc9f` Phase 4. See items 27–30 for full detail.
 
 ### PRE-BETA — new items from end-to-end walkthrough (2026-05-23)
 All to be addressed before public beta. File(s) each will need are noted.
@@ -518,9 +576,9 @@ _(All known PRE-BETA items resolved this session.)_
 - ~~Accounts vs Investments IA (#3)~~ — DONE (this session, item 21). Unified `/accounts` page. Legacy `/investments/*` POST URLs still backwards-compatible; `GET /investments` redirects.
 
 ### Post-1.0
-- ~~**Dashboard redesign.**~~ Now in progress — see **In progress** section above (Phase 4).
-- ~~**"Sell asset" feature.**~~ Now in progress — see **In progress** section above (Phases 1a–3). Implemented as `mrl:PhysicalAsset` hierarchy with auto-managed `LifeEventType_AssetSale` events.
-- Budget line sub-categories (e.g. Housing, Food, Travel, Subscriptions, Health…) so the `/budget` stacked-area chart can show granular spending trends rather than the current Mandatory/Discretionary/Loans split. Likely adds a `mrl:budgetCategory` enum + per-category colour palette.
+- ~~**Dashboard redesign.**~~ DONE — see Asset model project (2026-05-25, item 30).
+- ~~**"Sell asset" feature.**~~ DONE — `mrl:PhysicalAsset` hierarchy with auto-managed `LifeEventType_AssetSale` events (2026-05-25, items 27–30).
+- ~~**Budget line sub-categories.**~~ DONE — ADR-017 shipped 2026-05-27 as user-defined `mrl:BudgetCategory` instances (not a fixed enum, per Mark's call) plus `mrl:BudgetLineSegment` for life-stage spending changes. See items 31–35.
 - Tax-optimal drawdown ordering (ADR-011 future)
 - PCLS dedicated model
 - Multiple marginal tax bands (ADR-013 future)
@@ -540,16 +598,21 @@ _(All known PRE-BETA items resolved this session.)_
 `main.py`, `main.spec`, `requirements.txt`, `src/config.py`, `src/fx.py`,
 `src/api/app.py`, `src/api/routes/accounts.py`, `src/api/routes/profile.py`,
 `src/api/routes/investments.py`, `src/api/routes/projection.py` (full),
-`src/api/routes/budget.py`, `src/api/routes/income.py`, `src/api/routes/life_events.py`,
+`src/api/routes/budget.py` (rewritten 2026-05-27 for ADR-017),
+`src/api/routes/income.py`, `src/api/routes/life_events.py`,
+`src/api/routes/settings_route.py` (export/restore — ADR-017 additions 2026-05-27, not yet read in full),
 `src/store/ontology_loader.py`,
 `src/templates/base.html`, `src/templates/accounts.html`,
-`src/templates/investments.html`, `src/templates/budget.html`,
+`src/templates/investments.html`,
+`src/templates/budget.html` (rewritten 2026-05-27 for ADR-017),
 `src/templates/income.html`, `src/templates/life_events.html`,
-`docs/ontology/mrl-ontology.ttl`, `docs/adr/README.md`, ADR-014/015/016.
+`docs/ontology/mrl-ontology.ttl` (1.0.2),
+`docs/adr/README.md`, ADR-014/015/016/017.
 
 ## Files Claude has NOT seen (upload when relevant)
 - `src/templates/profile.html` — item 4 (and to confirm currency dropdowns now show INR/CNY/AED)
-- `src/api/routes/settings_route.py`, `src/api/routes/scenarios.py`, `src/store/scenario_manager.py`, `src/store/graph.py` (full)
+- `src/api/routes/scenarios.py`, `src/store/scenario_manager.py`, `src/store/graph.py` (full)
+- `src/api/routes/settings_route.py` — only the budget-lines + new categories/segments blocks have been read; full file unread.
 - `dashboard.html`, `settings.html`, `scenarios.html`, `investment_projection.html`, `error.html`
 
 ## Files Claude has SEEN (added this session)

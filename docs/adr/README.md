@@ -36,6 +36,7 @@ ADRs are written at the time a decision is made and are not retrospective docume
 | [ADR-014](ADR-014-scenario-management.md) | Scenario management — named save slots and session switching | 2026-05-18 | Accepted |
 | [ADR-015](ADR-015-account-contributions.md) | Account contributions | 2026-05-18 | Accepted |
 | [ADR-016](ADR-016-live-exchange-rates.md) | Live exchange rates | 2026-05-22 | Accepted |
+| [ADR-017](ADR-017-budget-line-segments-and-user-defined-categories.md) | Budget line segments and user-defined categories | 2026-05-26 | Accepted |
 
 ---
 
@@ -88,6 +89,9 @@ Models regular inflows (pension contributions, ISA top-ups, transfers) during th
 
 ### ADR-016 — Live exchange rates
 Adds on-demand population of account exchange rates from **`open.er-api.com`** (the free, no-API-key tier of ExchangeRate-API), chosen for requiring no per-user secret and covering 160+ currencies including ones the ECB-based free APIs omit (e.g. AED). This is the application's first and only outbound network call: it is user-triggered from the Accounts page, not cached, and confined entirely to `src/fx.py`. The provider returns rates as "1 base = N foreign", so the app stores the inverse to match `mrl:exchangeRateToBase` and stamps `mrl:exchangeRateDate`; accounts already in the base currency are set to 1.0. Only the base currency code is transmitted — no balances, names, or other personal data — and the provider and fetch date are surfaced in the UI. `urllib` (standard library) is used, adding no dependency, and an offline refresh fails cleanly leaving existing rates intact. Scope covers cash accounts, investment accounts, and income sources; per-budget-line currency and a separate retirement base currency are deferred follow-ons.
+
+### ADR-017 — Budget line segments and user-defined categories
+Restructures `mrl:BudgetLine` to solve two coupled problems: life-stage spending changes cannot be modelled continuously (forcing users to split one logical category into multiple discontinuous lines), and the chart's Mandatory / Discretionary / Loans grouping shows how the engine treats lines rather than what the money is *for*. Two additions: **`mrl:BudgetLineSegment`** instances linked via `mrl:segmentOwner` carry time-bounded amounts within a line (one line, one or more segments) — solving the continuity problem and accommodating gaps where the line drops to £0 (e.g. pausing travel to pay down a mortgage); **`mrl:BudgetCategory`** as a first-class user-created class (no fixed vocabulary), with starter chip suggestions in the UI that materialise as instances only when adopted. Loans take user categories like any other line — a mortgage sits in Housing, a car loan in Transport. Only **"Account contributions"** remains a system-derived group (sourced from `mrl:AccountContribution` instances, ADR-015) since contributions are not budget lines. `mrl:categorySource` reserves provenance for an eventual MFL Level-1 import (ADR-010). Existing budget lines migrate idempotently on startup to a single-segment shape; the deprecated line-level amount/window/rate properties are left in place but no longer written. Ontology bumps to 1.0.2; requires `tools\reload_ontology.py`.
 
 ---
 
