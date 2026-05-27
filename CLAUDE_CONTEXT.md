@@ -34,6 +34,8 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-27 — second session)
 
+_Shipped in commit **`fcdb386`** — "ADR-015 v1.1: employer contribution split + pin numpy" (items 41 + 42)._
+
 41. **Numpy missing in venv — 500 on `/projection`.** On Mark's laptop the project's `.venv` didn't have numpy installed even though it's in `requirements.txt`. Hitting `/projection` after a fresh install with a partial profile bombed at `run_monte_carlo`'s `import numpy as np` (line 1351), which sits BEFORE the early-return guards (`if not profile: return None`; "no investment accounts → return None"). Fixed by `pip install numpy` (got 2.4.6) and pinned `numpy==2.4.6` in `requirements.txt:11` for reproducibility. Considered moving the import below the guards as defensive belt-and-braces — declined as scope creep; numpy is a hard requirement, missing it is an install bug, not a code path to harden.
 
 42. **Employer contributions (ADR-015 v1.1) — DONE end-to-end.** Replaces the originally-deferred `isEmployerContribution` boolean with a per-period `mrl:employerContributionAmount` decimal on the existing `mrl:AccountContribution`. Single contribution row in the UI carries BOTH an employee amount and an optional employer amount; engine credits balance with their sum but only debits cashflow with the employee portion. Chosen over the "multi-row contributions UI + boolean flag" design (originally sketched in ADR-015) because it captures the dominant real-world pattern (one workplace pension with employer match) with one extra field instead of a form rewrite. ADR-015 amended with a v1.1 section documenting the design and the rejected alternative.
