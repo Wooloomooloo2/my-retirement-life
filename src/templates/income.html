@@ -140,7 +140,7 @@
             {% if edit_source %}Edit — {{ edit_source.name }}{% else %}Add an income source{% endif %}
         </h3>
 
-        <form method="post"
+        <form method="post" id="income-form"
               action="{% if edit_source %}/income/{{ edit_source.n }}/edit{% else %}/income{% endif %}">
 
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">

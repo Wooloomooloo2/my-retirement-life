@@ -1082,7 +1082,10 @@ async def save_edit_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-    return _render_accounts(request, saved=True)
+    # Stay in edit mode after save (see budget.py for rationale).
+    accounts = get_all_accounts_combined()
+    edit_account = next((a for a in accounts if a.get("n") == str(n) and a.get("account_class") == "CashAccount"), None)
+    return _render_accounts(request, edit_account=edit_account, saved=True)
 
 
 @router.get("/accounts/{n}/projection", response_class=HTMLResponse)
@@ -1290,7 +1293,14 @@ async def save_edit_asset(
         sale_value=assetSaleValue,
         proceeds_account=assetProceedsAccount,
     )
-    return _render_accounts(request, saved=True)
+    # Stay in edit mode after save (see budget.py for rationale).
+    combined = get_all_accounts_combined()
+    edit_account = next(
+        (a for a in combined
+         if a.get("account_class") == "PhysicalAsset" and a.get("label") == label),
+        None,
+    )
+    return _render_accounts(request, edit_account=edit_account, saved=True)
 
 
 @router.post("/accounts/asset/{label}/delete", response_class=HTMLResponse)

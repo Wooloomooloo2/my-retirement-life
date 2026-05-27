@@ -1146,11 +1146,15 @@ async def save_edit_budget_line(
         n, budgetLineName, budgetLineType,
         budgetCategoryName, segments,
     )
-    lines = get_all_budget_lines()
+    lines     = get_all_budget_lines()
+    # Stay in edit mode after save so the form shows what was actually
+    # persisted — gives the user immediate visual confirmation, and makes
+    # any persistence bug self-evident instead of silent.
+    edit_line = next((l for l in lines if l["n"] == str(n)), None)
     return templates.TemplateResponse(
         request=request,
         name="budget.html",
-        context=_page_context(request, lines, saved=True),
+        context=_page_context(request, lines, edit_line=edit_line, saved=True),
     )
 
 

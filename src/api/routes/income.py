@@ -333,11 +333,13 @@ async def save_edit_income(
                        exchange_rate=incomeExchangeRateToBase,
                        exchange_rate_date=incomeExchangeRateDate,
                        credited_to_account=creditedToAccount)
-    sources = get_all_income_sources()
+    sources     = get_all_income_sources()
+    # Stay in edit mode after save (see budget.py for rationale).
+    edit_source = next((s for s in sources if s.get("n") == str(n)), None)
     return templates.TemplateResponse(
         request=request,
         name="income.html",
-        context=_page_context(request, sources, saved=True),
+        context=_page_context(request, sources, edit_source=edit_source, saved=True),
     )
 
 

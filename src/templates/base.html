@@ -152,5 +152,37 @@
     </div>
 
     {% block scripts %}{% endblock %}
+
+    <script>
+    // On /edit URLs (budget, income, accounts, assets), scroll the primary
+    // form into view and focus its first input on initial page load. Without
+    // this, the user clicks "Edit" in a row and the form sits below the fold
+    // with no visible focus change.
+    (function () {
+        if (!window.location.pathname.endsWith('/edit')) return;
+        const findForm = () => document.querySelector(
+            '#budget-form, #income-form, #account-form'
+        );
+        const go = () => {
+            const form = findForm();
+            if (!form) return;
+            form.scrollIntoView({behavior: 'smooth', block: 'start'});
+            const first = form.querySelector(
+                'input:not([type="hidden"]):not([readonly]):not([disabled]), '
+                + 'select:not([disabled]), textarea:not([disabled])'
+            );
+            if (first) {
+                // preventScroll keeps the smooth scroll above from being
+                // hijacked by the focus().
+                first.focus({preventScroll: true});
+            }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', go);
+        } else {
+            go();
+        }
+    })();
+    </script>
 </body>
 </html>

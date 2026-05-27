@@ -642,8 +642,15 @@ async def save_edit_investment_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-    from src.api.routes.accounts import _render_accounts
-    return _render_accounts(request, saved=True)
+    from src.api.routes.accounts import _render_accounts, get_all_accounts_combined
+    # Stay in edit mode after save (see budget.py for rationale).
+    combined = get_all_accounts_combined()
+    edit_account = next(
+        (a for a in combined
+         if a.get("n") == str(n) and a.get("account_class") == "InvestmentAccount"),
+        None,
+    )
+    return _render_accounts(request, edit_account=edit_account, saved=True)
 
 
 @router.get("/investments/{n}/projection", response_class=HTMLResponse)
