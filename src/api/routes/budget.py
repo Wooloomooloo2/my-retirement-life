@@ -563,15 +563,23 @@ def get_all_contributions_for_budget() -> list:
             amount = float(amount_str)
         except (ValueError, TypeError):
             amount = 0.0
-        annual = round(amount * multiplier, 2)
+        employer_str = gv("employerContributionAmount")
+        try:
+            employer_amount = float(employer_str) if employer_str else 0.0
+        except (ValueError, TypeError):
+            employer_amount = 0.0
+        annual          = round(amount * multiplier, 2)
+        employer_annual = round(employer_amount * multiplier, 2)
 
         results.append({
             "accountLabel":   owner_label,
             "accountName":    account_name,
             "amount":         amount_str,
+            "employerAmount": employer_str,
             "frequency":      freq,
             "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
             "annualAmount":   annual,
+            "employerAnnual": employer_annual,
             "startYear":      gv("contributionStartYear"),
             "endYear":        gv("contributionEndYear"),
             "growthRate":     gv("contributionGrowthRate"),

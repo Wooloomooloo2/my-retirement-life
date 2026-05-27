@@ -533,9 +533,13 @@ def load_all_contributions() -> dict:
     """Return all AccountContribution instances keyed by account label.
 
     Each value is a dict with:
-        annual_amount — contribution amount × frequency multiplier
-        start_year    — int or None (defaults to current_year in engine)
-        end_year      — int or None (defaults to retirement_year in engine)
+        annual_amount          — employee contribution × frequency multiplier
+        employer_annual_amount — employer portion × frequency multiplier (ADR-015 v1.1)
+        start_year             — int or None (defaults to current_year in engine)
+        end_year               — int or None (defaults to retirement_year in engine)
+
+    The employer portion credits the account balance like the employee portion
+    but does NOT reduce personal cashflow (the employer pays it).
 
     Only accounts that have a contribution are included.
     """
@@ -556,6 +560,7 @@ def load_all_contributions() -> dict:
         freq       = _local(c_iri, "contributionFrequency")
         multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
         amount     = _float(c_iri, "contributionAmount")
+        employer   = _float(c_iri, "employerContributionAmount")
 
         start_raw = _val(c_iri, "contributionStartYear", "")
         end_raw   = _val(c_iri, "contributionEndYear",   "")
@@ -569,10 +574,11 @@ def load_all_contributions() -> dict:
             end_year = None
 
         contributions[account_label] = {
-            "annual_amount": amount * multiplier,
-            "start_year":    start_year,
-            "end_year":      end_year,
-            "growth_rate":   _float(c_iri, "contributionGrowthRate"),   # ADR-015 v1.1
+            "annual_amount":          amount * multiplier,
+            "employer_annual_amount": employer * multiplier,
+            "start_year":             start_year,
+            "end_year":                end_year,
+            "growth_rate":            _float(c_iri, "contributionGrowthRate"),   # ADR-015 v1.1
         }
 
     return contributions
@@ -968,7 +974,10 @@ def _simulate_run(
                 round(balances[acc["label"]] - opening_this_year[acc["label"]], 0)
             )
 
-        # 2b. Contributions (ADR-015) — credit balance + accumulate cashflow cost
+        # 2b. Contributions (ADR-015) — credit balance + accumulate cashflow cost.
+        # Employer portion (ADR-015 v1.1) credits balance but does NOT reduce
+        # personal cashflow — the employer pays it. Both portions share one
+        # growth_rate and time window.
         year_contribution_spending = 0.0
         for acc in all_accounts:
             contrib = contributions.get(acc["label"])
@@ -977,15 +986,19 @@ def _simulate_run(
                 c_start = contrib["start_year"] if contrib["start_year"] else current_year
                 c_end   = contrib["end_year"]   if contrib["end_year"]   else retirement_year
                 if c_start <= year <= c_end:
-                    base   = contrib["annual_amount"]
-                    g_rate = contrib.get("growth_rate", 0.0)
-                    years_active = year - c_start
-                    contrib_this_year = (
-                        base * ((1 + g_rate / 100) ** years_active)
-                        if g_rate != 0.0 else base
+                    employee_base = contrib["annual_amount"]
+                    employer_base = contrib.get("employer_annual_amount", 0.0)
+                    g_rate        = contrib.get("growth_rate", 0.0)
+                    years_active  = year - c_start
+                    growth_factor = (
+                        (1 + g_rate / 100) ** years_active
+                        if g_rate != 0.0 else 1.0
                     )
+                    employee_this_year = employee_base * growth_factor
+                    employer_this_year = employer_base * growth_factor
+                    contrib_this_year  = employee_this_year + employer_this_year
                     balances[acc["label"]] += contrib_this_year
-                    year_contribution_spending += contrib_this_year
+                    year_contribution_spending += employee_this_year
             account_contribution_history[acc["label"]].append(round(contrib_this_year, 0))
         cumulative_contributions += year_contribution_spending
 

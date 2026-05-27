@@ -209,7 +209,10 @@
                         <td class="text-xs text-base-content/50">
                             {% if is_asset %}<span class="text-base-content/30">—</span>
                             {% elif account.contribution %}
-                                <span class="badge badge-info badge-sm badge-outline">{{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount) }}/yr</span>
+                                {% set _emp = account.contribution.employerAnnual or 0 %}
+                                <span class="badge badge-info badge-sm badge-outline" {% if _emp > 0 %}title="{{ base_currency_symbol() }}{{ '{:,.0f}'.format(account.contribution.annualAmount) }} you + {{ base_currency_symbol() }}{{ '{:,.0f}'.format(_emp) }} employer"{% endif %}>
+                                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount + _emp) }}/yr{% if _emp > 0 %}<span class="opacity-60 ml-0.5">*</span>{% endif %}
+                                </span>
                             {% else %}
                                 <a href="{{ edit_url }}" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
                             {% endif %}
@@ -817,16 +820,22 @@
             <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
                 <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
                 Regular contribution
-                <span class="text-xs font-normal text-base-content/40">(optional — credits this account and deducts from cashflow)</span>
+                <span class="text-xs font-normal text-base-content/40">(optional — credits this account; your portion also deducts from cashflow)</span>
                 {% if contrib %}
-                <span class="badge badge-info badge-sm ml-auto">{{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount) }}/yr</span>
+                <span class="badge badge-info badge-sm ml-auto">
+                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount + (contrib.employerAnnual or 0)) }}/yr
+                    {% if contrib.employerAnnual and contrib.employerAnnual > 0 %}
+                        <span class="font-normal opacity-75 ml-1">({{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount) }} you + {{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.employerAnnual) }} employer)</span>
+                    {% endif %}
+                </span>
                 {% endif %}
             </div>
             <div class="collapse-content">
                 <div class="pt-3">
                     <p class="text-xs text-base-content/40 mb-4">
-                        A regular contribution credits this account's balance each year and counts as
-                        spending in the cashflow — funded by income or drawdown from other accounts.
+                        A regular contribution credits this account's balance each year. Your portion is
+                        also deducted from cashflow — funded by income or drawdown from other accounts.
+                        Any employer portion credits the balance but does NOT reduce your cashflow.
                         Default window: current year up to and including your target retirement year.
                     </p>
 
@@ -835,7 +844,7 @@
 
                             <div class="form-control">
                                 <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount per period</span>
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Your contribution per period</span>
                                 </label>
                                 <input type="number" name="contributionAmount" required
                                     min="0" step="0.01"
@@ -861,6 +870,21 @@
                                 </select>
                                 <label class="label py-0.5">
                                     <span class="label-text-alt text-base-content/40" id="contrib-annual-hint"></span>
+                                </label>
+                            </div>
+
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Employer contribution per period <span class="font-normal normal-case">(optional)</span></span>
+                                </label>
+                                <input type="number" name="employerContributionAmount"
+                                    min="0" step="0.01"
+                                    value="{{ contrib.employerAmount if contrib and contrib.employerAmount else '' }}"
+                                    placeholder="e.g. 200 — leave blank if none"
+                                    class="input input-bordered input-sm w-full"
+                                    id="contrib-employer" oninput="updateContribAnnual()" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Credits this account (e.g. employer pension match) but doesn't reduce your cashflow. Same frequency as your contribution.</span>
                                 </label>
                             </div>
 
@@ -1018,16 +1042,25 @@
         FrequencyType_Quarterly: 4, FrequencyType_Annually: 1,
     };
     function updateContribAnnual() {
-        const amtEl  = document.getElementById('contrib-amount');
-        const freqEl = document.getElementById('contrib-freq');
-        const hint   = document.getElementById('contrib-annual-hint');
+        const amtEl     = document.getElementById('contrib-amount');
+        const empEl     = document.getElementById('contrib-employer');
+        const freqEl    = document.getElementById('contrib-freq');
+        const hint      = document.getElementById('contrib-annual-hint');
         if (!amtEl || !freqEl || !hint) return;
-        const amt    = parseFloat(amtEl.value) || 0;
-        const freq   = freqEl.value || 'FrequencyType_Monthly';
-        const annual = amt * (CONTRIB_MULTIPLIERS[freq] || 12);
-        hint.textContent = amt > 0
-            ? `Annual equivalent: ${BASE_SYMBOL}${annual.toLocaleString('en-GB', {maximumFractionDigits: 0})}`
-            : '';
+        const amt       = parseFloat(amtEl.value) || 0;
+        const employer  = empEl ? (parseFloat(empEl.value) || 0) : 0;
+        const freq      = freqEl.value || 'FrequencyType_Monthly';
+        const mult      = CONTRIB_MULTIPLIERS[freq] || 12;
+        const yourAnn   = amt * mult;
+        const empAnn    = employer * mult;
+        const fmt       = (n) => BASE_SYMBOL + n.toLocaleString('en-GB', {maximumFractionDigits: 0});
+        if (amt > 0 && employer > 0) {
+            hint.textContent = `Annual: ${fmt(yourAnn)} you + ${fmt(empAnn)} employer = ${fmt(yourAnn + empAnn)} total`;
+        } else if (amt > 0) {
+            hint.textContent = `Annual equivalent: ${fmt(yourAnn)}`;
+        } else {
+            hint.textContent = '';
+        }
     }
     updateContribAnnual();
 </script>

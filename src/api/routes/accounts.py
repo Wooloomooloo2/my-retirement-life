@@ -122,14 +122,22 @@ def get_contribution(account_iri_str: str) -> dict | None:
         amount = float(amount_str)
     except (ValueError, TypeError):
         amount = 0.0
-    multiplier  = FREQUENCY_MULTIPLIERS.get(freq, 12)
-    annual      = round(amount * multiplier, 2)
+    employer_str = gv("employerContributionAmount")
+    try:
+        employer_amount = float(employer_str) if employer_str else 0.0
+    except (ValueError, TypeError):
+        employer_amount = 0.0
+    multiplier      = FREQUENCY_MULTIPLIERS.get(freq, 12)
+    annual          = round(amount * multiplier, 2)
+    employer_annual = round(employer_amount * multiplier, 2)
 
     return {
-        "iri":         str(c_iri.value),
-        "amount":      amount_str,
-        "frequency":   freq,
-        "annualAmount": annual,
+        "iri":            str(c_iri.value),
+        "amount":         amount_str,
+        "frequency":      freq,
+        "annualAmount":   annual,
+        "employerAmount": employer_str,
+        "employerAnnual": employer_annual,
         "startYear":   gv("contributionStartYear"),
         "endYear":     gv("contributionEndYear"),
         "note":        gv("contributionNote"),
@@ -145,6 +153,7 @@ def save_contribution(
     end_year: Optional[int],
     note: str,
     growth_rate: float = 0.0,
+    employer_amount: float = 0.0,
 ) -> None:
     """Delete any existing contribution for this account and write a new one."""
     MRL_EXT_FULL = "https://myretirementlife.app/ontology/ext#"
@@ -167,6 +176,8 @@ def save_contribution(
         triples += f'\n        <{c_iri}> mrl:contributionNote "{safe}" .'
     if growth_rate and growth_rate != 0.0:
         triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{growth_rate}"^^xsd:decimal .'
+    if employer_amount and employer_amount != 0.0:
+        triples += f'\n        <{c_iri}> mrl:employerContributionAmount "{employer_amount}"^^xsd:decimal .'
 
     store.update(f"""
         PREFIX mrl:  <{MRL}>
@@ -1328,6 +1339,7 @@ async def save_account_contribution(
     contributionEndYear:   Optional[int] = Form(None),
     contributionNote:      str          = Form(""),
     contributionGrowthRate: float       = Form(0.0),
+    employerContributionAmount: float    = Form(0.0),
 ):
     """Save (or replace) the contribution for cash account N."""
     account_iri = f"{MRL}CashAccount_{n}"
@@ -1339,6 +1351,7 @@ async def save_account_contribution(
         contributionEndYear,
         contributionNote,
         growth_rate=contributionGrowthRate,
+        employer_amount=employerContributionAmount,
     )
     combined = get_all_accounts_combined()
     account  = next(

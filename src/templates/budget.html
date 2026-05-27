@@ -218,9 +218,19 @@
                     {% for c in contributions %}
                     <tr>
                         <td class="font-medium">{{ c.accountName }}</td>
-                        <td>{{ base_currency_symbol() }}{{ "{:,.2f}".format(c.amount | float) }}</td>
+                        <td>
+                            {{ base_currency_symbol() }}{{ "{:,.2f}".format(c.amount | float) }}
+                            {% if c.employerAnnual and c.employerAnnual > 0 %}
+                                <div class="text-xs text-base-content/50">+ {{ base_currency_symbol() }}{{ "{:,.2f}".format(c.employerAmount | float) }} employer</div>
+                            {% endif %}
+                        </td>
                         <td class="text-base-content/60 text-xs">{{ c.frequencyLabel }}</td>
-                        <td class="font-medium text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(c.annualAmount) }}</td>
+                        <td class="font-medium text-info">
+                            {{ base_currency_symbol() }}{{ "{:,.0f}".format(c.annualAmount) }}
+                            {% if c.employerAnnual and c.employerAnnual > 0 %}
+                                <div class="text-xs text-base-content/50 font-normal">+ {{ base_currency_symbol() }}{{ "{:,.0f}".format(c.employerAnnual) }} employer</div>
+                            {% endif %}
+                        </td>
                         <td class="text-xs text-base-content/50">
                             {% if c.startYear or c.endYear %}
                                 {{ c.startYear if c.startYear else '…' }} → {{ c.endYear if c.endYear else 'retirement' }}
@@ -233,11 +243,19 @@
                     {% endfor %}
                 </tbody>
                 <tfoot>
+                    {% set employer_total = contributions | sum(attribute='employerAnnual') %}
                     <tr class="font-medium border-t border-base-200">
-                        <td colspan="3">Total annual contributions</td>
+                        <td colspan="3">Total annual contributions <span class="font-normal text-base-content/40 text-xs">(your portion — counted in cashflow)</span></td>
                         <td class="text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(contributions | sum(attribute='annualAmount')) }}</td>
                         <td colspan="2"></td>
                     </tr>
+                    {% if employer_total > 0 %}
+                    <tr class="text-xs text-base-content/50">
+                        <td colspan="3">Employer portion <span class="text-base-content/40">(credits balances, not your cashflow)</span></td>
+                        <td>+ {{ base_currency_symbol() }}{{ "{:,.0f}".format(employer_total) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                    {% endif %}
                 </tfoot>
             </table>
         </div>

@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-27
+> Last updated: 2026-05-27 (session 2 — employer contributions)
 
 ---
 
@@ -15,7 +15,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
 - **Platform:** Windows (VS Code), repo at `C:\Projects\my-retirement-life`, `.venv` present. May migrate to Linux.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.2** (ADR-017 budget restructure). 17 `Currency` individuals total.
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.3** (ADR-015 v1.1 — employer contribution split). 17 `Currency` individuals total.
 
 ---
 
@@ -32,7 +32,20 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-26 → 2026-05-27)
+## Changes this session (2026-05-27 — second session)
+
+41. **Numpy missing in venv — 500 on `/projection`.** On Mark's laptop the project's `.venv` didn't have numpy installed even though it's in `requirements.txt`. Hitting `/projection` after a fresh install with a partial profile bombed at `run_monte_carlo`'s `import numpy as np` (line 1351), which sits BEFORE the early-return guards (`if not profile: return None`; "no investment accounts → return None"). Fixed by `pip install numpy` (got 2.4.6) and pinned `numpy==2.4.6` in `requirements.txt:11` for reproducibility. Considered moving the import below the guards as defensive belt-and-braces — declined as scope creep; numpy is a hard requirement, missing it is an install bug, not a code path to harden.
+
+42. **Employer contributions (ADR-015 v1.1) — DONE end-to-end.** Replaces the originally-deferred `isEmployerContribution` boolean with a per-period `mrl:employerContributionAmount` decimal on the existing `mrl:AccountContribution`. Single contribution row in the UI carries BOTH an employee amount and an optional employer amount; engine credits balance with their sum but only debits cashflow with the employee portion. Chosen over the "multi-row contributions UI + boolean flag" design (originally sketched in ADR-015) because it captures the dominant real-world pattern (one workplace pension with employer match) with one extra field instead of a form rewrite. ADR-015 amended with a v1.1 section documenting the design and the rejected alternative.
+    - **Ontology 1.0.2 → 1.0.3** (`docs/ontology/mrl-ontology.ttl`): new property `mrl:employerContributionAmount` (xsd:decimal, domain `mrl:AccountContribution`). Standalone property declaration — the `AccountContribution` class itself is not declared in the TTL (pre-existing oversight; pyoxigraph is schema-less, runtime works regardless). Parses cleanly (1286 → 1291 triples). **Requires `python tools\reload_ontology.py` (app closed)** before the new property declaration appears in the live store, though backend writes don't depend on the declaration.
+    - **Backend** (`accounts.py` + `investments.py`): `get_contribution()` now returns `employerAmount` + `employerAnnual`; `save_contribution()` takes a new `employer_amount` kwarg (default 0.0) and writes the triple only when non-zero. Contribution route signatures gain `employerContributionAmount: float = Form(0.0)`. Default behaviour preserved when the field is absent (zero = identical to v1.0).
+    - **Engine** (`projection.py`): `load_all_contributions()` returns `employer_annual_amount` alongside `annual_amount`. `_simulate_run()` year-loop step 2b splits the growth factor across employee + employer portions: balance is credited with the sum, `year_contribution_spending` (which becomes a cashflow deduction at `pre_net = ... - year_contribution_spending`) accumulates only the employee portion. `account_contribution_history` records the sum so per-account chart shows total inflow. **Parity preserved**: pre-v1.1 contributions have no `employerContributionAmount` triple → `_float()` defaults to 0.0 → employer portion contributes nothing → bit-identical engine output. MC inherits this automatically (shared `_simulate_run`).
+    - **Budget page** (`budget.py` + `budget.html`): `get_all_contributions_for_budget()` exposes `employerAmount` + `employerAnnual`. The read-only "Account contributions" table per-row Amount and Annual-total cells show a small "+ £X employer" sub-line when non-zero; footer separates "Total annual contributions (your portion — counted in cashflow)" from "Employer portion (credits balances, not your cashflow)". `compute_annual_contributions_series()` was NOT modified — it reads `c.get("annualAmount")` which is and always was the employee-only annual. So the chart's "Account contributions" stack stays cashflow-accurate without any function-body change.
+    - **UI** (`accounts.html`): "Amount per period" relabelled "Your contribution per period". New full-width field "Employer contribution per period" placed below the Amount/Frequency pair, above Start/End. Help text on the section now distinguishes the two parts. Live annual-equivalent hint (`updateContribAnnual()` JS) shows the split when both are non-zero: "Annual: £X you + £Y employer = £Z total"; falls back to the old single-value hint when employer is zero. Account list table contribution badge now sums employee + employer (with title attribute showing the split) when employer > 0; appends a small `*` glyph as a visual hint that there's a split.
+    - **Backup/restore** (`settings_route.py`): contribution export adds `employerAmount` (uses existing `_opt_float`); restore writes the triple when present and non-zero. Old backups without the field round-trip cleanly (treated as zero).
+    - **No engine parity verification** done this session — the parity argument is structural (the new `employer_annual_amount` reads as 0.0 from existing data, contributing 0 to every accumulator). If Mark wants belt-and-braces verification: run a projection before reload, restore the same backup, run again — totals should match exactly.
+
+## Changes earlier this session (2026-05-26 → 2026-05-27)
 
 38. **Edit-form UX: stay in edit mode after save + universal scroll-to-form.** Two coupled fixes prompted by a bug report — Mark observed "the end date reverts to infinity" on a budget line and "it's not clear where the editing is supposed to happen as the screen does not switch focus" when clicking Edit on accounts / budget / income. After tracing the end-date save path end-to-end and finding no place where the data could be silently dropped, I concluded the most likely cause was a UX confusion: the POST `/edit` handlers re-rendered with `edit_line=None`, which dropped the form into "Add a budget line" mode showing empty fields — easy to mistake for the saved value reverting.
     - **Stay in edit mode after save.** All five edit POST handlers now re-fetch the just-saved row and pass it back as `edit_line` / `edit_source` / `edit_account` so the form re-renders with the actual persisted state visible. If the end-date bug is real (rather than a UX artefact), this makes it immediately diagnostic — the user sees empty-after-save on the very same form. Affected handlers: `POST /budget/{n}/edit`, `POST /income/{n}/edit`, `POST /accounts/{n}/edit`, `POST /accounts/asset/{label}/edit`, `POST /investments/{n}/edit`.
@@ -588,7 +601,7 @@ _(All known PRE-BETA items resolved this session.)_
 - PCLS dedicated model
 - Multiple marginal tax bands (ADR-013 future)
 - Per-jurisdiction Monte Carlo profiles (ADR-012 future)
-- Employer contributions (`isEmployerContribution`, ADR-015 v1.1)
+- ~~Employer contributions (`isEmployerContribution`, ADR-015 v1.1)~~ — DONE 2026-05-27. Shipped as `mrl:employerContributionAmount` (decimal, not boolean) — see session item 42.
 - Multiple contributions per account surfaced in UI (ADR-015 v1.1)
 - Per-budget-line currency; separate expected-retirement base currency (ADR-016 follow-ons)
 - Unify rate refresh into one "refresh everything" action across account types (ADR-016 follow-on)

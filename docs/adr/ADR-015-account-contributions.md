@@ -188,10 +188,70 @@ making the full per-account cashflow picture visible.
 instances alongside accounts.
 
 **Future considerations**
-- `isEmployerContribution: xsd:boolean` on `mrl:AccountContribution` to flag
-  employer contributions that should not be counted against personal cashflow (the
-  contribution credits the account but does not reduce available income). Deferred
-  to v1.1.
 - Contribution growth modelling (contribution amount increasing at inflation or a
   fixed annual rate). Currently contributions are fixed in nominal terms. Deferred.
 - Multiple active contributions per account surfaced in the UI (v1.1).
+
+---
+
+## v1.1 (2026-05-27) — Employer-portion split
+
+Initially this ADR deferred `isEmployerContribution` to a future revision. v1.1
+implements employer contributions using a different shape than the originally
+sketched boolean flag: instead of two `AccountContribution` instances per account
+(one employee, one employer), a single contribution carries both an employee and
+an employer amount in the same currency and frequency. This keeps the v1.0
+constraint of one contribution per account in the UI and avoids a multi-row form
+rewrite that was the larger blocker for the original design.
+
+### Ontology additions (1.0.3)
+
+| Property | Type | Description |
+|---|---|---|
+| `mrl:employerContributionAmount` | `xsd:decimal` | Employer portion, per period in the account's currency. Shares the contribution's frequency. Optional; defaults to 0 (no employer portion). |
+
+### Engine semantics
+
+In a given active year for a contribution:
+- Account balance is credited with `(employee_amount + employer_amount) * frequency_multiplier`, scaled by the contribution's growth rate.
+- `year_contribution_spending` (deducted from cashflow) is credited with only the **employee** portion.
+
+When `employerContributionAmount` is absent or zero, the engine produces
+bit-identical output to v1.0 — verified by the `_float()` default-to-zero read
+path.
+
+### UI placement
+
+The account/investment edit form's "Regular contribution" collapsible gains one
+new field, "Employer contribution per period", placed below the existing
+Amount/Frequency pair and above Start/End. The existing "Amount per period"
+field is relabelled "Your contribution per period". Help text on the section
+explains the cashflow asymmetry. The live annual-equivalent hint shows the
+split when both parts are non-zero: "Annual: £X you + £Y employer = £Z total".
+
+### Budget page
+
+The read-only "Account contributions" table on `/budget` shows each
+contribution's employee portion in the primary cells and the employer portion
+as a small subscript line ("+ £200 employer"). The footer separates the two
+sums and labels the employee total as "your portion — counted in cashflow" and
+the employer total as "credits balances, not your cashflow". The budget chart's
+contributions stacked area continues to show only the cashflow-accurate
+employee portion.
+
+### Backup/restore
+
+`settings_route.py` exports `employerAmount` on each contribution and restores
+it. Old backups without the field round-trip cleanly (the engine treats absent
+as zero).
+
+### Rejected alternative
+
+A multi-row contributions UI with one `AccountContribution` per row and a
+boolean `isEmployerContribution` flag was considered. Closer to the original
+ADR-015 design intent but requires a larger form rewrite (add/remove rows, list
+rendering, multiple deletion paths). The split-fields-on-one-contribution
+design captures the dominant real-world pattern (one workplace pension with
+employee + matching employer contribution) with a single new field. A future
+revision can move to the multi-row design if users need independent start/end
+dates per side, vesting tiers, or multiple employer matches.

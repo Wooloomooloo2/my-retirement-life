@@ -174,13 +174,14 @@ def export_all_data() -> dict:
         if not owner_label:
             continue
         account_contributions.append({
-            "ownerLabel":  owner_label,
-            "amount":      _float_val(iri, "contributionAmount"),
-            "frequency":   _local(iri, "contributionFrequency"),
-            "startYear":   _int_val(iri, "contributionStartYear"),
-            "endYear":     _int_val(iri, "contributionEndYear"),
-            "note":        _val(iri, "contributionNote"),
-            "growthRate":  _opt_float(iri, "contributionGrowthRate"),
+            "ownerLabel":     owner_label,
+            "amount":         _float_val(iri, "contributionAmount"),
+            "employerAmount": _opt_float(iri, "employerContributionAmount"),
+            "frequency":      _local(iri, "contributionFrequency"),
+            "startYear":      _int_val(iri, "contributionStartYear"),
+            "endYear":        _int_val(iri, "contributionEndYear"),
+            "note":           _val(iri, "contributionNote"),
+            "growthRate":     _opt_float(iri, "contributionGrowthRate"),
         })
 
     # Investment accounts
@@ -543,6 +544,8 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 triples += f'\n        <{c_iri}> mrl:contributionNote "{safe}" .'
             if contrib.get("growthRate") is not None and contrib["growthRate"] != 0.0:
                 triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{contrib["growthRate"]}"^^xsd:decimal .'
+            if contrib.get("employerAmount") is not None and contrib["employerAmount"] != 0.0:
+                triples += f'\n        <{c_iri}> mrl:employerContributionAmount "{contrib["employerAmount"]}"^^xsd:decimal .'
 
             store.update(f"""
                 PREFIX mrl:  <{MRL}>

@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.2" .
+    owl:versionInfo "1.0.3" .
 
 
 # ===========================================================================
@@ -1237,6 +1237,24 @@ mrl:categorySource a owl:DatatypeProperty ;
     rdfs:comment "Provenance of the category — 'user' (default, created in the MRL UI) or 'mfl-level-1' when imported from the sister My Financial Life app (ADR-010). Reserved for the future MFL ingest path; not surfaced in the v1 UI."@en ;
     rdfs:domain mrl:BudgetCategory ;
     rdfs:range xsd:string .
+
+
+# ---------------------------------------------------------------------------
+# Account Contribution — employer-portion split (ADR-015 v1.1, ontology 1.0.3)
+#
+# The mrl:AccountContribution class itself (and its other properties:
+# contributionAmount, contributionFrequency, contributionOwner,
+# contributionStartYear, contributionEndYear, contributionNote,
+# contributionGrowthRate) is used by the runtime but predates a formal class
+# declaration in this TTL. pyoxigraph is schema-less so the data graph works
+# regardless. Only the new employer-portion property is declared here.
+# ---------------------------------------------------------------------------
+
+mrl:employerContributionAmount a owl:DatatypeProperty ;
+    rdfs:label "employer contribution amount"@en ;
+    rdfs:comment "Employer portion of a contribution, per period in the account's currency. Same frequency as mrl:contributionAmount (one mrl:contributionFrequency governs both). Credits the account balance but does NOT reduce personal cashflow — the employer pays it, so it is excluded from the budget chart's account-contributions stack. Defaults to 0 (no employer contribution). Added 1.0.3 (ADR-015 v1.1)."@en ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range xsd:decimal .
 
 
 # ===========================================================================
