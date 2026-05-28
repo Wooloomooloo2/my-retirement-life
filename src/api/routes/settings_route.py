@@ -177,6 +177,7 @@ def export_all_data() -> dict:
             "ownerLabel":     owner_label,
             "amount":         _float_val(iri, "contributionAmount"),
             "employerAmount": _opt_float(iri, "employerContributionAmount"),
+            "fromPayroll":    _val(iri, "contributionFromPayroll") == "true",
             "frequency":      _local(iri, "contributionFrequency"),
             "startYear":      _int_val(iri, "contributionStartYear"),
             "endYear":        _int_val(iri, "contributionEndYear"),
@@ -546,6 +547,8 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{contrib["growthRate"]}"^^xsd:decimal .'
             if contrib.get("employerAmount") is not None and contrib["employerAmount"] != 0.0:
                 triples += f'\n        <{c_iri}> mrl:employerContributionAmount "{contrib["employerAmount"]}"^^xsd:decimal .'
+            if contrib.get("fromPayroll"):
+                triples += f'\n        <{c_iri}> mrl:contributionFromPayroll "true"^^xsd:boolean .'
 
             store.update(f"""
                 PREFIX mrl:  <{MRL}>

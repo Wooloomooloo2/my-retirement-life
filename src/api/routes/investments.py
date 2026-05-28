@@ -122,6 +122,7 @@ def get_contribution(account_iri_str: str) -> dict | None:
         "annualAmount":   annual,
         "employerAmount": employer_str,
         "employerAnnual": employer_annual,
+        "fromPayroll":  gv("contributionFromPayroll") == "true",
         "startYear":    gv("contributionStartYear"),
         "endYear":      gv("contributionEndYear"),
         "note":         gv("contributionNote"),
@@ -138,6 +139,7 @@ def save_contribution(
     note: str,
     growth_rate: float = 0.0,
     employer_amount: float = 0.0,
+    from_payroll: bool = False,
 ) -> None:
     """Delete any existing contribution for this account and write a new one."""
     delete_contribution(account_iri_str)
@@ -161,6 +163,8 @@ def save_contribution(
         triples += f'\n        <{c_iri}> mrl:contributionGrowthRate "{growth_rate}"^^xsd:decimal .'
     if employer_amount and employer_amount != 0.0:
         triples += f'\n        <{c_iri}> mrl:employerContributionAmount "{employer_amount}"^^xsd:decimal .'
+    if from_payroll:
+        triples += f'\n        <{c_iri}> mrl:contributionFromPayroll "true"^^xsd:boolean .'
 
     store.update(f"""
         PREFIX mrl:  <{MRL}>
@@ -573,6 +577,16 @@ async def add_investment_account(
     taxTreatment:                str = Form(""),
     effectiveWithdrawalTaxRate:  str = Form(""),
     annualTaxFreeWithdrawal:     str = Form(""),
+    # ADR-015: optional contribution entered on the add form (all strings —
+    # parsed by parse_add_contribution so an empty amount means "no contribution")
+    contributionAmount:         str = Form(""),
+    contributionFrequency:      str = Form("FrequencyType_Monthly"),
+    contributionStartYear:      str = Form(""),
+    contributionEndYear:        str = Form(""),
+    contributionNote:           str = Form(""),
+    contributionGrowthRate:     str = Form("0"),
+    employerContributionAmount: str = Form(""),
+    contributionFromPayroll:    str = Form(""),
 ):
     existing = get_all_investment_accounts()
     next_n   = max([int(a["n"]) for a in existing if a["n"].isdigit()], default=0) + 1
@@ -595,6 +609,14 @@ async def add_investment_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
+    from src.api.routes.accounts import parse_add_contribution
+    contrib = parse_add_contribution(
+        contributionAmount, contributionFrequency, contributionStartYear,
+        contributionEndYear, contributionNote, contributionGrowthRate,
+        employerContributionAmount, from_payroll=bool(contributionFromPayroll),
+    )
+    if contrib:
+        save_contribution(f"{MRL}InvestmentAccount_{next_n}", **contrib)
     # Redirect to edit so the contribution section is immediately available
     return RedirectResponse(url=f"/investments/{next_n}/edit", status_code=303)
 
@@ -775,6 +797,7 @@ async def save_investment_contribution(
     contributionNote:      str          = Form(""),
     contributionGrowthRate: float       = Form(0.0),
     employerContributionAmount: float    = Form(0.0),
+    contributionFromPayroll:    str      = Form(""),
 ):
     """Save (or replace) the contribution for investment account N."""
     account_iri = f"{MRL}InvestmentAccount_{n}"
@@ -787,6 +810,7 @@ async def save_investment_contribution(
         contributionNote,
         growth_rate=contributionGrowthRate,
         employer_amount=employerContributionAmount,
+        from_payroll=bool(contributionFromPayroll),
     )
     from src.api.routes.accounts import _render_accounts
     return _render_accounts(request, edit_account=_find_invest_edit(n), contribution_saved=True)

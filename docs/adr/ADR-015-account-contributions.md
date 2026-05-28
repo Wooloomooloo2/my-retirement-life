@@ -255,3 +255,67 @@ design captures the dominant real-world pattern (one workplace pension with
 employee + matching employer contribution) with a single new field. A future
 revision can move to the multi-row design if users need independent start/end
 dates per side, vesting tiers, or multiple employer matches.
+
+---
+
+## v1.2 (2026-05-28) — Payroll / salary-sacrifice flag
+
+v1.1 always debited the employee portion (`mrl:contributionAmount`) from
+cashflow. That is correct only when the contribution is paid from take-home pay
+(e.g. an ISA top-up from your bank account). For an **occupational pension or
+salary-sacrifice** arrangement the contribution is deducted from gross pay
+*before* you receive net pay, so it was never part of the net income the app
+models. Debiting it again double-counts the reduction.
+
+The engine never taxes income sources — tax is applied only on drawdown
+(ADR-013), so entered income is treated as net/take-home. v1.2 adds a boolean
+that lets the employee portion behave, cashflow-wise, exactly like the employer
+portion: it credits the balance but is excluded from cashflow.
+
+### Ontology additions (1.0.4)
+
+| Property | Type | Description |
+|---|---|---|
+| `mrl:contributionFromPayroll` | `xsd:boolean` | True when the employee portion is deducted at source from gross pay. Credits the balance but is excluded from cashflow and from the budget chart's account-contributions stack. Optional; defaults to false (paid from net income, debits cashflow as in v1.0/v1.1). |
+
+### Engine semantics
+
+In a given active year, `from_payroll` only changes the cashflow side:
+- Account balance is still credited with `(employee + employer) × growth_factor` (unchanged).
+- `year_contribution_spending` (the cashflow deduction) adds the employee portion **only when `from_payroll` is false**. Employer portions are excluded regardless (v1.1).
+
+When `contributionFromPayroll` is absent or false the engine produces
+bit-identical output to v1.1 — the `_val(...) == "true"` read defaults to false.
+
+### UI
+
+The contribution form gains a checkbox, "Your contribution is taken from
+payroll (pre-tax / salary sacrifice)", below the employer field. Its help text
+explains that the amount still credits the account but won't be deducted from
+net income again, so the user should enter income as take-home pay. The live
+annual hint appends "· your portion is pre-tax (not deducted from net income)"
+when ticked.
+
+### Budget page
+
+`compute_annual_contributions_series()` skips payroll contributions (they are
+not a cashflow cost). The read-only table marks a payroll row "from payroll
+(pre-tax — not from net income)" and de-emphasises its annual figure. The footer
+splits into three lines: the cashflow-counted total (non-payroll employee
+portions), a payroll/salary-sacrifice subtotal, and the employer subtotal — the
+latter two labelled "credits balances, not your cashflow".
+
+### Backup/restore
+
+`settings_route.py` exports `fromPayroll` on each contribution and restores it
+(writes the triple only when true). Old backups without the field round-trip as
+false.
+
+### Rejected alternative
+
+Modelling gross income with a full gross→net tax engine in the accumulation
+phase (so a salary-sacrifice contribution would reduce taxable income and tax)
+was considered and rejected: the app deliberately treats income as net
+(ADR-013 taxes only withdrawals), and a per-period accumulation-phase tax model
+is a much larger change than the one real distinction users need here — whether
+a contribution comes out before or after they're paid.

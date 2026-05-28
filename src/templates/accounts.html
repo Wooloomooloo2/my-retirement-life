@@ -22,6 +22,120 @@
 
 {% set edit_class = edit_account.account_class if edit_account else None %}
 
+{# Contribution field grid — shared between the edit-mode standalone form and
+   the add-mode inline section. `required` marks the amount field mandatory
+   (edit form, where submitting means "save a contribution"); add mode passes
+   required=False so an account can be created without a contribution. #}
+{% macro contrib_fields(contrib, required=False) %}
+<div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+    <div class="form-control">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Your contribution per period</span>
+        </label>
+        <input type="number" name="contributionAmount" {% if required %}required{% endif %}
+            min="0" step="0.01"
+            value="{{ contrib.amount if contrib else '' }}"
+            placeholder="e.g. 500"
+            class="input input-bordered input-sm w-full"
+            id="contrib-amount" oninput="updateContribAnnual()" />
+    </div>
+
+    <div class="form-control">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
+        </label>
+        <select name="contributionFrequency"
+                class="select select-bordered select-sm w-full"
+                id="contrib-freq" onchange="updateContribAnnual()">
+            <option value="FrequencyType_Monthly"     {% if not contrib or contrib.frequency == 'FrequencyType_Monthly' %}selected{% endif %}>Monthly</option>
+            <option value="FrequencyType_Annually"    {% if contrib and contrib.frequency == 'FrequencyType_Annually' %}selected{% endif %}>Annually</option>
+            <option value="FrequencyType_Weekly"      {% if contrib and contrib.frequency == 'FrequencyType_Weekly' %}selected{% endif %}>Weekly</option>
+            <option value="FrequencyType_Fortnightly" {% if contrib and contrib.frequency == 'FrequencyType_Fortnightly' %}selected{% endif %}>Fortnightly</option>
+            <option value="FrequencyType_TwiceMonthly"{% if contrib and contrib.frequency == 'FrequencyType_TwiceMonthly' %}selected{% endif %}>Twice monthly</option>
+            <option value="FrequencyType_Quarterly"   {% if contrib and contrib.frequency == 'FrequencyType_Quarterly' %}selected{% endif %}>Quarterly</option>
+        </select>
+        <label class="label py-0.5">
+            <span class="label-text-alt text-base-content/40" id="contrib-annual-hint"></span>
+        </label>
+    </div>
+
+    <div class="form-control col-span-2">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Employer contribution per period <span class="font-normal normal-case">(optional)</span></span>
+        </label>
+        <input type="number" name="employerContributionAmount"
+            min="0" step="0.01"
+            value="{{ contrib.employerAmount if contrib and contrib.employerAmount else '' }}"
+            placeholder="e.g. 200 — leave blank if none"
+            class="input input-bordered input-sm w-full"
+            id="contrib-employer" oninput="updateContribAnnual()" />
+        <label class="label py-0.5">
+            <span class="label-text-alt text-base-content/40">Credits this account (e.g. employer pension match) but doesn't reduce your cashflow. Same frequency as your contribution.</span>
+        </label>
+    </div>
+
+    <div class="form-control col-span-2">
+        <label class="label cursor-pointer justify-start gap-2 py-0.5">
+            <input type="checkbox" name="contributionFromPayroll" value="true"
+                {% if contrib and contrib.fromPayroll %}checked{% endif %}
+                class="checkbox checkbox-sm" id="contrib-from-payroll" onchange="updateContribAnnual()" />
+            <span class="label-text text-xs font-medium text-base-content/70">Your contribution is taken from payroll (pre-tax / salary sacrifice)</span>
+        </label>
+        <label class="label py-0.5">
+            <span class="label-text-alt text-base-content/40">Tick if your contribution is deducted from gross pay before you're paid (e.g. a workplace/occupational pension or salary sacrifice). It still credits this account, but it won't be deducted from your net income again — so enter your income as take-home pay.</span>
+        </label>
+    </div>
+
+    <div class="form-control">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
+        </label>
+        <input type="number" name="contributionStartYear"
+            min="2020" max="2100"
+            value="{{ contrib.startYear if contrib and contrib.startYear else '' }}"
+            placeholder="Default: current year"
+            class="input input-bordered input-sm w-full" />
+    </div>
+
+    <div class="form-control">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
+        </label>
+        <input type="number" name="contributionEndYear"
+            min="2020" max="2100"
+            value="{{ contrib.endYear if contrib and contrib.endYear else '' }}"
+            placeholder="Default: retirement year"
+            class="input input-bordered input-sm w-full" />
+    </div>
+
+    <div class="form-control col-span-2">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Note <span class="font-normal normal-case">(optional)</span></span>
+        </label>
+        <input type="text" name="contributionNote"
+            value="{{ contrib.note if contrib else '' }}"
+            placeholder="e.g. Monthly ISA contribution"
+            class="input input-bordered input-sm w-full" />
+    </div>
+
+    <div class="form-control">
+        <label class="label py-0.5">
+            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate % <span class="font-normal normal-case">(optional)</span></span>
+        </label>
+        <input type="number" name="contributionGrowthRate"
+            step="0.1" min="-100" max="100"
+            value="{{ contrib.growthRate if contrib and contrib.growthRate else '0' }}"
+            placeholder="0"
+            class="input input-bordered input-sm w-full" />
+        <label class="label py-0.5">
+            <span class="label-text-alt text-base-content/40">Positive = increases year-on-year (e.g. salary-linked), negative = tapers off. 0 = fixed.</span>
+        </label>
+    </div>
+
+</div>
+{% endmacro %}
+
 {% block content %}
 
 {% if saved %}
@@ -777,6 +891,34 @@
                 </div>
             </div>
 
+            {# Add mode only: contribution fields ride along with the main form
+               so an account + contribution can be created in one submit. Wrapped
+               class-field-cash/invest so they're hidden + disabled (not submitted)
+               for the Physical asset class. Editing uses the standalone form below. #}
+            {% if not edit_account %}
+            <div class="class-field class-field-cash class-field-invest collapse collapse-arrow border border-base-200 rounded-lg mt-2 mb-4">
+                <input type="checkbox" />
+                <div class="collapse-title text-sm font-medium text-base-content/70 flex items-center gap-2">
+                    <i class="ti ti-arrows-up text-base-content/40" aria-hidden="true"></i>
+                    Regular contribution
+                    <span class="text-xs font-normal text-base-content/40">(optional — credits this account; your portion also deducts from cashflow)</span>
+                </div>
+                <div class="collapse-content">
+                    <div class="pt-3">
+                        <p class="text-xs text-base-content/40 mb-4">
+                            A regular contribution credits this account's balance each year. Your portion is
+                            also deducted from cashflow — funded by income or drawdown from other accounts —
+                            unless it's taken from payroll (see below). Any employer portion (e.g. a workplace
+                            pension match) credits the balance but does NOT reduce your cashflow. Leave the
+                            amount blank to add the account without a contribution. Default window: current
+                            year up to and including your target retirement year.
+                        </p>
+                        {{ contrib_fields(None, required=False) }}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="flex justify-between items-center">
                 {% if edit_account %}
                 <a href="/accounts" class="btn btn-ghost btn-sm">Cancel</a>
@@ -834,107 +976,14 @@
                 <div class="pt-3">
                     <p class="text-xs text-base-content/40 mb-4">
                         A regular contribution credits this account's balance each year. Your portion is
-                        also deducted from cashflow — funded by income or drawdown from other accounts.
-                        Any employer portion credits the balance but does NOT reduce your cashflow.
+                        also deducted from cashflow — funded by income or drawdown from other accounts —
+                        unless it's taken from payroll (see below). Any employer portion credits the balance
+                        but does NOT reduce your cashflow.
                         Default window: current year up to and including your target retirement year.
                     </p>
 
                     <form method="post" action="{{ contrib_action }}">
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
-
-                            <div class="form-control">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Your contribution per period</span>
-                                </label>
-                                <input type="number" name="contributionAmount" required
-                                    min="0" step="0.01"
-                                    value="{{ contrib.amount if contrib else '' }}"
-                                    placeholder="e.g. 500"
-                                    class="input input-bordered input-sm w-full"
-                                    id="contrib-amount" oninput="updateContribAnnual()" />
-                            </div>
-
-                            <div class="form-control">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Frequency</span>
-                                </label>
-                                <select name="contributionFrequency"
-                                        class="select select-bordered select-sm w-full"
-                                        id="contrib-freq" onchange="updateContribAnnual()">
-                                    <option value="FrequencyType_Monthly"     {% if not contrib or contrib.frequency == 'FrequencyType_Monthly' %}selected{% endif %}>Monthly</option>
-                                    <option value="FrequencyType_Annually"    {% if contrib and contrib.frequency == 'FrequencyType_Annually' %}selected{% endif %}>Annually</option>
-                                    <option value="FrequencyType_Weekly"      {% if contrib and contrib.frequency == 'FrequencyType_Weekly' %}selected{% endif %}>Weekly</option>
-                                    <option value="FrequencyType_Fortnightly" {% if contrib and contrib.frequency == 'FrequencyType_Fortnightly' %}selected{% endif %}>Fortnightly</option>
-                                    <option value="FrequencyType_TwiceMonthly"{% if contrib and contrib.frequency == 'FrequencyType_TwiceMonthly' %}selected{% endif %}>Twice monthly</option>
-                                    <option value="FrequencyType_Quarterly"   {% if contrib and contrib.frequency == 'FrequencyType_Quarterly' %}selected{% endif %}>Quarterly</option>
-                                </select>
-                                <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40" id="contrib-annual-hint"></span>
-                                </label>
-                            </div>
-
-                            <div class="form-control col-span-2">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Employer contribution per period <span class="font-normal normal-case">(optional)</span></span>
-                                </label>
-                                <input type="number" name="employerContributionAmount"
-                                    min="0" step="0.01"
-                                    value="{{ contrib.employerAmount if contrib and contrib.employerAmount else '' }}"
-                                    placeholder="e.g. 200 — leave blank if none"
-                                    class="input input-bordered input-sm w-full"
-                                    id="contrib-employer" oninput="updateContribAnnual()" />
-                                <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Credits this account (e.g. employer pension match) but doesn't reduce your cashflow. Same frequency as your contribution.</span>
-                                </label>
-                            </div>
-
-                            <div class="form-control">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Start year <span class="font-normal normal-case">(optional)</span></span>
-                                </label>
-                                <input type="number" name="contributionStartYear"
-                                    min="2020" max="2100"
-                                    value="{{ contrib.startYear if contrib and contrib.startYear else '' }}"
-                                    placeholder="Default: current year"
-                                    class="input input-bordered input-sm w-full" />
-                            </div>
-
-                            <div class="form-control">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">End year <span class="font-normal normal-case">(optional)</span></span>
-                                </label>
-                                <input type="number" name="contributionEndYear"
-                                    min="2020" max="2100"
-                                    value="{{ contrib.endYear if contrib and contrib.endYear else '' }}"
-                                    placeholder="Default: retirement year"
-                                    class="input input-bordered input-sm w-full" />
-                            </div>
-
-                            <div class="form-control col-span-2">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Note <span class="font-normal normal-case">(optional)</span></span>
-                                </label>
-                                <input type="text" name="contributionNote"
-                                    value="{{ contrib.note if contrib else '' }}"
-                                    placeholder="e.g. Monthly ISA contribution"
-                                    class="input input-bordered input-sm w-full" />
-                            </div>
-
-                            <div class="form-control">
-                                <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Annual growth rate % <span class="font-normal normal-case">(optional)</span></span>
-                                </label>
-                                <input type="number" name="contributionGrowthRate"
-                                    step="0.1" min="-100" max="100"
-                                    value="{{ contrib.growthRate if contrib and contrib.growthRate else '0' }}"
-                                    placeholder="0"
-                                    class="input input-bordered input-sm w-full" />
-                                <label class="label py-0.5">
-                                    <span class="label-text-alt text-base-content/40">Positive = increases year-on-year (e.g. salary-linked), negative = tapers off. 0 = fixed.</span>
-                                </label>
-                            </div>
-
-                        </div>
+                        {{ contrib_fields(contrib, required=True) }}
 
                         <div class="flex justify-between items-center">
                             {% if contrib %}
@@ -1047,6 +1096,8 @@
         const freqEl    = document.getElementById('contrib-freq');
         const hint      = document.getElementById('contrib-annual-hint');
         if (!amtEl || !freqEl || !hint) return;
+        const payrollEl = document.getElementById('contrib-from-payroll');
+        const payroll   = payrollEl ? payrollEl.checked : false;
         const amt       = parseFloat(amtEl.value) || 0;
         const employer  = empEl ? (parseFloat(empEl.value) || 0) : 0;
         const freq      = freqEl.value || 'FrequencyType_Monthly';
@@ -1054,10 +1105,11 @@
         const yourAnn   = amt * mult;
         const empAnn    = employer * mult;
         const fmt       = (n) => BASE_SYMBOL + n.toLocaleString('en-GB', {maximumFractionDigits: 0});
+        const payrollNote = (amt > 0 && payroll) ? ' · your portion is pre-tax (not deducted from net income)' : '';
         if (amt > 0 && employer > 0) {
-            hint.textContent = `Annual: ${fmt(yourAnn)} you + ${fmt(empAnn)} employer = ${fmt(yourAnn + empAnn)} total`;
+            hint.textContent = `Annual: ${fmt(yourAnn)} you + ${fmt(empAnn)} employer = ${fmt(yourAnn + empAnn)} total${payrollNote}`;
         } else if (amt > 0) {
-            hint.textContent = `Annual equivalent: ${fmt(yourAnn)}`;
+            hint.textContent = `Annual equivalent: ${fmt(yourAnn)}${payrollNote}`;
         } else {
             hint.textContent = '';
         }

@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-27 (session 2 — employer contributions)
+> Last updated: 2026-05-28 (session 3 — contributions on add + payroll/salary-sacrifice flag)
 
 ---
 
@@ -15,7 +15,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
 - **Platform:** Windows (VS Code), repo at `C:\Projects\my-retirement-life`, `.venv` present. May migrate to Linux.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.3** (ADR-015 v1.1 — employer contribution split). 17 `Currency` individuals total.
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.4** (ADR-015 v1.2 — payroll/salary-sacrifice flag). 17 `Currency` individuals total.
 
 ---
 
@@ -32,7 +32,15 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-27 — second session)
+## Changes this session (2026-05-28 — third session)
+
+43. **Contributions can now be added on the new-account form (one step).** Previously the contribution panel only rendered when editing an existing account (`{% if edit_account %}` gate in `accounts.html`), so adding a workplace pension was add-then-edit. Extracted the contribution field grid into a Jinja macro `contrib_fields(contrib, required)` and render it inline in the main add form (wrapped `class-field class-field-cash class-field-invest` so it shows for cash + investment, hides + disables for assets → not submitted). Amount is `required` only in edit mode; add mode parses optionally so accounts can still be created with no contribution. `add_account`/`add_investment_account` gained string-typed contribution Form params + a shared `parse_add_contribution()` helper (in accounts.py, imported by investments.py) that returns save_contribution kwargs or None.
+
+44. **ADR-015 v1.2 — payroll / salary-sacrifice flag (ontology 1.0.4).** Mark's insight: a contribution taken from payroll (occupational pension / salary sacrifice) shouldn't debit net income, because the engine treats entered income as net/take-home (income sources are never taxed — tax is drawdown-only, ADR-013), so debiting it double-counts. New boolean `mrl:contributionFromPayroll`; when true the employee portion behaves cashflow-wise exactly like the employer portion — credits the balance, excluded from `year_contribution_spending` (`projection.py` step 2b) and from `compute_annual_contributions_series` (`budget.py`). UI: checkbox below the employer field. Budget footer now splits three ways: cashflow-counted total (non-payroll employee), payroll subtotal, employer subtotal. Backup/restore round-trips the flag. **Parity:** absent/false → bit-identical to v1.1.
+
+---
+
+## Changes in session 2 (2026-05-27)
 
 _Shipped in commit **`fcdb386`** — "ADR-015 v1.1: employer contribution split + pin numpy" (items 41 + 42)._
 

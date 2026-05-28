@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.3" .
+    owl:versionInfo "1.0.4" .
 
 
 # ===========================================================================
@@ -1255,6 +1255,13 @@ mrl:employerContributionAmount a owl:DatatypeProperty ;
     rdfs:comment "Employer portion of a contribution, per period in the account's currency. Same frequency as mrl:contributionAmount (one mrl:contributionFrequency governs both). Credits the account balance but does NOT reduce personal cashflow — the employer pays it, so it is excluded from the budget chart's account-contributions stack. Defaults to 0 (no employer contribution). Added 1.0.3 (ADR-015 v1.1)."@en ;
     rdfs:domain mrl:AccountContribution ;
     rdfs:range xsd:decimal .
+
+# Account Contribution — payroll-deduction flag (ADR-015 v1.2, ontology 1.0.4)
+mrl:contributionFromPayroll a owl:DatatypeProperty ;
+    rdfs:label "contribution from payroll"@en ;
+    rdfs:comment "True when the employee portion (mrl:contributionAmount) is deducted at source from gross pay — e.g. an occupational pension or salary-sacrifice arrangement — rather than paid from take-home pay. The app treats entered income as net/take-home, so a payroll-deducted contribution must NOT be debited from cashflow again (it was never part of net income); it credits the account balance like the employer portion but is excluded from the budget chart's account-contributions stack and the 'counted in cashflow' total. Defaults to false (paid from net income, debits cashflow as before). Added 1.0.4 (ADR-015 v1.2)."@en ;
+    rdfs:domain mrl:AccountContribution ;
+    rdfs:range xsd:boolean .
 
 
 # ===========================================================================

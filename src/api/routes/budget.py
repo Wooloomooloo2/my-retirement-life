@@ -580,6 +580,7 @@ def get_all_contributions_for_budget() -> list:
             "frequencyLabel": FREQUENCY_LABELS.get(freq, freq),
             "annualAmount":   annual,
             "employerAnnual": employer_annual,
+            "fromPayroll":    gv("contributionFromPayroll") == "true",
             "startYear":      gv("contributionStartYear"),
             "endYear":        gv("contributionEndYear"),
             "growthRate":     gv("contributionGrowthRate"),
@@ -709,6 +710,11 @@ def compute_annual_contributions_series(
     default_end = retirement_year if retirement_year is not None else end_year
 
     for c in contributions:
+        # Payroll/salary-sacrifice contributions (ADR-015 v1.2) credit the
+        # account but never reduce net cashflow, so they are excluded from this
+        # cashflow-impacting series — mirroring the engine's year_contribution_spending.
+        if c.get("fromPayroll"):
+            continue
         annual = _float_or_zero(c.get("annualAmount"))
         g_rate = _float_or_zero(c.get("growthRate"))
         start  = _int_or_none(c.get("startYear")) or current_year

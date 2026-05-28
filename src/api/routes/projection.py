@@ -535,11 +535,15 @@ def load_all_contributions() -> dict:
     Each value is a dict with:
         annual_amount          — employee contribution × frequency multiplier
         employer_annual_amount — employer portion × frequency multiplier (ADR-015 v1.1)
+        from_payroll           — bool; employee portion deducted at source (ADR-015 v1.2)
         start_year             — int or None (defaults to current_year in engine)
         end_year               — int or None (defaults to retirement_year in engine)
 
     The employer portion credits the account balance like the employee portion
-    but does NOT reduce personal cashflow (the employer pays it).
+    but does NOT reduce personal cashflow (the employer pays it). When
+    from_payroll is true the employee portion behaves the same way — it credits
+    the balance but is excluded from cashflow, because the entered (net) income
+    already excludes a salary-sacrifice / at-source deduction.
 
     Only accounts that have a contribution are included.
     """
@@ -561,6 +565,7 @@ def load_all_contributions() -> dict:
         multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
         amount     = _float(c_iri, "contributionAmount")
         employer   = _float(c_iri, "employerContributionAmount")
+        from_payroll = _val(c_iri, "contributionFromPayroll", "") == "true"
 
         start_raw = _val(c_iri, "contributionStartYear", "")
         end_raw   = _val(c_iri, "contributionEndYear",   "")
@@ -576,6 +581,7 @@ def load_all_contributions() -> dict:
         contributions[account_label] = {
             "annual_amount":          amount * multiplier,
             "employer_annual_amount": employer * multiplier,
+            "from_payroll":           from_payroll,   # ADR-015 v1.2
             "start_year":             start_year,
             "end_year":                end_year,
             "growth_rate":            _float(c_iri, "contributionGrowthRate"),   # ADR-015 v1.1
@@ -976,8 +982,11 @@ def _simulate_run(
 
         # 2b. Contributions (ADR-015) — credit balance + accumulate cashflow cost.
         # Employer portion (ADR-015 v1.1) credits balance but does NOT reduce
-        # personal cashflow — the employer pays it. Both portions share one
-        # growth_rate and time window.
+        # personal cashflow — the employer pays it. A payroll/salary-sacrifice
+        # employee portion (ADR-015 v1.2, from_payroll) is treated the same way:
+        # it credits the balance but is excluded from cashflow, because the
+        # entered (net) income already excludes an at-source deduction. Both
+        # portions share one growth_rate and time window.
         year_contribution_spending = 0.0
         for acc in all_accounts:
             contrib = contributions.get(acc["label"])
@@ -998,7 +1007,8 @@ def _simulate_run(
                     employer_this_year = employer_base * growth_factor
                     contrib_this_year  = employee_this_year + employer_this_year
                     balances[acc["label"]] += contrib_this_year
-                    year_contribution_spending += employee_this_year
+                    if not contrib.get("from_payroll", False):
+                        year_contribution_spending += employee_this_year
             account_contribution_history[acc["label"]].append(round(contrib_this_year, 0))
         cumulative_contributions += year_contribution_spending
 
