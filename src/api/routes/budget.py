@@ -1088,13 +1088,16 @@ def _page_context(request, lines, edit_line=None, **kwargs):
 # ===========================================================================
 
 @router.get("/budget", response_class=HTMLResponse)
-async def budget_page(request: Request):
+async def budget_page(request: Request, added: int = 0, saved: int = 0):
     migrate_legacy_budget_lines_to_segments()
     lines = get_all_budget_lines()
+    # `added=1` / `saved=1` arrive via post/redirect/get after adding or editing
+    # a budget line, so the form is freshly blank and the banner confirms the
+    # save; the persisted line (incl. any new stages) is visible in the list.
     return templates.TemplateResponse(
         request=request,
         name="budget.html",
-        context=_page_context(request, lines),
+        context=_page_context(request, lines, added=bool(added), saved=bool(saved)),
     )
 
 
@@ -1120,12 +1123,11 @@ async def add_budget_line(
         next_n, budgetLineName, budgetLineType,
         budgetCategoryName, segments,
     )
-    lines = get_all_budget_lines()
-    return templates.TemplateResponse(
-        request=request,
-        name="budget.html",
-        context=_page_context(request, lines, saved=True),
-    )
+    # Post/redirect/get back to a blank add form so the fields (including any
+    # extra stages added before saving) reset for the next line and `?added=1`
+    # surfaces a clear "saved" confirmation. Editing keeps its in-place,
+    # stay-populated behaviour (see save_edit_budget_line).
+    return RedirectResponse(url="/budget?added=1", status_code=303)
 
 
 @router.get("/budget/{n}/edit", response_class=HTMLResponse)
@@ -1160,16 +1162,11 @@ async def save_edit_budget_line(
         n, budgetLineName, budgetLineType,
         budgetCategoryName, segments,
     )
-    lines     = get_all_budget_lines()
-    # Stay in edit mode after save so the form shows what was actually
-    # persisted — gives the user immediate visual confirmation, and makes
-    # any persistence bug self-evident instead of silent.
-    edit_line = next((l for l in lines if l["n"] == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="budget.html",
-        context=_page_context(request, lines, edit_line=edit_line, saved=True),
-    )
+    # Post/redirect/get back to the list with a blank add form + "saved" banner.
+    # The persisted line — including any stage just added — is visible in the
+    # list above, so the save is confirmed without leaving a populated form that
+    # looks un-reset. (Supersedes the earlier stay-in-edit-mode behaviour.)
+    return RedirectResponse(url="/budget?saved=1", status_code=303)
 
 
 @router.post("/budget/{n}/delete", response_class=HTMLResponse)

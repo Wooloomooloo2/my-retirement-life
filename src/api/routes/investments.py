@@ -617,8 +617,10 @@ async def add_investment_account(
     )
     if contrib:
         save_contribution(f"{MRL}InvestmentAccount_{next_n}", **contrib)
-    # Redirect to edit so the contribution section is immediately available
-    return RedirectResponse(url=f"/investments/{next_n}/edit", status_code=303)
+    # Post/redirect/get back to a blank add form on the unified /accounts page
+    # (the contribution is captured on the add form itself), so fields reset for
+    # the next account and `?added=1` surfaces a clear "saved" confirmation.
+    return RedirectResponse(url="/accounts?added=1", status_code=303)
 
 
 @router.get("/investments/{n}/edit", response_class=HTMLResponse)

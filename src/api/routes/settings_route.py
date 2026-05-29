@@ -12,6 +12,13 @@ Changes (ADR-011, ADR-012, ADR-013):
   restore_all_data() restores all new fields; old v0.2 backups restore cleanly
   (missing optional fields are silently skipped).
   APP_VERSION bumped to 0.3.0.
+
+Changes (asset model / ADR-015 v1.1+v1.2):
+  export_all_data() / restore_all_data() now also cover PhysicalAsset instances
+  (Property / Vehicle / Collectible) and the employer-contribution amount and
+  payroll/salary-sacrifice flag on contributions. Previously assets were not
+  exported, so restoring a scenario/backup (which wipes the data graph first)
+  silently deleted them. APP_VERSION bumped to 0.3.1.
 """
 import json
 from datetime import date, datetime
@@ -30,7 +37,7 @@ RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +227,35 @@ def export_all_data() -> dict:
         })
     investment_accounts.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
+    # Physical assets (Property / Vehicle / Collectible — asset model)
+    # Each is a concrete subclass of mrl:PhysicalAsset; the subclass + N live in
+    # the IRI (e.g. PropertyAsset_3). Without this, save-scenario/backup silently
+    # dropped assets, and restore (which wipes the graph first) deleted them.
+    from src.api.routes.accounts import ASSET_SUBCLASSES
+    physical_assets = []
+    for subclass in ASSET_SUBCLASSES:
+        for q in store.store.quads_for_pattern(
+                None, og.NamedNode(RDF_TYPE), og.NamedNode(f"{MRL}{subclass}"), DATA_GRAPH):
+            iri = q.subject
+            n   = str(iri.value).split(f"{subclass}_")[-1]
+            physical_assets.append({
+                "n":                n,
+                "subclass":         subclass,
+                "name":             _val(iri, "accountName"),
+                "balance":          _float_val(iri, "accountBalance"),
+                "balanceDate":      _val(iri, "balanceDate"),
+                "currency":         _local(iri, "accountCurrency"),
+                "exchangeRate":     _float_val(iri, "exchangeRateToBase", 1.0),
+                "exchangeRateDate": _val(iri, "exchangeRateDate"),
+                "notes":            _val(iri, "accountNotes"),
+                # PhysicalAsset-specific (asset model)
+                "appreciationRate": _opt_float(iri, "assetAppreciationRate"),
+                "saleYear":         _int_val(iri, "assetSaleYear"),
+                "saleValue":        _opt_float(iri, "assetSaleValue"),
+                "proceedsAccount":  _opt_str(iri, "assetProceedsAccount"),
+            })
+    physical_assets.sort(key=lambda x: (x["subclass"], int(x["n"]) if x["n"].isdigit() else 0))
+
     # Budget categories (ADR-017)
     budget_categories = []
     for q in store.store.quads_for_pattern(
@@ -324,6 +360,7 @@ def export_all_data() -> dict:
             "accounts":              accounts,
             "account_contributions": account_contributions,   # ADR-015
             "investment_accounts":   investment_accounts,
+            "physical_assets":       physical_assets,          # asset model
             "budget_categories":     budget_categories,        # ADR-017
             "budget_lines":          budget_lines,
             "budget_line_segments":  budget_line_segments,     # ADR-017
@@ -509,6 +546,48 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 triples += f'\n        <{inv_iri}> mrl:accountNotes "{safe}" .'
 
             triples += _triples_drawdown_tax(inv_iri, inv)
+
+            store.update(f"""
+                PREFIX mrl:  <{MRL}>
+                PREFIX mrlx: <{MRL_EXT}>
+                PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+                INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {triples} }} }}
+            """)
+
+        # --- Physical assets (Property / Vehicle / Collectible) ---
+        # Recreate mrl:{subclass}_{n}; mirrors save_asset() in accounts.py.
+        # Restored after cash + investment accounts so an assetProceedsAccount
+        # reference points at an account that already exists. Backups predating
+        # the asset model omit "physical_assets" and this loop is a no-op.
+        for asset in data.get("physical_assets", []):
+            subclass = asset.get("subclass")
+            if not subclass:
+                continue
+            a_n       = asset.get("n", "1")
+            asset_iri = f"{MRL}{subclass}_{a_n}"
+
+            triples = f"""
+        <{asset_iri}> a mrl:{subclass} ;
+            mrl:accountName     "{asset.get('name', '')}" ;
+            mrl:accountBalance  "{asset.get('balance', 0)}"^^xsd:decimal ;
+            mrl:balanceDate     "{asset.get('balanceDate', date.today().isoformat())}"^^xsd:date ;
+            mrl:accountCurrency mrl:{asset.get('currency', 'Currency_GBP')} ;
+            mrl:ownedBy         <{person_iri}> .
+            """
+            if asset.get("exchangeRate") and float(asset.get("exchangeRate", 1.0)) != 1.0:
+                triples += f'\n        <{asset_iri}> mrl:exchangeRateToBase "{asset["exchangeRate"]}"^^xsd:decimal ;'
+                triples += f'\n                    mrl:exchangeRateDate   "{asset.get("exchangeRateDate", date.today().isoformat())}"^^xsd:date .'
+            if asset.get("notes"):
+                safe = asset["notes"].replace('"', '\\"')
+                triples += f'\n        <{asset_iri}> mrl:accountNotes "{safe}" .'
+            if asset.get("appreciationRate") is not None:
+                triples += f'\n        <{asset_iri}> mrl:assetAppreciationRate "{asset["appreciationRate"]}"^^xsd:decimal .'
+            if asset.get("saleYear") is not None:
+                triples += f'\n        <{asset_iri}> mrl:assetSaleYear "{asset["saleYear"]}"^^xsd:integer .'
+            if asset.get("saleValue") is not None:
+                triples += f'\n        <{asset_iri}> mrl:assetSaleValue "{asset["saleValue"]}"^^xsd:decimal .'
+            if asset.get("proceedsAccount"):
+                triples += f'\n        <{asset_iri}> mrl:assetProceedsAccount mrl:{asset["proceedsAccount"]} .'
 
             store.update(f"""
                 PREFIX mrl:  <{MRL}>

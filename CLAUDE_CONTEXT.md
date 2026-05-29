@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-28 (session 3 — contributions on add + payroll/salary-sacrifice flag)
+> Last updated: 2026-05-29 (session 4 — form-reset UX + scenario/backup asset coverage)
 
 ---
 
@@ -32,7 +32,15 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-28 — third session)
+## Changes this session (2026-05-29 — fourth session)
+
+_Not yet committed at time of writing — form-reset UX + scenario/backup asset coverage._
+
+45. **Add forms reset after save (post/redirect/get); edit too.** Mark reported that after saving an Add (account / budget line) the fields stayed populated and it wasn't clear it had saved. Root cause: `add_account`/`add_investment_account` 303-redirected to `/accounts/{n}/edit` (populated + the `/edit` scroll-to-form JS fired). Fixed: add handlers now PRG to `/accounts?added=1` (and `/budget?added=1`); the index GETs read the flag and show an `{% if added %}` "added and saved — form below is ready for the next one" banner over a blank form. Then Mark flagged that **adding a stage to an existing budget line** (the edit path) still stayed populated — so `save_edit_budget_line` now also PRGs to `/budget?saved=1` (blank form + "saved" banner; the persisted line with its new stage count is visible in the list). **This supersedes item 38's "stay in edit mode after save" for budget.** Memory updated: every save (add + edit) should land on a clean form + clear banner, never a populated form. (accounts/investments/income **edit** handlers still use the old stay-populated pattern — apply the same PRG fix if Mark hits them.)
+
+46. **Scenario/backup save now includes PhysicalAssets — was silently deleting them.** Mark asked whether "save scenario" persists everything recent. Audit found `export_all_data()` only queried `CashAccount` + `InvestmentAccount`, never `PhysicalAsset`. Because `restore_all_data()` wipes the whole data graph (`DELETE WHERE { ?s ?p ?o }`) before re-inserting, loading any scenario/backup **permanently deleted every property/vehicle/collectible** (and its appreciation rate, sale year/value, proceeds-account link). Fixed: `export_all_data()` now emits a `physical_assets` list (iterating `ASSET_SUBCLASSES`, lazily imported from accounts.py) and `restore_all_data()` recreates `mrl:{subclass}_{n}` after the cash/investment accounts (so `assetProceedsAccount` targets exist), mirroring `save_asset()`. Export schema → 0.3.1. Verified with an isolated in-memory-store export→wipe→restore→export round-trip (all asset fields intact, other entities preserved). Confirmed already-covered: employer contributions, payroll flag, budget stages/segments, account types/tax/drawdown.
+
+## Changes in session 3 (2026-05-28)
 
 _Shipped in commit **`5a98682`** — "ADR-015 v1.2: payroll/salary-sacrifice flag + contributions on add form" (items 43 + 44)._
 

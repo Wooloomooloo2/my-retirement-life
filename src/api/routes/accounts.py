@@ -808,8 +808,10 @@ def save_account(
 # ---------------------------------------------------------------------------
 
 @router.get("/accounts", response_class=HTMLResponse)
-async def accounts_page(request: Request):
-    return _render_accounts(request)
+async def accounts_page(request: Request, added: int = 0):
+    # `added=1` arrives via the post/redirect/get after adding an account, so
+    # the form is freshly blank and ready for the next one (see add_account).
+    return _render_accounts(request, added=bool(added))
 
 
 # ---------------------------------------------------------------------------
@@ -1095,9 +1097,11 @@ async def add_account(
     )
     if contrib:
         save_contribution(f"{MRL}CashAccount_{next_n}", **contrib)
-    # Redirect to edit so the contribution section is immediately available
+    # Post/redirect/get back to a blank add form (the contribution is captured
+    # on the add form itself, ADR-015 v1.2), so the fields reset for the next
+    # account and `?added=1` surfaces a clear "saved" confirmation.
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=f"/accounts/{next_n}/edit", status_code=303)
+    return RedirectResponse(url="/accounts?added=1", status_code=303)
 
 
 @router.get("/accounts/{n}/edit", response_class=HTMLResponse)

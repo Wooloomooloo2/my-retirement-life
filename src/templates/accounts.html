@@ -138,6 +138,13 @@
 
 {% block content %}
 
+{% if added %}
+<div class="alert alert-success mb-4">
+    <i class="ti ti-circle-check"></i>
+    <span>Account added and saved — it's in the list above. The form below is cleared and ready for the next one.</span>
+</div>
+{% endif %}
+
 {% if saved %}
 <div class="alert alert-success mb-4">
     <i class="ti ti-circle-check"></i>
