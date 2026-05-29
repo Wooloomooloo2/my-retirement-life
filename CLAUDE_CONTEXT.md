@@ -34,7 +34,7 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-29 — fourth session)
 
-_Not yet committed at time of writing — form-reset UX + scenario/backup asset coverage._
+_Shipped in commit **`a281e34`** — "Form-reset UX + scenario/backup PhysicalAsset coverage" (items 45 + 46)._
 
 45. **Add forms reset after save (post/redirect/get); edit too.** Mark reported that after saving an Add (account / budget line) the fields stayed populated and it wasn't clear it had saved. Root cause: `add_account`/`add_investment_account` 303-redirected to `/accounts/{n}/edit` (populated + the `/edit` scroll-to-form JS fired). Fixed: add handlers now PRG to `/accounts?added=1` (and `/budget?added=1`); the index GETs read the flag and show an `{% if added %}` "added and saved — form below is ready for the next one" banner over a blank form. Then Mark flagged that **adding a stage to an existing budget line** (the edit path) still stayed populated — so `save_edit_budget_line` now also PRGs to `/budget?saved=1` (blank form + "saved" banner; the persisted line with its new stage count is visible in the list). **This supersedes item 38's "stay in edit mode after save" for budget.** Memory updated: every save (add + edit) should land on a clean form + clear banner, never a populated form. (accounts/investments/income **edit** handlers still use the old stay-populated pattern — apply the same PRG fix if Mark hits them.)
 
