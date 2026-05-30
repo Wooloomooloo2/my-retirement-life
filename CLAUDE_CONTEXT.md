@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-29 (session 4 — form-reset UX + scenario/backup asset coverage)
+> Last updated: 2026-05-30 (session 5 — PRG fix for remaining edit handlers)
 
 ---
 
@@ -32,7 +32,20 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-29 — fourth session)
+## Changes this session (2026-05-30 — fifth session)
+
+_Shipped in commit **`56d2da9`** — "Form-reset UX: PRG remaining edit handlers (accounts/investments/income)" (item 47)._
+
+47. **PRG fix applied to the four remaining edit handlers.** Mark reported that saving an edit on a cash account left the form populated with no clear confirmation — the very same symptom session 4 fixed for budget. CLAUDE_CONTEXT item 45 had explicitly flagged accounts/investments/income edit handlers as still on the old stay-populated pattern. This session closes that gap.
+    - `src/api/routes/accounts.py`: `GET /accounts` now also accepts `?saved=1`; `POST /accounts/{n}/edit` and `POST /accounts/asset/{label}/edit` both 303-redirect to `/accounts?saved=1` instead of re-rendering with `edit_account=…, saved=True`.
+    - `src/api/routes/investments.py`: `POST /investments/{n}/edit` 303-redirects to `/accounts?saved=1` (investments share the unified accounts template per item 21).
+    - `src/api/routes/income.py`: `GET /income` accepts `?added=1`/`?saved=1`. **Income add also fixed while there** — it had been a `TemplateResponse` re-render with `saved=True` (form happened to be blank because no `edit_source` was passed, but F5 would resubmit). Both `POST /income` and `POST /income/{n}/edit` now redirect properly (to `/income?added=1` and `/income?saved=1` respectively). `RedirectResponse` added to the imports line.
+    - `src/templates/income.html`: added an `{% if added %}` banner above the existing `{% if saved %}` banner, matching the accounts/budget two-banner pattern.
+    - `accounts.html` already had both `added` and `saved` banners from prior work — no template change needed there.
+    - **Memory rule already in place** (from session 4): _every save (add + edit) should PRG to a blank form + "saved" banner; never leave a populated form_. This session applied that rule across the remaining handlers; no new memory written.
+    - **Also debugged** during the session: a Chrome "Invalid value" balloon on the `drawdownLatestDate` HTML5 date input when typing dates by keyboard (the field has zero validation in our code — confirmed by grep). Root cause was Chrome's segment-by-segment parser rejecting transient partial-year states; picker works fine. No code change made — left as a known browser quirk. If users hit it often, a defensive `min`/`max` on the two `<input type="date">` fields would bound the year segment.
+
+## Changes in session 4 (2026-05-29)
 
 _Shipped in commit **`a281e34`** — "Form-reset UX + scenario/backup PhysicalAsset coverage" (items 45 + 46)._
 
