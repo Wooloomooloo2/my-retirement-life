@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-30 (session 5 — PRG fix for remaining edit handlers)
+> Last updated: 2026-05-30 (session 6 — macOS packaging + pywebview desktop window)
 
 ---
 
@@ -13,7 +13,7 @@ The user is a business architect and data modeller — Claude does all coding.
 
 - **GitHub:** `Wooloomooloo2/my-retirement-life`
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
-- **Platform:** Windows (VS Code), repo at `C:\Projects\my-retirement-life`, `.venv` present. May migrate to Linux.
+- **Platform:** Windows (VS Code), repo at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, `.venv` present. Also runs on macOS (Apple Silicon) at `/Users/markhall/Projects/my-retirement-life` — session 6 added macOS packaging + native window support. Linux deferred.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
 - **Ontology:** `mrl-ontology.ttl`, version **1.0.4** (ADR-015 v1.2 — payroll/salary-sacrifice flag). 17 `Currency` individuals total.
 
@@ -32,7 +32,26 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-30 — fifth session)
+## Changes this session (2026-05-30 — sixth session)
+
+_Packaging shipped in commit **`18cafb3`** — "macOS packaging: PyInstaller spec + build_mac.sh -> .app + .dmg" (item 48). Pywebview integration shipped in commit **`f489261`** — "Launch in a native WKWebView window via pywebview" (item 49)._
+
+48. **macOS packaging: PyInstaller `.app` + `.dmg` distributable.** Implements the ADR-002 strategy that had been documented but not built. New `tools/MyRetirementLife.spec` bundles `src/templates`, `src/static`, and `docs/ontology/mrl-ontology.ttl` with explicit hidden imports for the API route modules and uvicorn's dynamic loaders (`uvicorn.loops.auto`, `uvicorn.protocols.http.h11_impl`, etc.). `src/config.py` already handled `sys._MEIPASS` so no source changes were needed. New `tools/build_mac.sh` cleans `build/` + `dist/`, runs PyInstaller, then `hdiutil create -format UDZO` against a stage dir containing the `.app` plus an `Applications` symlink so the DMG has the standard drag-to-install affordance. `VERSION` env var stamps the DMG filename (default `dev`). Build deps moved to a separate `requirements-build.txt` (just `pyinstaller~=6.11`) to keep them out of the runtime install. `.gitignore` keeps the `*.spec` wildcard but adds `!tools/MyRetirementLife.spec` so the committed spec is tracked while PyInstaller's auto-generated ones at the repo root stay ignored. README gains a "Building a macOS distributable" section with the Gatekeeper note pointing at ADR-002.
+    - **Build machine note:** PyInstaller cannot cross-compile — current build targets arm64 only (the build machine arch). Universal2 deferred per ADR-002.
+    - **Gatekeeper / Sequoia (15.0+) discovery:** the right-click → Open bypass that ADR-002 documents was **removed** in Sequoia. Recipients now get "Move to Bin" only; the workarounds are System Settings → Privacy & Security → "Open Anyway", or `xattr -dr com.apple.quarantine "/Applications/My Retirement Life.app"`. Code-signing + notarisation (Apple Developer ID, $99/yr) remain the proper fix — still deferred to v1.0. ADR-002's "right-click → Open" wording is stale; update if/when the ADR is revised.
+    - **Smoke-test caveat to remember:** the packaged build and a running `python main.py` dev server share the same per-user `DATA_DIR` and so contend for the Oxigraph store lock (`~/Library/Application Support/MyRetirementLife/store/LOCK`). If both run at once, whichever loses the race crashes with `OSError: ... lock file ... Resource temporarily unavailable`. Not a packaging bug — same as two dev servers. When smoke-testing the packaged `.app` without killing the dev server, override both: `APP_PORT=8765 DATA_DIR=/tmp/mrl-smoke/data "./dist/My Retirement Life.app/Contents/MacOS/MyRetirementLife"`.
+    - **Build artifacts:** 64M `.app`, 31M DMG (well under ADR-002's 80–150M ceiling).
+
+49. **Native desktop window via pywebview — replaces "open in default browser".** Mark wanted the packaged app to feel like a real desktop app, not a Chrome tab. Chose pywebview over Electron/Tauri after architectural discussion: the webview is just a window manager around `localhost:8000`, the FastAPI + HTMX architecture stays unchanged, no Xcode / Node / Rust needed. Tauri also uses each OS's webview so it doesn't escape the three-engine split — only Electron does (by shipping Chromium), and the bundle-size + toolchain tax isn't worth it for this app. Mental model: a future "My Financial Life" sister app's larger datasets and richer interactivity won't be bottlenecked by the webview either — the real architecture decisions for that app would be SQLite-vs-Oxigraph for transaction-heavy data, and pure-HTMX vs HTMX + interactive islands for grid-style UX. Window shell is swappable later (`main.py` is the only file that knows about it).
+    - **`main.py`** rewritten: uvicorn now runs in a daemon thread; main thread waits on `/health` (15s timeout via `urlopen`) then calls `webview.create_window(title=settings.app_name, url=..., width=1400, height=900, min_size=(900,600), resizable=True)` + `webview.start()` (blocking). `webview.start()` must be on the main thread on macOS — Cocoa requirement. When the window closes, the process exits and the daemon thread is torn down with it. Eager `from src.api.app import app` before starting the thread surfaces any import-time failure on the main thread instead of silently inside the worker.
+    - **`requirements.txt`** gains `pywebview>=5.4` plus platform-conditional deps via `sys_platform` markers: `pyobjc-core`, `pyobjc-framework-Cocoa`, `pyobjc-framework-WebKit` on Darwin; `pythonnet>=3.0` on Win32. Installed pywebview 6.2.1 + pyobjc-core 12.1 in the venv.
+    - **`tools/MyRetirementLife.spec`** adds `webview.platforms.cocoa` to `hiddenimports` so the Cocoa backend is always bundled (pyinstaller-hooks-contrib usually picks it up, but explicit is safer against future hook changes).
+    - **Verified:** dev run (`python main.py`) and packaged `.app` both open a native WKWebView window with the dashboard rendered inside (logs show `GET /` plus every static asset returning 200 to the window's request context). Bundle 64M → 66M, DMG 31M → 33M. `dist/` was rebuilt after the pywebview changes; no further build needed before distributing.
+    - **Windows + Linux next steps:** `main.py` change is platform-agnostic. Windows packaging will need a sibling `tools/build_windows.ps1` plus likely a separate `.spec` with `webview.platforms.winforms` or `edgechromium` as the explicit hidden import (WebView2 runtime is preinstalled on Win10/11). Linux deferred per Mark.
+
+---
+
+## Changes in session 5 (2026-05-30)
 
 _Shipped in commit **`56d2da9`** — "Form-reset UX: PRG remaining edit handlers (accounts/investments/income)" (item 47)._
 
