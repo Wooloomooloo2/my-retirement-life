@@ -34,7 +34,7 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ## Changes this session (2026-05-30 — seventh session)
 
-_Shipped in commit **`585e786`** — "ADR-016 follow-on: per-line budget currency + inline live FX buttons" (items 50–53). Run `python tools/reload_ontology.py` (app closed) for the 1.0.5 ontology to appear in the live store before exercising item 52._
+_Shipped in commit **`585e786`** — "ADR-016 follow-on: per-line budget currency + inline live FX buttons" (items 50–53). End-to-end smoke-tested by Mark across all three pages (inline buttons populate live, bulk refresh works, per-line budget currency rolls up correctly in chart + projection, backup/restore round-trips income FX + deposit account)._
 
 50. **Shared `GET /api/fx/rate?code=XYZ` JSON endpoint.** Single live-rate lookup used by all three inline buttons (accounts, income, budget) so the per-row "Use live rate" UX doesn't need a page reload. Returns `{ok: True, code, rate_to_base, as_of, provider}` on success, `{ok: False, error: "..."}` with a 4xx/5xx status on failure. Lives in `src/api/routes/accounts.py` (the existing FX hub — already had bulk refresh and `_update_account_rate`). Uses the same `1 / rate_provider[code]` convention as the bulk refresh, with a 1.0 short-circuit when the asked-for code equals the base. Same-origin only; no auth needed (app is local-first).
     - **Why one JSON endpoint instead of three per-page POSTs:** the bulk refresh routes are HTML-rendering (they re-render the page with a banner). The inline button just needs to populate two fields. JSON keeps the JS simple and avoids three near-identical handlers.

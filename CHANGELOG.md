@@ -6,6 +6,69 @@ This project is pre-1.0; format follows
 
 ---
 
+## [Unreleased — per-line FX + inline live rates] — 2026-05-30
+
+### Feature — Per-line currency on the budget
+
+Budget lines now carry their own currency, alongside the existing per-account
+and per-income-source currency support. A USD mortgage, a EUR subscription,
+or a JPY rental cost can each live on the budget at their native amount and
+get rolled up to your base currency for charts and projections.
+
+The add/edit form has a new **Currency** dropdown (defaults to your base
+currency); when it differs from base, an **Exchange rate to base** field
+appears next to it with an inline **"Use live rate"** button. The budget
+lines table shows the line's own currency symbol with a small
+`USD @ 0.79 → £…` sub-line so the conversion is visible inline.
+
+The chart computations and projection engine pre-multiply each segment's
+amount by the line's FX rate at load — same pattern accounts and income
+have used since ADR-016 — so all stacked-area bands, M/D/L totals, and
+projection numbers roll up correctly in base currency.
+
+**Backwards-compatible:** lines that existed before this change have no
+FX triple and read as `1.0`, so existing plans produce bit-identical
+numbers.
+
+### Feature — Inline "Use live rate" on every FX field
+
+The bulk "Refresh rates" buttons that already existed on the Accounts
+and Income pages now have a companion: a per-row **"Use live rate"**
+button next to the FX rate input on every edit form (accounts, income,
+budget). Click it and the rate + date are populated in-place from
+[open.er-api.com](https://www.exchangerate-api.com/) — no page reload,
+no need to use the bulk action just to refresh one row.
+
+A shared `GET /api/fx/rate?code=XYZ` JSON endpoint backs all three
+inline buttons. The bulk action is still available on every page,
+and the budget page now has its own
+`POST /budget/refresh-rates` matching the accounts + income pattern.
+
+### Ontology — version bumped to 1.0.5
+
+Three new properties on `mrl:BudgetLine` —
+`mrl:budgetLineCurrency` (object property → `mrl:Currency`),
+`mrl:budgetLineExchangeRateToBase` (decimal), and
+`mrl:budgetLineExchangeRateDate` (date). Same shape as the equivalent
+properties on cash + investment accounts and on income sources.
+
+**Run `python tools/reload_ontology.py` once (app closed)** to install
+the 1.0.5 schema before exercising the budget change.
+
+### Fixed
+
+- **Income backup/restore round-trip.** Per-income-source currency, FX
+  rate, FX-rate-date, and deposit account were silently dropped from
+  every backup since those fields were introduced (ADR-016 2026-05-23,
+  deposit account 2026-05-25). Affected plans with foreign-currency
+  income or routed income would have all four fields wiped back to the
+  engine defaults (base currency, unrouted income) on restore. The
+  export now carries them, and restore writes them back. Pre-fix
+  backups still restore cleanly — missing fields fall back to the same
+  defaults as before.
+
+---
+
 ## [Unreleased — budget restructure] — 2026-05-27
 
 ### Feature — Life-stage spending changes ("stages") in one line
