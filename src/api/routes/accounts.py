@@ -808,10 +808,10 @@ def save_account(
 # ---------------------------------------------------------------------------
 
 @router.get("/accounts", response_class=HTMLResponse)
-async def accounts_page(request: Request, added: int = 0):
-    # `added=1` arrives via the post/redirect/get after adding an account, so
-    # the form is freshly blank and ready for the next one (see add_account).
-    return _render_accounts(request, added=bool(added))
+async def accounts_page(request: Request, added: int = 0, saved: int = 0):
+    # `added=1` / `saved=1` arrive via post/redirect/get after adding or editing
+    # an account, so the form is freshly blank and the banner confirms the save.
+    return _render_accounts(request, added=bool(added), saved=bool(saved))
 
 
 # ---------------------------------------------------------------------------
@@ -1159,10 +1159,11 @@ async def save_edit_account(
         effective_withdrawal_tax_rate=effectiveWithdrawalTaxRate,
         annual_tax_free_withdrawal=annualTaxFreeWithdrawal,
     )
-    # Stay in edit mode after save (see budget.py for rationale).
-    accounts = get_all_accounts_combined()
-    edit_account = next((a for a in accounts if a.get("n") == str(n) and a.get("account_class") == "CashAccount"), None)
-    return _render_accounts(request, edit_account=edit_account, saved=True)
+    # Post/redirect/get back to the list with a blank add form + "saved" banner
+    # (matches budget.py — the persisted account is visible in the list, so the
+    # save is confirmed without leaving a populated form that looks un-reset).
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/accounts?saved=1", status_code=303)
 
 
 @router.get("/accounts/{n}/projection", response_class=HTMLResponse)
@@ -1370,14 +1371,9 @@ async def save_edit_asset(
         sale_value=assetSaleValue,
         proceeds_account=assetProceedsAccount,
     )
-    # Stay in edit mode after save (see budget.py for rationale).
-    combined = get_all_accounts_combined()
-    edit_account = next(
-        (a for a in combined
-         if a.get("account_class") == "PhysicalAsset" and a.get("label") == label),
-        None,
-    )
-    return _render_accounts(request, edit_account=edit_account, saved=True)
+    # Post/redirect/get back to the list with a blank add form + "saved" banner
+    # (matches budget.py — the persisted asset is visible in the list above).
+    return RedirectResponse(url="/accounts?saved=1", status_code=303)
 
 
 @router.post("/accounts/asset/{label}/delete", response_class=HTMLResponse)

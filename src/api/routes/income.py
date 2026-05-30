@@ -9,7 +9,7 @@ POST /income/{n}/delete   — delete income source N
 """
 from datetime import date
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
@@ -258,12 +258,14 @@ def _page_context(request, sources, edit_source=None, **kwargs):
 
 
 @router.get("/income", response_class=HTMLResponse)
-async def income_page(request: Request):
+async def income_page(request: Request, added: int = 0, saved: int = 0):
+    # `added=1` / `saved=1` arrive via post/redirect/get after adding or editing
+    # an income source, so the form is freshly blank and the banner confirms it.
     sources = get_all_income_sources()
     return templates.TemplateResponse(
         request=request,
         name="income.html",
-        context=_page_context(request, sources),
+        context=_page_context(request, sources, added=bool(added), saved=bool(saved)),
     )
 
 
@@ -291,12 +293,7 @@ async def add_income_source(
                        exchange_rate=incomeExchangeRateToBase,
                        exchange_rate_date=incomeExchangeRateDate,
                        credited_to_account=creditedToAccount)
-    sources = get_all_income_sources()
-    return templates.TemplateResponse(
-        request=request,
-        name="income.html",
-        context=_page_context(request, sources, saved=True),
-    )
+    return RedirectResponse(url="/income?added=1", status_code=303)
 
 
 @router.get("/income/{n}/edit", response_class=HTMLResponse)
@@ -333,14 +330,9 @@ async def save_edit_income(
                        exchange_rate=incomeExchangeRateToBase,
                        exchange_rate_date=incomeExchangeRateDate,
                        credited_to_account=creditedToAccount)
-    sources     = get_all_income_sources()
-    # Stay in edit mode after save (see budget.py for rationale).
-    edit_source = next((s for s in sources if s.get("n") == str(n)), None)
-    return templates.TemplateResponse(
-        request=request,
-        name="income.html",
-        context=_page_context(request, sources, edit_source=edit_source, saved=True),
-    )
+    # Post/redirect/get back to the list with a blank add form + "saved" banner
+    # (matches budget.py — supersedes the earlier stay-in-edit-mode behaviour).
+    return RedirectResponse(url="/income?saved=1", status_code=303)
 
 
 @router.post("/income/refresh-rates", response_class=HTMLResponse)
