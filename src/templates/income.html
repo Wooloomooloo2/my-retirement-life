@@ -301,20 +301,26 @@
                             <span class="font-normal normal-case text-base-content/50">— 1 unit of income currency in {{ base_currency.code }}</span>
                         </span>
                     </label>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-3 flex-wrap">
                         <input type="number" name="incomeExchangeRateToBase" id="incomeExchangeRateToBase"
                             step="0.000001" min="0"
                             value="{{ edit_source.exchangeRate if edit_source and edit_source.exchangeRate else '1.0' }}"
                             class="input input-bordered input-sm w-40" />
+                        <button type="button" id="fx-rate-live-btn"
+                                class="btn btn-ghost btn-sm gap-1 whitespace-nowrap"
+                                title="Pull today's rate from open.er-api.com for the selected currency">
+                            <i class="ti ti-refresh text-xs" aria-hidden="true"></i>
+                            <span>Use live rate</span>
+                        </button>
                         {% if edit_source and edit_source.exchangeRateDate %}
-                        <span class="text-xs text-base-content/40">Last updated {{ edit_source.exchangeRateDate }}</span>
+                        <span class="text-xs text-base-content/40" id="fx-rate-last-updated">Last updated {{ edit_source.exchangeRateDate }}</span>
                         {% endif %}
                     </div>
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Use the "Refresh rates" button above to populate from live rates, or set manually. Same-currency income uses 1.0 automatically.</span>
+                        <span class="label-text-alt text-base-content/40" id="fx-rate-hint">"Use live rate" pulls from open.er-api.com for this source; "Refresh rates" above does the same for every source at once. Same-currency income uses 1.0 automatically.</span>
                     </label>
                 </div>
-                <input type="hidden" name="incomeExchangeRateDate"
+                <input type="hidden" name="incomeExchangeRateDate" id="incomeExchangeRateDate"
                        value="{{ edit_source.exchangeRateDate if edit_source and edit_source.exchangeRateDate else today }}" />
 
                 <div class="form-control col-span-2">
@@ -368,6 +374,43 @@
         }
     }
     document.addEventListener('DOMContentLoaded', updateFxVisibility);
+
+    // -----------------------------------------------------------------------
+    // Inline "Use live rate" — calls the shared /api/fx/rate JSON endpoint
+    // for the currently-selected currency and populates the FX rate + hidden
+    // date fields without leaving the form. Failure paths fall back to a hint.
+    // -----------------------------------------------------------------------
+    async function pullLiveRate() {
+        const btn  = document.getElementById('fx-rate-live-btn');
+        const sel  = document.getElementById('incomeCurrency');
+        const inp  = document.getElementById('incomeExchangeRateToBase');
+        const dt   = document.getElementById('incomeExchangeRateDate');
+        const hint = document.getElementById('fx-rate-hint');
+        if (!btn || !sel || !inp) return;
+        const opt  = sel.options[sel.selectedIndex];
+        const code = opt ? opt.getAttribute('data-code') : '';
+        if (!code) return;
+        const origLabel = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Fetching…';
+        try {
+            const res  = await fetch('/api/fx/rate?code=' + encodeURIComponent(code));
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'Live rate unavailable');
+            inp.value = data.rate_to_base;
+            const today = new Date().toISOString().slice(0, 10);
+            if (dt) dt.value = today;
+            const lastEl = document.getElementById('fx-rate-last-updated');
+            if (lastEl) lastEl.textContent = 'Last updated ' + today;
+            if (hint) hint.innerHTML = '<i class="ti ti-circle-check text-success"></i> Pulled ' + code + ' @ ' + data.rate_to_base + ' from ' + (data.provider || 'live source') + (data.as_of ? ' · ' + data.as_of : '');
+        } catch (e) {
+            if (hint) hint.innerHTML = '<i class="ti ti-alert-triangle text-warning"></i> ' + (e.message || 'Live rate unavailable') + '. Existing rate left unchanged.';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origLabel;
+        }
+    }
+    document.getElementById('fx-rate-live-btn')?.addEventListener('click', pullLiveRate);
 
     const RETIREMENT_YEAR = {{ retirement_year if retirement_year else 'null' }};
     if (RETIREMENT_YEAR) {

@@ -134,6 +134,13 @@ def export_all_data() -> dict:
             "isNetOfTax":   _val(iri, "incomeIsNetOfTax", "true"),
             "startYear":    _int_val(iri, "incomeStartYear"),
             "endYear":      _int_val(iri, "incomeEndYear"),
+            # FX (ADR-016, CLAUDE_CONTEXT item 11) — was missing from export.
+            "currency":         _local(iri, "incomeCurrency"),
+            "exchangeRate":     _float_val(iri, "incomeExchangeRateToBase", 1.0),
+            "exchangeRateDate": _val(iri, "incomeExchangeRateDate"),
+            # Deposit account (ADR-024 deposit-routing, CLAUDE_CONTEXT item 24) —
+            # was missing from export. Stored as the local label e.g. "CashAccount_2".
+            "creditedToAccount": _local(iri, "creditedToAccount"),
         })
     income_sources.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
@@ -291,6 +298,10 @@ def export_all_data() -> dict:
             "budgetEndYear":   _int_val(iri, "budgetEndYear"),
             # ADR-017: category link (local name of BudgetCategory_N, or empty)
             "categoryN":       _local(iri, "budgetCategory"),
+            # 1.0.5 — ADR-016 follow-on: per-line currency + FX
+            "currency":         _local(iri, "budgetLineCurrency"),
+            "exchangeRate":     _float_val(iri, "budgetLineExchangeRateToBase", 1.0),
+            "exchangeRateDate": _val(iri, "budgetLineExchangeRateDate"),
         })
     budget_lines.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
@@ -484,6 +495,33 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                     PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
                     INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
                         <{src_iri}> mrl:incomeEndYear "{src['endYear']}"^^xsd:integer . }} }}
+                """)
+            # FX (ADR-016) — pre-session-7 backups didn't carry these; absent
+            # fields fall back to the base currency at engine load time.
+            if src.get("currency"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{src_iri}> mrl:incomeCurrency mrl:{src['currency']} . }} }}
+                """)
+            if src.get("exchangeRate") and float(src.get("exchangeRate", 1.0)) != 1.0:
+                _rate_date = src.get("exchangeRateDate") or date.today().isoformat()
+                store.update(f"""
+                    PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{src_iri}> mrl:incomeExchangeRateToBase "{src['exchangeRate']}"^^xsd:decimal ;
+                                    mrl:incomeExchangeRateDate   "{_rate_date}"^^xsd:date . }} }}
+                """)
+            # Deposit account routing (CLAUDE_CONTEXT item 24) — also missed by
+            # earlier exports. Restored after cash + investment accounts further
+            # below means the referenced account may not yet exist when this
+            # triple is written, but that's OK: it's a literal IRI link and the
+            # target only needs to resolve at engine read time, not at write.
+            if src.get("creditedToAccount"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{src_iri}> mrl:creditedToAccount mrl:{src['creditedToAccount']} . }} }}
                 """)
 
         # --- Cash accounts ---
@@ -686,6 +724,18 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
             if line.get("categoryN"):
                 base_triples += (f'\n        <{line_iri}> mrl:budgetCategory '
                                  f'<{MRL}{line["categoryN"]}> .')
+            # 1.0.5: per-line currency. Backups predating this field don't
+            # carry it — restore as-is and the engine falls back to the base
+            # currency at load time (matches the in-app default).
+            if line.get("currency"):
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineCurrency '
+                                 f'mrl:{line["currency"]} .')
+            if line.get("exchangeRate") and float(line.get("exchangeRate", 1.0)) != 1.0:
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineExchangeRateToBase '
+                                 f'"{line["exchangeRate"]}"^^xsd:decimal .')
+                _rate_date = line.get("exchangeRateDate") or date.today().isoformat()
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineExchangeRateDate '
+                                 f'"{_rate_date}"^^xsd:date .')
             store.update(f"""
                 PREFIX mrl:  <{MRL}>
                 PREFIX mrlx: <{MRL_EXT}>

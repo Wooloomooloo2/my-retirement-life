@@ -25,6 +25,7 @@ ADR-017 notes:
   /budget render after the 1.0.2 ontology bump; deprecated line-level
   properties are left in place per ADR-017 §3.
 """
+from datetime import date
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
@@ -33,11 +34,16 @@ import pyoxigraph as og
 
 from src.config import settings
 from src.store.graph import store, MRL, DATA_GRAPH
+from src.fx import fetch_rates, FxError
+from src.api.routes.profile import (
+    get_base_currency, get_currencies, _currency_code, _currency_symbol,
+)
 
 router = APIRouter()
 
-RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-MRL_EXT  = "https://myretirementlife.app/ontology/ext#"
+RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
+ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
 # Reserved category names — case-insensitive. "Account contributions" is the
 # synthetic system group derived from AccountContribution instances (ADR-015).
@@ -468,6 +474,13 @@ def get_all_budget_lines() -> list:
         if cat_qs:
             category = cats_by_iri.get(str(cat_qs[0].object.value))
 
+        # Per-line currency + FX (1.0.5 — ADR-016 follow-on). When unset the
+        # line is interpreted in the base currency and exchangeRate defaults
+        # to 1.0 downstream (matches the accounts pattern).
+        currency_local   = gl("budgetLineCurrency")
+        exchange_rate    = gv("budgetLineExchangeRateToBase")
+        exchange_rate_dt = gv("budgetLineExchangeRateDate")
+
         segments  = get_segments_for_line(n)
         line_type = gl("budgetLineType")
 
@@ -510,6 +523,12 @@ def get_all_budget_lines() -> list:
             "categoryName":  category["name"] if category else "",
             # ADR-017 segments list (for Phase 3 multi-segment UI)
             "segments":      segments,
+            # Per-line currency + FX (1.0.5 — ADR-016 follow-on)
+            "currency":         currency_local,
+            "currencyCode":     _currency_code(currency_local)   if currency_local else "",
+            "currencySymbol":   _currency_symbol(currency_local) if currency_local else "",
+            "exchangeRate":     exchange_rate,
+            "exchangeRateDate": exchange_rate_dt,
             # Backwards-compat flattened first-segment view
             "amount":         amount,
             "frequency":      frequency,
@@ -663,11 +682,12 @@ def compute_annual_spending_series(lines: list, current_year: int, end_year: int
     for line in lines:
         line_type = line.get("lineType", "")
         segments  = line.get("segments") or []
+        fx        = _line_fx(line)
         for i, year in enumerate(years):
             seg = _find_active_segment_dict(segments, year)
             if seg is None:
                 continue
-            annual      = _float_or_zero(seg.get("annualAmount"))
+            annual      = _float_or_zero(seg.get("annualAmount")) * fx
             change_rate = _float_or_zero(seg.get("changeRate"))
             amount      = annual * ((1 + change_rate / 100) ** i)
             if   line_type == "BudgetLineType_Mandatory":     mandatory[i]     += amount
@@ -732,6 +752,18 @@ def compute_annual_contributions_series(
     return [round(x, 0) for x in series]
 
 
+def _line_fx(line: dict) -> float:
+    """Return the line's exchangeRateToBase, defaulting to 1.0 when absent
+    or invalid. Per-line currency + FX is the 1.0.5 addition (ADR-016
+    follow-on). Same-currency lines (currencyCode == base) carry no FX
+    triple and read as 1.0; cross-currency lines persist the rate."""
+    raw = line.get("exchangeRate") or ""
+    try:
+        return float(raw) if raw else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def _sum_lines_per_year(lines: list, years: list, inflation_rate: float = 0.0) -> list:
     """Sum the active segment's amount across all `lines` for each year.
 
@@ -740,16 +772,21 @@ def _sum_lines_per_year(lines: list, years: list, inflation_rate: float = 0.0) -
     yielding the nominal view. **Loans are kept fixed-nominal** (no
     inflation lift) so the chart agrees with the projection engine, which
     treats loan repayments as fixed nominal commitments.
+
+    Lines in a non-base currency are pre-multiplied by their stored
+    mrl:budgetLineExchangeRateToBase so the chart rolls up in base
+    currency — mirrors the accounts and income FX-conversion at load time.
     """
     result = [0.0] * len(years)
     for line in lines:
         segments = line.get("segments") or []
         is_loan  = line.get("lineType") == "BudgetLineType_Loan"
+        fx       = _line_fx(line)
         for i, year in enumerate(years):
             seg = _find_active_segment_dict(segments, year)
             if seg is None:
                 continue
-            annual      = _float_or_zero(seg.get("annualAmount"))
+            annual      = _float_or_zero(seg.get("annualAmount")) * fx
             change_rate = _float_or_zero(seg.get("changeRate"))
             rate = change_rate if is_loan else (inflation_rate + change_rate)
             result[i] += annual * ((1 + rate / 100) ** i)
@@ -913,6 +950,9 @@ def save_budget_line_segments(
     line_type: str,
     category_name: str,
     segments: list,
+    currency_local: str = "",
+    exchange_rate: float = 1.0,
+    exchange_rate_date: str = "",
 ) -> None:
     """Write or overwrite BudgetLine_N together with all its segments.
 
@@ -921,12 +961,23 @@ def save_budget_line_segments(
     `category_name` leaves the line uncategorised; a non-empty name resolves
     to an existing BudgetCategory by case-insensitive match, creating one on
     the fly if necessary.
+
+    `currency_local` is the Currency individual local name (e.g. "GBP", "USD").
+    Falls back to the person's base currency when blank. `exchange_rate` is
+    mrl:budgetLineExchangeRateToBase ("1 unit of line currency = N units of
+    base currency") — only persisted when it differs from 1.0 (line currency
+    != base). Mirrors the accounts.py / income.py FX pattern (ADR-016).
     """
     if not segments:
         raise ValueError("A budget line needs at least one segment.")
 
     line_iri   = f"{MRL}BudgetLine_{n}"
     person_iri = f"{MRL}Person_1"
+
+    if not currency_local:
+        currency_local = (get_base_currency() or {}).get("local", "")
+    if not exchange_rate_date:
+        exchange_rate_date = date.today().isoformat()
 
     category_iri = None
     if category_name and category_name.strip():
@@ -951,6 +1002,10 @@ def save_budget_line_segments(
         f' ;\n                    mrl:budgetCategory <{category_iri}>'
         if category_iri else ""
     )
+    currency_clause = (
+        f' ;\n                    mrl:budgetLineCurrency mrl:{currency_local}'
+        if currency_local else ""
+    )
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -960,10 +1015,24 @@ def save_budget_line_segments(
                 <{line_iri}> a mrl:BudgetLine ;
                     mrl:budgetLineName "{_escape(name)}" ;
                     mrl:budgetLineType mrlx:{line_type} ;
-                    mrl:budgetOwner <{person_iri}>{cat_clause} .
+                    mrl:budgetOwner <{person_iri}>{cat_clause}{currency_clause} .
             }}
         }}
     """)
+
+    # Persist FX rate only when it actually differs from 1.0 — matches the
+    # accounts/income convention so same-currency rows stay clean in the store.
+    if exchange_rate and float(exchange_rate) != 1.0:
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{line_iri}> mrl:budgetLineExchangeRateToBase "{exchange_rate}"^^xsd:decimal ;
+                                 mrl:budgetLineExchangeRateDate   "{exchange_rate_date}"^^xsd:date .
+                }}
+            }}
+        """)
 
     next_n = _next_segment_n()
     for seg in segments:
@@ -1007,6 +1076,38 @@ def _segments_from_form(
             "change_rate": change_rates[i],
         })
     return out
+
+
+def _update_budget_line_rate(line_iri_str: str, rate_to_base: float, rate_date: str) -> None:
+    """Overwrite only the two FX-rate properties on a single budget line,
+    leaving every other triple untouched. Mirrors _update_account_rate /
+    _update_income_rate (ADR-016)."""
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{line_iri_str}> mrl:budgetLineExchangeRateToBase ?r .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{line_iri_str}> mrl:budgetLineExchangeRateDate ?d .
+            }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{
+            GRAPH <{DATA_GRAPH.value}> {{
+                <{line_iri_str}> mrl:budgetLineExchangeRateToBase "{rate_to_base}"^^xsd:decimal ;
+                                 mrl:budgetLineExchangeRateDate   "{rate_date}"^^xsd:date .
+            }}
+        }}
+    """)
 
 
 def _page_context(request, lines, edit_line=None, **kwargs):
@@ -1079,6 +1180,10 @@ def _page_context(request, lines, edit_line=None, **kwargs):
         "contributions":        contributions,
         "categories":           categories,
         "category_suggestions": CATEGORY_SUGGESTIONS,
+        # Per-line currency + FX (1.0.5 — ADR-016 follow-on)
+        "currencies":           get_currencies(),
+        "base_currency":        get_base_currency(),
+        "today":                date.today().isoformat(),
         **kwargs,
     }
 
@@ -1101,6 +1206,67 @@ async def budget_page(request: Request, added: int = 0, saved: int = 0):
     )
 
 
+@router.post("/budget/refresh-rates", response_class=HTMLResponse)
+async def refresh_budget_exchange_rates(request: Request):
+    """Fetch today's live rates and update every cross-currency budget line's
+    FX rate. Mirrors POST /accounts/refresh-rates and POST /income/refresh-rates
+    (ADR-016). Lines already in the base currency get 1.0; lines whose currency
+    has no live rate are listed under `rate_refresh_skipped`."""
+    migrate_legacy_budget_lines_to_segments()
+
+    base       = get_base_currency()
+    base_code  = (base or {}).get("code", "")
+    if not base_code:
+        return templates.TemplateResponse(
+            request=request, name="budget.html",
+            context=_page_context(
+                request, get_all_budget_lines(),
+                rate_refresh_error="Set your base currency on the Profile page "
+                                   "before refreshing exchange rates.",
+            ),
+        )
+
+    try:
+        data  = fetch_rates(base_code)
+        rates = data["rates"]
+    except FxError as exc:
+        return templates.TemplateResponse(
+            request=request, name="budget.html",
+            context=_page_context(
+                request, get_all_budget_lines(),
+                rate_refresh_error=f"Live rates unavailable — {exc}. "
+                                   "Existing rates were left unchanged.",
+            ),
+        )
+
+    today   = date.today().isoformat()
+    updated = 0
+    skipped = []
+    for line in get_all_budget_lines():
+        code = line.get("currencyCode") or base_code
+        if code == base_code:
+            # Base-currency lines don't need a rate; leave any stray triple alone.
+            continue
+        if code in rates and rates[code]:
+            rate_to_base = round(1.0 / float(rates[code]), 6)
+            _update_budget_line_rate(line["iri"], rate_to_base, today)
+            updated += 1
+        else:
+            skipped.append(code)
+
+    return templates.TemplateResponse(
+        request=request, name="budget.html",
+        context=_page_context(
+            request, get_all_budget_lines(),
+            rate_refresh_count=updated,
+            rate_refresh_base=base_code,
+            rate_refresh_as_of=data.get("as_of", ""),
+            rate_refresh_provider=data.get("provider", ""),
+            rate_refresh_skipped=sorted(set(skipped)),
+        ),
+    )
+
+
 @router.post("/budget", response_class=HTMLResponse)
 async def add_budget_line(
     request: Request,
@@ -1112,6 +1278,9 @@ async def add_budget_line(
     segmentAmount:    list[float] = Form(...),
     segmentFrequency: list[str]   = Form(...),
     segmentChangeRate: list[float] = Form(...),
+    budgetLineCurrency:           str   = Form(""),
+    budgetLineExchangeRateToBase: float = Form(1.0),
+    budgetLineExchangeRateDate:   str   = Form(""),
 ):
     existing = get_all_budget_lines()
     next_n   = max([int(l["n"]) for l in existing if l["n"].isdigit()], default=0) + 1
@@ -1122,6 +1291,9 @@ async def add_budget_line(
     save_budget_line_segments(
         next_n, budgetLineName, budgetLineType,
         budgetCategoryName, segments,
+        currency_local=budgetLineCurrency,
+        exchange_rate=budgetLineExchangeRateToBase,
+        exchange_rate_date=budgetLineExchangeRateDate,
     )
     # Post/redirect/get back to a blank add form so the fields (including any
     # extra stages added before saving) reset for the next line and `?added=1`
@@ -1153,6 +1325,9 @@ async def save_edit_budget_line(
     segmentAmount:    list[float] = Form(...),
     segmentFrequency: list[str]   = Form(...),
     segmentChangeRate: list[float] = Form(...),
+    budgetLineCurrency:           str   = Form(""),
+    budgetLineExchangeRateToBase: float = Form(1.0),
+    budgetLineExchangeRateDate:   str   = Form(""),
 ):
     segments = _segments_from_form(
         segmentStartYear, segmentEndYear, segmentAmount,
@@ -1161,6 +1336,9 @@ async def save_edit_budget_line(
     save_budget_line_segments(
         n, budgetLineName, budgetLineType,
         budgetCategoryName, segments,
+        currency_local=budgetLineCurrency,
+        exchange_rate=budgetLineExchangeRateToBase,
+        exchange_rate_date=budgetLineExchangeRateDate,
     )
     # Post/redirect/get back to the list with a blank add form + "saved" banner.
     # The persisted line — including any stage just added — is visible in the

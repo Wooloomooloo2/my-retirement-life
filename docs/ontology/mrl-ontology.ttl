@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.4" .
+    owl:versionInfo "1.0.5" .
 
 
 # ===========================================================================
@@ -1330,6 +1330,29 @@ mrl:budgetCategory a owl:ObjectProperty ;
     rdfs:comment "Optional link to a mrl:BudgetCategory grouping this line on the by-category chart (ADR-017). Applies to all line types including Loan — a mortgage is categorised as e.g. Housing alongside utilities and insurance, not in a separate 'Loans' band. Lines without a category fall into a synthetic 'Uncategorised' group until the user assigns one."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range mrl:BudgetCategory .
+
+# Per-line currency + FX (1.0.5 — ADR-016 follow-on).
+# Defaults to the person's base currency when unset; segment amounts under a
+# line are interpreted as denominated in this currency. The projection engine
+# pre-multiplies by mrl:budgetLineExchangeRateToBase at load, so downstream
+# code keeps working in base-currency terms only.
+mrl:budgetLineCurrency a owl:ObjectProperty ;
+    rdfs:label "budget line currency"@en ;
+    rdfs:comment "The currency in which this line's segment amounts are denominated. Optional; defaults to the person's base currency when absent. Added 1.0.5 (ADR-016 follow-on)."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range mrl:Currency .
+
+mrl:budgetLineExchangeRateToBase a owl:DatatypeProperty ;
+    rdfs:label "budget line exchange rate to base"@en ;
+    rdfs:comment "Exchange rate between mrl:budgetLineCurrency and the person's base currency, expressed as '1 unit of line currency = N units of base currency'. Only meaningful when the line currency differs from the base. Mirrors mrl:exchangeRateToBase on accounts and mrl:incomeExchangeRateToBase on income sources (ADR-016). Added 1.0.5."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:decimal .
+
+mrl:budgetLineExchangeRateDate a owl:DatatypeProperty ;
+    rdfs:label "budget line exchange rate date"@en ;
+    rdfs:comment "The date on which mrl:budgetLineExchangeRateToBase was last set or refreshed. Added 1.0.5 (ADR-016 follow-on)."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:date .
 
 
 # ===========================================================================

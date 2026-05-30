@@ -964,6 +964,60 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
         request=request, name="accounts.html", context=context)
 
 
+@router.get("/api/fx/rate")
+async def live_fx_rate(code: str):
+    """Return today's live exchange rate for one currency vs the person's base.
+
+    Shared JSON endpoint used by the per-row "Use live rate" buttons on the
+    accounts, income, and budget edit forms. Returns:
+        {"ok": True,  "code": "USD", "rate_to_base": 0.79, "as_of": "...",
+         "provider": "open.er-api.com"}   on success
+        {"ok": False, "error": "human readable"}                       on failure
+
+    The rate convention matches the rest of the app: "1 unit of <code> = N
+    units of base currency" — i.e. `1 / rate_provider[code]` since the
+    provider returns the inverse orientation. Same-currency returns 1.0.
+    """
+    from fastapi.responses import JSONResponse
+    from src.api.routes.profile import get_profile
+
+    code = (code or "").strip().upper()
+    if not code:
+        return JSONResponse({"ok": False, "error": "Missing currency code."}, status_code=400)
+
+    base_local = (get_profile() or {}).get("baseCurrency", "")
+    base_code  = _currency_code(base_local) if base_local else ""
+    if not base_code:
+        return JSONResponse(
+            {"ok": False, "error": "Set your base currency on the Profile page first."},
+            status_code=400,
+        )
+
+    if code == base_code:
+        return {"ok": True, "code": code, "rate_to_base": 1.0,
+                "as_of": date.today().isoformat(), "provider": "(base currency)"}
+
+    try:
+        data = fetch_rates(base_code)
+    except FxError as exc:
+        return JSONResponse({"ok": False, "error": f"Live rates unavailable — {exc}"}, status_code=502)
+
+    rate = data["rates"].get(code)
+    if not rate:
+        return JSONResponse(
+            {"ok": False, "error": f"No live rate available for {code}."},
+            status_code=404,
+        )
+
+    return {
+        "ok":           True,
+        "code":         code,
+        "rate_to_base": round(1.0 / float(rate), 6),
+        "as_of":        data.get("as_of", ""),
+        "provider":     data.get("provider", ""),
+    }
+
+
 @router.post("/accounts/refresh-rates", response_class=HTMLResponse)
 async def refresh_exchange_rates(request: Request):
     """Fetch today's live rates and update every account's exchange rate —

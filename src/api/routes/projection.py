@@ -450,6 +450,12 @@ def load_budget_lines() -> list:
         line_iri  = q.subject
         line_type = _local(line_iri, "budgetLineType")
 
+        # Per-line FX conversion (1.0.5 — ADR-016 follow-on). Pre-multiplied
+        # into each segment's annual_amount so the rest of the engine sees
+        # base-currency figures only, mirroring how accounts + income are
+        # FX-converted at load. Same-currency lines have no triple → 1.0.
+        fx_rate = _float(line_iri, "budgetLineExchangeRateToBase", 1.0)
+
         segments = []
         for sq in store.store.quads_for_pattern(
                 None, seg_owner_pred, line_iri, DATA_GRAPH):
@@ -458,7 +464,7 @@ def load_budget_lines() -> list:
             multiplier = FREQUENCY_MULTIPLIERS.get(freq, 12)
             amount     = _float(seg_iri, "segmentAmount")
             segments.append({
-                "annual_amount": amount * multiplier,
+                "annual_amount": amount * multiplier * fx_rate,
                 "change_rate":   _float(seg_iri, "segmentChangeRate"),
                 "start_year":    _int_or_none(_val(seg_iri, "segmentStartYear", "")),
                 "end_year":      _int_or_none(_val(seg_iri, "segmentEndYear",   "")),
@@ -476,7 +482,7 @@ def load_budget_lines() -> list:
             end_year   = _int_or_none(_val(line_iri, "budgetEndYear",   ""))
             loan_end   = _int_or_none(_val(line_iri, "loanEndYear",     ""))
             segments.append({
-                "annual_amount": amount * multiplier,
+                "annual_amount": amount * multiplier * fx_rate,
                 "change_rate":   _float(line_iri, "annualChangeRate"),
                 "start_year":    start_year,
                 "end_year":      end_year if end_year is not None else loan_end,
