@@ -86,6 +86,22 @@ The app will start and open in your default browser at `http://127.0.0.1:8000`.
 
 ---
 
+## Building a macOS distributable
+
+Produces a standalone `.app` bundle and a `.dmg` disk image with no Python or dependency installation needed on the target machine. Must be run on a Mac — PyInstaller cannot cross-compile (ADR-002).
+
+```bash
+./.venv/bin/pip install -r requirements-build.txt
+./tools/build_mac.sh                  # dist/My Retirement Life.app + dist/MyRetirementLife-dev.dmg
+VERSION=0.2.0 ./tools/build_mac.sh    # version-stamped DMG
+```
+
+The build targets the architecture of the build machine (arm64 on Apple Silicon). Universal binaries are out of scope for now.
+
+**First launch on a clean machine:** the build is unsigned, so macOS Gatekeeper will block it. Right-click the `.app` → **Open** → confirm. This is a one-time step per user. Code signing and notarisation are planned for v1.0 — see [ADR-002](docs/adr/ADR-002-packaging-strategy.md).
+
+---
+
 ## Documentation
 
 - [Architecture Decision Records](docs/adr/) — why the stack was chosen

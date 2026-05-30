@@ -23,6 +23,7 @@ data/
 
 # PyInstaller build output
 *.spec
+!tools/MyRetirementLife.spec
 *.exe
 
 # VS Code
