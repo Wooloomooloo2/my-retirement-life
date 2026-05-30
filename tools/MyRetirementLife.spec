@@ -44,6 +44,9 @@ hiddenimports = [
     "uvicorn.protocols.http.h11_impl",
     "uvicorn.protocols.websockets.auto",
     "uvicorn.lifespan.on",
+    # pywebview's Cocoa backend on macOS. pyinstaller-hooks-contrib usually
+    # picks this up, but be explicit so the bundle never silently misses it.
+    "webview.platforms.cocoa",
 ]
 
 

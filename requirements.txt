@@ -12,9 +12,14 @@ numpy==2.4.6
 platformdirs==4.9.6
 pydantic==2.13.4
 pydantic_core==2.46.4
+pyobjc-core>=10.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+pyobjc-framework-WebKit>=10.0; sys_platform == "darwin"
 pyoxigraph==0.5.8
 pyparsing==3.3.2
 python-dotenv==1.2.2
+pythonnet>=3.0; sys_platform == "win32"
+pywebview>=5.4
 python-multipart==0.0.27
 rdflib==7.6.0
 starlette==1.0.0
