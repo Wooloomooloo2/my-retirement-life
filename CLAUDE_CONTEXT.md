@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-05-30 (session 6 — macOS packaging + pywebview desktop window)
+> Last updated: 2026-05-30 (session 7 — inline live FX rate buttons + per-line budget currency)
 
 ---
 
@@ -15,7 +15,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
 - **Platform:** Windows (VS Code), repo at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, `.venv` present. Also runs on macOS (Apple Silicon) at `/Users/markhall/Projects/my-retirement-life` — session 6 added macOS packaging + native window support. Linux deferred.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.4** (ADR-015 v1.2 — payroll/salary-sacrifice flag). 17 `Currency` individuals total.
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.5** (ADR-016 follow-on — per-line currency + FX on `mrl:BudgetLine`). 17 `Currency` individuals total.
 
 ---
 
@@ -32,9 +32,43 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-05-30 — sixth session)
+## Changes this session (2026-05-30 — seventh session)
 
-_Packaging shipped in commit **`18cafb3`** — "macOS packaging: PyInstaller spec + build_mac.sh -> .app + .dmg" (item 48). Pywebview integration shipped in commit **`f489261`** — "Launch in a native WKWebView window via pywebview" (item 49)._
+_Shipped in commit **`585e786`** — "ADR-016 follow-on: per-line budget currency + inline live FX buttons" (items 50–53). Run `python tools/reload_ontology.py` (app closed) for the 1.0.5 ontology to appear in the live store before exercising item 52._
+
+50. **Shared `GET /api/fx/rate?code=XYZ` JSON endpoint.** Single live-rate lookup used by all three inline buttons (accounts, income, budget) so the per-row "Use live rate" UX doesn't need a page reload. Returns `{ok: True, code, rate_to_base, as_of, provider}` on success, `{ok: False, error: "..."}` with a 4xx/5xx status on failure. Lives in `src/api/routes/accounts.py` (the existing FX hub — already had bulk refresh and `_update_account_rate`). Uses the same `1 / rate_provider[code]` convention as the bulk refresh, with a 1.0 short-circuit when the asked-for code equals the base. Same-origin only; no auth needed (app is local-first).
+    - **Why one JSON endpoint instead of three per-page POSTs:** the bulk refresh routes are HTML-rendering (they re-render the page with a banner). The inline button just needs to populate two fields. JSON keeps the JS simple and avoids three near-identical handlers.
+    - **No new dependency** on httpx in the runtime — the `TestClient` import in `fastapi.testclient` requires it, so I couldn't end-to-end test from the dev shell; the logic mirrors the proven bulk refresh path so the parity argument carries.
+
+51. **Inline "Use live rate" button on accounts + income edit forms.** Adds a small button next to the FX rate input that calls `/api/fx/rate?code=...` and populates the rate + date in-place. Failure modes (offline, no rate for code, base currency not set) surface a one-line warning hint and leave the existing rate untouched. Mark wanted this because the bulk "Refresh rates" button updates everything at once; sometimes you only want one row's rate while editing it. Pattern is identical across both pages so the JS is copy-pasted with the right element IDs.
+    - `src/templates/accounts.html`: button + spinner + hint span added next to `name="exchangeRateToBase"`; `pullLiveRate()` JS handler appended to the existing FX-visibility script block. Works for all three account classes (cash + investment + asset) because they share one form and one FX field.
+    - `src/templates/income.html`: same pattern; reads `data-code` from the currency `<option>` (the dropdown already carried it for the visibility toggle). Updates the hidden `incomeExchangeRateDate` input as well as the visible rate input, and rewrites the "Last updated …" pill if it's present.
+
+52. **Per-line currency + FX + live refresh on budget (1.0.5 — ADR-016 follow-on).** Until this session, budget lines were assumed to be in the user's base currency — there was no way to model a USD mortgage or a EUR subscription. This change adds the same currency + FX model that accounts and income already had.
+    - **Ontology 1.0.4 → 1.0.5** (`docs/ontology/mrl-ontology.ttl`): three new properties on `mrl:BudgetLine` — `budgetLineCurrency` (object property → `mrl:Currency`, optional, defaults to base at read time), `budgetLineExchangeRateToBase` (decimal, "1 unit of line currency = N units of base"), `budgetLineExchangeRateDate` (date). FX-rate convention identical to `mrl:exchangeRateToBase` on accounts and `mrl:incomeExchangeRateToBase` on income sources. Requires `python tools/reload_ontology.py` (app closed) before the property declarations appear in the live store, though backend writes don't depend on them.
+    - **Backend** (`src/api/routes/budget.py`):
+      - `get_all_budget_lines()` now reads `currency`/`currencyCode`/`currencySymbol`/`exchangeRate`/`exchangeRateDate` and surfaces them on each line dict.
+      - `save_budget_line_segments()` takes three new kwargs (`currency_local`, `exchange_rate`, `exchange_rate_date`); writes `mrl:budgetLineCurrency` always (defaults to person's base if blank), and writes the rate pair only when ≠ 1.0 — matches accounts/income persistence convention.
+      - New `_update_budget_line_rate()` helper (mirrors `_update_account_rate` / `_update_income_rate`) wipes + rewrites just the two FX-rate triples per line.
+      - New `POST /budget/refresh-rates` route — bulk refresh over every cross-currency line in one pass; renders the budget page with the same `rate_refresh_*` context the accounts/income pages use.
+      - `_sum_lines_per_year()` and `compute_annual_spending_series()` now pre-multiply each segment's `annualAmount` by `_line_fx(line)` so multi-currency lines roll up correctly on the by-category, by-line, and M/D/L breakdowns. Defaults to 1.0 for absent/invalid rates, so pre-1.0.5 lines are bit-identical.
+      - `_page_context` exposes `currencies`, `base_currency`, and `today` for the form template.
+      - Both `POST /budget` and `POST /budget/{n}/edit` gain `budgetLineCurrency` / `budgetLineExchangeRateToBase` / `budgetLineExchangeRateDate` Form params and pass them through.
+    - **Engine** (`src/api/routes/projection.py` `load_budget_lines()`): pre-multiplies each segment's `annual_amount` by the line's `budgetLineExchangeRateToBase` (default 1.0). Same FX-at-load pattern used for accounts (`load_all_accounts`) and income (`load_all_income_sources`); downstream year-loop sees base-currency figures only. **Parity preserved**: pre-1.0.5 lines have no FX triple → 1.0 → identical numbers.
+    - **Template** (`src/templates/budget.html`):
+      - New rate-refresh banner block at top (mirrors accounts/income).
+      - Budget-lines card header gains a "Refresh rates" button + "Live rates from open.er-api.com" pill.
+      - Annual-total cell in the lines table shows the line's own currency symbol, then a small sub-line with `{code} @ {rate} → {base equivalent}` when the line currency differs from base.
+      - Add/edit form gains a Currency dropdown (defaults to base) and a conditional Exchange-rate field with the same inline "Use live rate" button + hidden date input pattern used on the other two pages.
+    - **Export/restore** (`src/api/routes/settings_route.py`): `budget_lines` export adds `currency` / `exchangeRate` / `exchangeRateDate`; restore writes the currency triple when present and the FX-rate pair only when ≠ 1.0 (matches the save path). Pre-1.0.5 backups round-trip cleanly: no currency triple is written and the engine falls back to base at load.
+
+53. **Income export/restore round-trip — fixed.** Same session, after item 52 surfaced the gap. The income source export had been missing four fields since they were introduced: `incomeCurrency` and `incomeExchangeRate*` (added 2026-05-23, item 11) and `creditedToAccount` (added 2026-05-25, item 24). Backups silently dropped them, so a restore wiped every cross-currency income source back to base + every deposit-account routing back to the default surplus path — material outcome changes for any plan with foreign-currency income or routed income. Now mirrored on the budget pattern from item 52: export adds the four fields, restore emits the FX-rate pair only when ≠ 1.0, the currency triple when present, and the `creditedToAccount` link when set. Pre-fix backups still restore cleanly — missing fields just fall back to the engine defaults (base currency, unrouted income). No ontology change needed; the properties have existed since 2026-05-23.
+
+---
+
+## Changes in session 6 (2026-05-30)
+
+_Session 6 changes (items 48 + 49) — packaging shipped in commit **`18cafb3`**, pywebview integration in commit **`f489261`**._
 
 48. **macOS packaging: PyInstaller `.app` + `.dmg` distributable.** Implements the ADR-002 strategy that had been documented but not built. New `tools/MyRetirementLife.spec` bundles `src/templates`, `src/static`, and `docs/ontology/mrl-ontology.ttl` with explicit hidden imports for the API route modules and uvicorn's dynamic loaders (`uvicorn.loops.auto`, `uvicorn.protocols.http.h11_impl`, etc.). `src/config.py` already handled `sys._MEIPASS` so no source changes were needed. New `tools/build_mac.sh` cleans `build/` + `dist/`, runs PyInstaller, then `hdiutil create -format UDZO` against a stage dir containing the `.app` plus an `Applications` symlink so the DMG has the standard drag-to-install affordance. `VERSION` env var stamps the DMG filename (default `dev`). Build deps moved to a separate `requirements-build.txt` (just `pyinstaller~=6.11`) to keep them out of the runtime install. `.gitignore` keeps the `*.spec` wildcard but adds `!tools/MyRetirementLife.spec` so the committed spec is tracked while PyInstaller's auto-generated ones at the repo root stay ignored. README gains a "Building a macOS distributable" section with the Gatekeeper note pointing at ADR-002.
     - **Build machine note:** PyInstaller cannot cross-compile — current build targets arm64 only (the build machine arch). Universal2 deferred per ADR-002.
@@ -443,11 +477,11 @@ my-retirement-life/
 - `mrl:baseCurrency` on `mrl:Person` (single base).
 - `mrl:accountCurrency` + `mrl:exchangeRateToBase` + `mrl:exchangeRateDate` on cash AND investment accounts; the deterministic engine applies the per-account rate (`base_balance = raw_balance * fx_rate`, default 1.0).
 - `mrl:incomeCurrency` + `mrl:incomeExchangeRateToBase` + `mrl:incomeExchangeRateDate` on `IncomeSource`; income form exposes currency selector defaulting to base; engine pre-multiplies amount × rate in `load_all_income_sources()`.
-- Live refresh of `exchangeRateToBase` on both account pages **and** `incomeExchangeRateToBase` on the income page (ADR-016).
+- **NEW (1.0.5, session 7):** `mrl:budgetLineCurrency` + `mrl:budgetLineExchangeRateToBase` + `mrl:budgetLineExchangeRateDate` on `BudgetLine`; budget form exposes currency selector defaulting to base; engine pre-multiplies segment annual_amount × rate in `load_budget_lines()`; chart computations apply the same conversion via `_line_fx(line)`.
+- Live refresh of FX rates on **all three** pages — `POST /accounts/refresh-rates`, `POST /income/refresh-rates`, `POST /budget/refresh-rates`. Plus a per-row inline "Use live rate" button next to the FX input on each edit form, backed by the shared `GET /api/fx/rate?code=XYZ` JSON endpoint (ADR-016 + session 7).
 - All template displays of monetary amounts on `budget.html`, `life_events.html`, and `income.html` use the Jinja global `base_currency_symbol()` (resolves from `Person.baseCurrency`).
 
-**NOT modelled yet (gaps behind several backlog items):**
-- No per-budget-line currency property.
+**NOT modelled yet (gaps behind backlog items):**
 - No per-life-event currency property (events follow base currency).
 - No separate "expected retirement base" currency (only one `baseCurrency`).
 - Account / investment / projection / dashboard / settings templates still contain hardcoded `£` in places — sweep is a quick follow-on once the income/budget/life-events pattern is approved.
@@ -655,7 +689,10 @@ _(All known PRE-BETA items resolved this session.)_
 - Per-jurisdiction Monte Carlo profiles (ADR-012 future)
 - ~~Employer contributions (`isEmployerContribution`, ADR-015 v1.1)~~ — DONE 2026-05-27. Shipped as `mrl:employerContributionAmount` (decimal, not boolean) — see session item 42.
 - Multiple contributions per account surfaced in UI (ADR-015 v1.1)
-- Per-budget-line currency; separate expected-retirement base currency (ADR-016 follow-ons)
+- ~~Per-budget-line currency~~ — DONE 2026-05-30 (session 7, item 52 — ontology 1.0.5).
+- Separate "expected retirement base" currency (ADR-016 follow-on; not requested yet)
+- Per-life-event currency (ADR-016 follow-on)
+- ~~Income export/restore should round-trip `incomeCurrency` / `incomeExchangeRate*` / `creditedToAccount`~~ — DONE 2026-05-30 (session 7, item 53).
 - Unify rate refresh into one "refresh everything" action across account types (ADR-016 follow-on)
 - GIA cost basis from MFL data portability
 - `mrl-core` namespace extraction when MFL is stable
@@ -676,7 +713,7 @@ _(All known PRE-BETA items resolved this session.)_
 `src/templates/investments.html`,
 `src/templates/budget.html` (rewritten 2026-05-27 for ADR-017),
 `src/templates/income.html`, `src/templates/life_events.html`,
-`docs/ontology/mrl-ontology.ttl` (1.0.2),
+`docs/ontology/mrl-ontology.ttl` (now 1.0.5 — per-line currency on BudgetLine added session 7),
 `docs/adr/README.md`, ADR-014/015/016/017.
 
 ## Files Claude has NOT seen (upload when relevant)
@@ -687,3 +724,14 @@ _(All known PRE-BETA items resolved this session.)_
 
 ## Files Claude has SEEN (added this session)
 - `src/templates/projection.html` (full)
+
+## Files touched in session 7
+- `src/api/routes/accounts.py` (added `GET /api/fx/rate` JSON endpoint)
+- `src/api/routes/budget.py` (per-line currency + FX read/write/refresh; chart FX conversion)
+- `src/api/routes/projection.py` (`load_budget_lines()` FX pre-multiplication)
+- `src/api/routes/settings_route.py` (export/restore round-trip for budget line currency + FX)
+- `src/templates/accounts.html` (inline "Use live rate" button + JS)
+- `src/templates/income.html` (inline "Use live rate" button + JS)
+- `src/templates/budget.html` (rate-refresh banners, header button, line-table FX display, form Currency + FX fields, inline button + JS)
+- `docs/ontology/mrl-ontology.ttl` (1.0.4 → 1.0.5 — three new properties on BudgetLine)
+- `CLAUDE_CONTEXT.md` (this update)
