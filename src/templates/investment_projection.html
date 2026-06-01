@@ -184,8 +184,18 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 borderColor: '#6366F1',
                 backgroundColor: 'transparent',
                 borderWidth: 2,
-                pointRadius: 0,
-                pointHoverRadius: 4,
+                // Hide every point except the retirement-year marker. The
+                // X-axis tick label can't be trusted to show ★ — Chart.js
+                // autoSkip thins ticks by position, so the retirement year
+                // disappears whenever it doesn't survive the cull. Plotting
+                // it as a real data-point with pointStyle 'star' keeps it
+                // visible regardless of axis density.
+                pointRadius: years.map(y => y === retirementYear ? 7 : 0),
+                pointHoverRadius: years.map(y => y === retirementYear ? 9 : 4),
+                pointStyle: years.map(y => y === retirementYear ? 'star' : 'circle'),
+                pointBackgroundColor: '#6366F1',
+                pointBorderColor: '#6366F1',
+                pointBorderWidth: years.map(y => y === retirementYear ? 2 : 1),
                 tension: 0.3,
                 yAxisID: 'yBalance',
                 order: 0,

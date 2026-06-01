@@ -887,6 +887,36 @@ def _simulate_run(
     personal_allowance = proj_settings.get("annual_personal_allowance", 0.0)
     residence_rate     = proj_settings.get("residence_income_tax_rate",  0.0)
 
+    # Effective spending target — the account that surplus would actually land
+    # in this scenario, even when the user hasn't explicitly configured one
+    # on the Projection settings page. Falls back to first Current account,
+    # then first Cash account, then first account (mirrors the surplus
+    # routing fallback chain below at the surplus branch). Used by the
+    # income-routing comparison further down so that "income to my main
+    # current account" is treated as cashflow even on a freshly-set-up
+    # scenario where the projection settings haven't been saved yet.
+    def _resolve_effective_spending() -> str | None:
+        if spending_acc:
+            return spending_acc
+        first_current = next(
+            (a["label"] for a in all_accounts
+             if a["account_class"] == "CashAccount"
+             and a.get("account_type_local") == "CashAccountType_Current"),
+            None,
+        )
+        if first_current:
+            return first_current
+        first_cash = next(
+            (a["label"] for a in all_accounts
+             if a["account_class"] == "CashAccount"),
+            None,
+        )
+        if first_cash:
+            return first_cash
+        return all_accounts[0]["label"] if all_accounts else None
+
+    effective_spending = _resolve_effective_spending()
+
     # --- Opening balances grown from balance_date to current_year ---
     balances: dict[str, float] = {}
     for acc in all_accounts:
@@ -1024,6 +1054,16 @@ def _simulate_run(
         # and are excluded from unrouted_income (which feeds pre_net); sources
         # without one accumulate in unrouted_income and follow the projection's
         # surplus routing as before. Non-reinvested dividends remain unrouted.
+        #
+        # Exception: when deposit_account == spending_account, the income is
+        # treated as unrouted. Otherwise the engine credits the income to the
+        # balance but doesn't recognise it as covering this year's spending,
+        # so pre_net goes negative and drawdown is triggered against every
+        # eligible account at the same priority — including the very account
+        # that just received the deposit. That produces "contribute + draw
+        # down the same account in the same year" behaviour that doesn't
+        # match anyone's mental model when the user has already nominated the
+        # spending account as the income destination.
         income_amount   = 0.0
         unrouted_income = 0.0
         for src in income_sources:
@@ -1034,7 +1074,7 @@ def _simulate_run(
             amt = src["amount"] * ((1 + src["growth_rate"] / 100) ** years_from_start)
             income_amount += amt
             deposit = src.get("deposit_account")
-            if deposit and deposit in balances:
+            if deposit and deposit in balances and deposit != effective_spending:
                 balances[deposit] += amt
             else:
                 unrouted_income += amt

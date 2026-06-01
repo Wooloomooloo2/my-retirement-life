@@ -44,6 +44,29 @@ USER_EVENT_TYPE_OPTIONS = {
     if k != "LifeEventType_AssetSale"
 }
 
+# Event types that represent money flowing IN. The projection engine's
+# convention (set up in projection.py year-loop step 5) is:
+#   amount >= 0 → cost  (debited from funded_by_account, or general_costs)
+#   amount <  0 → receipt (credited to received_by_account, or general_receipts)
+# We normalise on the server so the convention can't be violated by a
+# missed client-side sign-flip — the user types a positive number; the
+# server stores it with the right sign for the event type.
+RECEIPT_EVENT_TYPES = {
+    "LifeEventType_Windfall",
+    "LifeEventType_AssetSale",
+}
+
+
+def _normalise_event_amount(amount: float, event_type: str) -> float:
+    """Force the sign of a life-event amount to match the engine's convention.
+
+    Receipts (Windfall, AssetSale) must be stored negative; everything else
+    must be stored positive. The user types a positive number; this function
+    flips the sign when needed.
+    """
+    magnitude = abs(amount)
+    return -magnitude if event_type in RECEIPT_EVENT_TYPES else magnitude
+
 
 # ---------------------------------------------------------------------------
 # Data helpers
@@ -295,7 +318,8 @@ async def add_life_event(
     next_n   = max([int(e["n"]) for e in existing if e["n"].isdigit()], default=0) + 1
     save_event(
         next_n, lifeEventName, lifeEventYear,
-        lifeEventAmount, lifeEventType, lifeEventNotes,
+        _normalise_event_amount(lifeEventAmount, lifeEventType),
+        lifeEventType, lifeEventNotes,
         funded_by_account=fundedByAccount,
         received_by_account=receivedByAccount,
     )
@@ -352,7 +376,8 @@ async def save_edit_event(
 
     save_event(
         n, lifeEventName, lifeEventYear,
-        lifeEventAmount, lifeEventType, lifeEventNotes,
+        _normalise_event_amount(lifeEventAmount, lifeEventType),
+        lifeEventType, lifeEventNotes,
         funded_by_account=fundedByAccount,
         received_by_account=receivedByAccount,
     )

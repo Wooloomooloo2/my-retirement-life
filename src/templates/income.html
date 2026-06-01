@@ -280,11 +280,14 @@
                     </summary>
                     <div class="text-xs text-base-content/60 mt-2 space-y-2 leading-relaxed bg-base-200/40 p-3 rounded">
                         <p>
-                            When set, the year's income is credited directly to the chosen account. It does <em>not</em> reduce that year's drawdown — the engine still pulls from your drawdown waterfall to cover spending, even when the income has landed somewhere with cash to spare.
+                            When set to an account that is <em>not</em> the projection's spending account, the year's income is credited directly to the chosen account and is <em>not</em> recognised as covering this year's drawdown — the engine still pulls from your drawdown waterfall to cover spending, even when the income has landed somewhere with cash to spare.
+                        </p>
+                        <p>
+                            <strong class="text-base-content/80">When the deposit account matches the spending account</strong> (configured on the Projection page, or the first current/cash account when not yet configured), the income is treated as covering that year's spending first; only the surplus stays on the balance. This matches the usual "salary lands in current account, bills come out of current account" mental model.
                         </p>
                         <p>
                             <strong class="text-base-content/80">Match the deposit account to your drawdown priority.</strong>
-                            Route income to a high-priority account (small drawdown-priority number — drawn early) so the engine spends it before depleting other accounts. Routing income to a drawn-last account (e.g. priority 999) lets it compound there while other accounts drain faster — on a long horizon the divergence can run into the millions.
+                            For routed income that is <em>not</em> the spending account, the engine still pulls from the drawdown waterfall — so route income to a high-priority account (small drawdown-priority number — drawn early) so the engine spends it before depleting other accounts. Routing income to a drawn-last account (e.g. priority 999) lets it compound there while other accounts drain faster — on a long horizon the divergence can run into the millions.
                         </p>
                         <p>
                             <strong class="text-base-content/80">Leave unset</strong> for the simplest behaviour: income offsets that year's spending and only the shortfall (if any) is drawn from your accounts.

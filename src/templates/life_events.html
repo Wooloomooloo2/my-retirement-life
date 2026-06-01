@@ -128,6 +128,7 @@
         </h3>
 
         <form method="post"
+              id="life-event-form"
               action="{% if edit_event %}/life-events/{{ edit_event.n }}/edit{% else %}/life-events{% endif %}">
 
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
@@ -322,7 +323,13 @@ function updateAmountSign() {
 
 // Before submitting, negate the amount for receipt types so the engine
 // stores a negative value (its convention for receipts / windfalls).
-document.querySelector('form[action*="life-events"]')?.addEventListener('submit', function() {
+// Target the add/edit form by its id — querySelector('form[action*="life-events"]')
+// returned the per-row delete form first, so the submit handler never fired
+// on the actual add/edit form and Windfall amounts were stored positive
+// (i.e. as costs). The server-side normalisation in life_events.py is the
+// authoritative guard; this client-side flip just keeps the UI honest if
+// the user inspects DevTools.
+document.getElementById('life-event-form')?.addEventListener('submit', function() {
     const amtField = document.getElementById('lifeEventAmount');
     if (!amtField) return;
     const val = parseFloat(amtField.value);

@@ -57,6 +57,45 @@ the 1.0.5 schema before exercising the budget change.
 
 ### Fixed
 
+- **Windfall life events were stored with the wrong sign.** The page has two
+  forms (a per-row delete form, and the main add/edit form); the JS
+  submit-handler that negates the amount for receipt types was attached to
+  `querySelector('form[action*="life-events"]')`, which matched the *first*
+  form on the page — the delete form — so the handler never fired when the
+  user saved an event. Windfall amounts were stored positive, which the
+  engine reads as a cost (positive = cost, negative = receipt). The new
+  Inheritance row in Jamie's plan, for example, surfaced as a £65k debit in
+  the projection. Fix is belt-and-braces: the form now has `id="life-event-form"`
+  and the JS targets it explicitly, and the `POST /life-events` + `POST
+  /life-events/{n}/edit` routes call a new `_normalise_event_amount()` helper
+  that forces the sign based on the event type, so any future
+  client-side regression cannot corrupt data. Existing wrong-sign rows can
+  be repaired by opening the edit form and clicking Save with no other
+  changes — the server-side guard fixes the sign on write.
+
+- **Income deposit account == effective spending account no longer triggers
+  spurious drawdown.** When an income source's "Deposit account" matched
+  the projection's spending account, the engine credited the income to the
+  balance but did not recognise it as covering this year's spending —
+  `pre_net` went negative every year and drawdown was triggered against
+  every eligible account at the same priority. On scenarios with a payroll
+  contribution feeding a savings account, this showed as the savings account
+  being credited (by the contribution) and withdrawn (by drawdown) in the
+  same year, draining it within ~5 years even though income comfortably
+  exceeded spending. Now: when `deposit_account` matches the *effective*
+  spending target — the explicitly configured one, or the same fallback
+  chain that surplus routing uses (first Current account → first Cash
+  account → first account) — the income flows through `pre_net` as if it
+  were unrouted, so spending is covered first and only the surplus credits
+  the account (via the existing surplus routing path, which still targets
+  the same account). Catches the dominant first-load case where a user has
+  set up income routing to their main current account but hasn't yet saved
+  the Projection settings page — the previous behaviour drained other
+  eligible accounts immediately. Scenarios where `deposit_account` points
+  at a *different* account from the effective spending target are
+  unchanged — the routing choice still materially affects outcomes per
+  the caveat block on the Income page.
+
 - **Income backup/restore round-trip.** Per-income-source currency, FX
   rate, FX-rate-date, and deposit account were silently dropped from
   every backup since those fields were introduced (ADR-016 2026-05-23,
