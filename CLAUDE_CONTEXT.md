@@ -6,6 +6,20 @@
 
 ---
 
+## ▶ Next session — resume here (paused 2026-06-03, picking up 2026-06-04)
+
+Session 9 shipped three drawdown features (items 57–59), all committed and code-complete, but **none have been end-to-end smoke-tested by Mark in the live app** — that is the one open task. The ontology is already reloaded (live store at 1.0.7, verified), so the new fields will resolve; no reload needed before testing.
+
+**Smoke-test checklist for the three session-9 features:**
+
+1. **Drawdown Strategy page** (`/drawdown-strategy`) — drag-to-reorder persists; inline tax edits save; **Recompute** runs a preview without writing to the store (confirm the live projection is unchanged until **Save**); withdrawals chart renders with Total / Per-account toggle + tax line.
+2. **ADR-018 mandatory/RMD withdrawal** — on `/accounts`, the field reads "Mandatory withdrawal age" + rate %; set an age **with** a rate on a pension and confirm the projection forces a taxed minimum from that age and sweeps the after-tax surplus to spending; set an age with **no** rate and confirm nothing strands (account stays normally drawable); RMD chip on the drawdown page shows "RMD X%/yr from age Y".
+3. **ADR-019 emergency fund + Table tab** — on `/projection` settings, pick an emergency-fund account + months; confirm surplus fills it to target before overflowing, and a shortfall year draws it first (before Waterfall/Proportional). Open the new **Table** tab: 57 rows, retirement row ★-marked, "Download CSV" works.
+
+Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once. Reach for the `/run` or `/verify` flow to drive this.
+
+---
+
 ## Project overview
 
 **My Retirement Life (MRL)** is a local-first personal retirement planning application.
