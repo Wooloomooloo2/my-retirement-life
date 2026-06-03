@@ -578,7 +578,9 @@ def get_all_accounts() -> list:
             "drawdownPriority":     get_val("drawdownPriority"),
             "drawdownRatio":        get_val("drawdownRatio"),
             "drawdownMinAge":       get_val("drawdownMinAge"),
-            "drawdownMaxAge":       get_val("drawdownMaxAge"),
+            "drawdownMaxAge":       get_val("drawdownMaxAge"),  # deprecated (ADR-018)
+            "mandatoryWithdrawalAge":  get_val("mandatoryWithdrawalAge"),
+            "mandatoryWithdrawalRate": get_val("mandatoryWithdrawalRate"),
             "drawdownEarliestDate": get_val("drawdownEarliestDate"),
             "drawdownLatestDate":   get_val("drawdownLatestDate"),
             # ADR-013: tax treatment
@@ -682,7 +684,9 @@ def save_account(
     drawdown_priority: str      = "",
     drawdown_ratio: str         = "",
     drawdown_min_age: str       = "",
-    drawdown_max_age: str       = "",
+    drawdown_max_age: str       = "",   # deprecated (ADR-018) — still round-tripped from old data
+    mandatory_withdrawal_age: str  = "",
+    mandatory_withdrawal_rate: str = "",
     drawdown_earliest_date: str = "",
     drawdown_latest_date: str   = "",
     # ADR-013: tax treatment (all optional)
@@ -764,6 +768,21 @@ def save_account(
         except ValueError:
             pass
 
+    # ADR-018: mandatory (RMD-style) withdrawal age + rate
+    if mandatory_withdrawal_age.strip():
+        try:
+            a = float(mandatory_withdrawal_age.strip())
+            triples += f'\n        <{account_iri}> mrl:mandatoryWithdrawalAge "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
+    if mandatory_withdrawal_rate.strip():
+        try:
+            a = float(mandatory_withdrawal_rate.strip())
+            triples += f'\n        <{account_iri}> mrl:mandatoryWithdrawalRate "{a}"^^xsd:decimal .'
+        except ValueError:
+            pass
+
     if drawdown_earliest_date.strip():
         triples += f'\n        <{account_iri}> mrl:drawdownEarliestDate "{drawdown_earliest_date.strip()}"^^xsd:date .'
 
@@ -811,6 +830,10 @@ def save_account(
 async def accounts_page(request: Request, added: int = 0, saved: int = 0):
     # `added=1` / `saved=1` arrive via post/redirect/get after adding or editing
     # an account, so the form is freshly blank and the banner confirms the save.
+    # ADR-018: migrate any legacy drawdownMaxAge so the edit form shows the
+    # mandatory-withdrawal age rather than a blank field.
+    from src.api.routes.projection import migrate_drawdown_max_age_to_mandatory
+    migrate_drawdown_max_age_to_mandatory()
     return _render_accounts(request, added=bool(added), saved=bool(saved))
 
 
@@ -1108,6 +1131,8 @@ async def add_account(
     drawdownRatio:        str  = Form(""),
     drawdownMinAge:       str  = Form(""),
     drawdownMaxAge:       str  = Form(""),
+    mandatoryWithdrawalAge:  str = Form(""),
+    mandatoryWithdrawalRate: str = Form(""),
     drawdownEarliestDate: str  = Form(""),
     drawdownLatestDate:   str  = Form(""),
     # ADR-013: tax treatment (all optional)
@@ -1138,6 +1163,8 @@ async def add_account(
         drawdown_ratio=drawdownRatio,
         drawdown_min_age=drawdownMinAge,
         drawdown_max_age=drawdownMaxAge,
+        mandatory_withdrawal_age=mandatoryWithdrawalAge,
+        mandatory_withdrawal_rate=mandatoryWithdrawalRate,
         drawdown_earliest_date=drawdownEarliestDate,
         drawdown_latest_date=drawdownLatestDate,
         tax_treatment=taxTreatment,
@@ -1189,6 +1216,8 @@ async def save_edit_account(
     drawdownRatio:        str  = Form(""),
     drawdownMinAge:       str  = Form(""),
     drawdownMaxAge:       str  = Form(""),
+    mandatoryWithdrawalAge:  str = Form(""),
+    mandatoryWithdrawalRate: str = Form(""),
     drawdownEarliestDate: str  = Form(""),
     drawdownLatestDate:   str  = Form(""),
     # ADR-013: tax treatment (all optional)
@@ -1207,6 +1236,8 @@ async def save_edit_account(
         drawdown_ratio=drawdownRatio,
         drawdown_min_age=drawdownMinAge,
         drawdown_max_age=drawdownMaxAge,
+        mandatory_withdrawal_age=mandatoryWithdrawalAge,
+        mandatory_withdrawal_rate=mandatoryWithdrawalRate,
         drawdown_earliest_date=drawdownEarliestDate,
         drawdown_latest_date=drawdownLatestDate,
         tax_treatment=taxTreatment,

@@ -79,6 +79,11 @@
                                 <i class="ti ti-clock text-[10px]"></i>{{ bits | join(' · ') }}
                             </span>
                             {% endif %}
+                            {% if a.mandatory_withdrawal_age and a.mandatory_withdrawal_rate %}
+                            <span class="badge badge-warning badge-xs gap-1" title="Mandatory (RMD-style) withdrawal — forced from this age, taxed, surplus swept to spending">
+                                <i class="ti ti-alert-triangle text-[10px]"></i>RMD {{ a.mandatory_withdrawal_rate | round(1) }}%/yr from age {{ a.mandatory_withdrawal_age | int }}
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                     <span class="text-xs text-base-content/50 whitespace-nowrap">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(a.balance) }}</span>

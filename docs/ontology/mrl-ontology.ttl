@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.5" .
+    owl:versionInfo "1.0.6" .
 
 
 # ===========================================================================
@@ -1663,7 +1663,21 @@ mrl:drawdownMinAge a owl:DatatypeProperty ;
 
 mrl:drawdownMaxAge a owl:DatatypeProperty ;
     rdfs:label          "drawdown maximum age"@en ;
-    rdfs:comment        "Optional maximum age after which this account may no longer be held or must be fully drawn. If absent, no upper age restriction applies."@en ;
+    rdfs:comment        "[DEPRECATED in 1.0.6 — see ADR-018] Formerly a hard cutoff age after which the account became undrawable, which silently stranded balances and overstated net worth. Superseded by mrl:mandatoryWithdrawalAge + mrl:mandatoryWithdrawalRate (forced minimum withdrawal from an age, rather than a cutoff). Retained on the class so pre-1.0.6 data migrates; no longer gates eligibility."@en ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:mandatoryWithdrawalAge a owl:DatatypeProperty ;
+    rdfs:label          "mandatory withdrawal age"@en ;
+    rdfs:comment        "Age from which a minimum withdrawal becomes compulsory each year (e.g. US 401(k)/IRA required minimum distributions). Decimal to support fractional ages. Takes effect only together with mrl:mandatoryWithdrawalRate; absent = no mandatory withdrawal. Unlike the deprecated mrl:drawdownMaxAge this never blocks access — it forces a minimum out, taxed, with any unspent surplus swept to the spending account."@en ;
+    rdfs:domain         mrl:Account ;
+    rdfs:range          xsd:decimal ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:mandatoryWithdrawalRate a owl:DatatypeProperty ;
+    rdfs:label          "mandatory withdrawal rate"@en ;
+    rdfs:comment        "Minimum percentage of the account's current balance that must be withdrawn each year once mrl:mandatoryWithdrawalAge is reached (e.g. 4.0 for 4%/yr). A shortfall withdrawal already taken from the account that year counts towards this minimum. Absent or zero = no forced withdrawal even if mandatoryWithdrawalAge is set."@en ;
     rdfs:domain         mrl:Account ;
     rdfs:range          xsd:decimal ;
     rdfs:isDefinedBy    mrl: .

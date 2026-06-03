@@ -283,9 +283,12 @@ def load_all_accounts() -> list:
                 "drawdown_priority":    drawdown_priority,
                 "drawdown_ratio":       drawdown_ratio,
                 "drawdown_min_age":     _opt_float("drawdownMinAge"),
-                "drawdown_max_age":     _opt_float("drawdownMaxAge"),
+                "drawdown_max_age":     _opt_float("drawdownMaxAge"),  # deprecated (ADR-018) — kept for round-trip, no longer gates eligibility
                 "drawdown_earliest_year": _opt_year("drawdownEarliestDate"),
                 "drawdown_latest_year":   _opt_year("drawdownLatestDate"),
+                # Mandatory (RMD-style) withdrawal — ADR-018
+                "mandatory_withdrawal_age":  _opt_float("mandatoryWithdrawalAge"),
+                "mandatory_withdrawal_rate": _opt_float("mandatoryWithdrawalRate"),
                 # Tax (ADR-013)
                 "tax_treatment":               tax_treatment,
                 "effective_withdrawal_tax_rate": effective_tax_rate,
@@ -696,16 +699,19 @@ def save_projection_settings(
 def _is_eligible(account: dict, year: int, birth_year: int) -> bool:
     """Return True if this account is eligible for drawdown in the given year.
 
-    Checks all four eligibility constraints from ADR-011 §1:
-      drawdownMinAge, drawdownMaxAge, drawdownEarliestDate, drawdownLatestDate.
+    Checks the eligibility constraints from ADR-011 §1:
+      drawdownMinAge, drawdownEarliestDate, drawdownLatestDate.
     Absent constraints are not restrictive.
     drawdownEarliestDate takes precedence over drawdownMinAge when set.
+
+    NB: drawdownMaxAge (a hard upper-age cutoff) was REMOVED in 1.0.6 (ADR-018) —
+    it silently stranded balances. An upper age now means "withdrawals must start"
+    (mandatoryWithdrawalAge + mandatoryWithdrawalRate), handled in the year loop,
+    not an access cutoff. No account is ever blocked by an upper age.
     """
     person_age = year - birth_year
 
     if account["drawdown_min_age"] is not None and person_age < account["drawdown_min_age"]:
-        return False
-    if account["drawdown_max_age"] is not None and person_age > account["drawdown_max_age"]:
         return False
     if account["drawdown_earliest_year"] is not None and year < account["drawdown_earliest_year"]:
         return False
@@ -1141,76 +1147,107 @@ def _simulate_run(
         total_spending = mandatory + discretionary + loans + general_costs
         pre_net        = unrouted_income + general_receipts - total_spending - year_contribution_spending
 
-        # 7. Drawdown or surplus
+        # 7. Drawdown, mandatory (RMD) withdrawals, surplus — ADR-011 + ADR-018.
+        # Phases: A cover spending shortfall, B force mandatory minimums,
+        # C tax all withdrawals once, D sweep unspent forced proceeds. With no
+        # mandatoryWithdrawalRate set anywhere, B/D are no-ops and the result is
+        # byte-identical to the pre-1.0.6 single-branch engine.
         tax_free_used: dict[str, float] = {acc["label"]: 0.0 for acc in all_accounts}
         total_source_tax        = 0.0
         total_taxable_at_source = 0.0
         net_annual_tax          = 0.0
         year_withdrawals: dict[str, float] = {}
+        person_age              = year - birth_year
 
+        # Where surplus / unspent forced proceeds land (the long-standing
+        # surplus-routing fallback, resolved once up front so Phase D can reuse it).
+        if surplus_strategy == "SurplusStrategy_SweepToAccount":
+            sweep_target = surplus_acc or spending_acc
+        else:
+            sweep_target = spending_acc
+        if not (sweep_target and sweep_target in balances):
+            first_current = next(
+                (a["label"] for a in all_accounts
+                 if a["account_class"] == "CashAccount"
+                 and a.get("account_type_local") == "CashAccountType_Current"),
+                None)
+            first_cash = next(
+                (a["label"] for a in all_accounts if a["account_class"] == "CashAccount"),
+                None)
+            sweep_target = first_current or first_cash or (all_accounts[0]["label"] if all_accounts else None)
+
+        eligible = [
+            acc for acc in all_accounts
+            if _is_eligible(acc, year, birth_year) and balances.get(acc["label"], 0) > 0
+        ]
+
+        # Phase A — cover this year's spending shortfall (or bank a surplus).
         if pre_net < 0:
             shortfall = -pre_net
-            eligible  = [
-                acc for acc in all_accounts
-                if _is_eligible(acc, year, birth_year) and balances.get(acc["label"], 0) > 0
-            ]
-            withdrawals = _apply_drawdown(eligible, shortfall, drawdown_strategy, balances)
+            for acc_label, gross_draw in _apply_drawdown(
+                    eligible, shortfall, drawdown_strategy, balances).items():
+                balances[acc_label] -= gross_draw  # tax applied once in Phase C
+                year_withdrawals[acc_label] = year_withdrawals.get(acc_label, 0.0) + gross_draw
+        elif pre_net > 0 and sweep_target and sweep_target in balances:
+            balances[sweep_target] += pre_net
 
-            for acc_label, gross_draw in withdrawals.items():
-                acc = next(a for a in all_accounts if a["label"] == acc_label)
-                free_used, src_tax = _compute_source_tax(
-                    acc, gross_draw, tax_free_used[acc_label])
-                tax_free_used[acc_label] += free_used
-                total_source_tax         += src_tax
-                if acc["tax_treatment"] not in RESIDENCE_EXEMPT_TREATMENTS:
-                    total_taxable_at_source += (gross_draw - free_used)
-                balances[acc_label] = max(0.0, balances[acc_label] - gross_draw - src_tax)
-                year_withdrawals[acc_label] = gross_draw
+        # Phase B — mandatory (RMD-style) minimum withdrawals (ADR-018). An
+        # account past its mandatoryWithdrawalAge must draw at least
+        # balance × rate% this year; a shortfall draw already taken counts toward
+        # it, so only the top-up is forced. The forced top-up is surplus (spending
+        # was covered) — its after-tax value is swept in Phase D.
+        forced_gross = 0.0
+        for acc in all_accounts:
+            mwa = acc.get("mandatory_withdrawal_age")
+            mwr = acc.get("mandatory_withdrawal_rate")
+            if mwa is None or not mwr or mwr <= 0 or person_age < mwa:
+                continue
+            label = acc["label"]
+            bal   = balances.get(label, 0.0)
+            if bal <= 0:
+                continue
+            required = bal * (mwr / 100.0)
+            already  = year_withdrawals.get(label, 0.0)
+            extra    = min(bal, max(0.0, required - already))
+            if extra > 0:
+                balances[label] -= extra
+                year_withdrawals[label] = already + extra
+                forced_gross += extra
 
-            res_tax = _compute_residence_tax(
-                total_taxable_at_source, total_source_tax,
-                personal_allowance, residence_rate)
+        # Phase C — tax over ALL withdrawals this year (shortfall + forced), ADR-013.
+        for acc_label, gross_draw in year_withdrawals.items():
+            acc = next(a for a in all_accounts if a["label"] == acc_label)
+            free_used, src_tax = _compute_source_tax(
+                acc, gross_draw, tax_free_used[acc_label])
+            tax_free_used[acc_label] += free_used
+            total_source_tax         += src_tax
+            if acc["tax_treatment"] not in RESIDENCE_EXEMPT_TREATMENTS:
+                total_taxable_at_source += (gross_draw - free_used)
+            balances[acc_label] = max(0.0, balances[acc_label] - src_tax)
 
-            if res_tax > 0:
-                if spending_acc and spending_acc in balances:
-                    balances[spending_acc] = max(0.0, balances[spending_acc] - res_tax)
-                elif eligible:
-                    total_el_bal = sum(balances.get(a["label"], 0) for a in eligible)
-                    if total_el_bal > 0:
-                        for a in eligible:
-                            share = (balances.get(a["label"], 0) / total_el_bal) * res_tax
-                            balances[a["label"]] = max(0.0, balances[a["label"]] - share)
+        res_tax = _compute_residence_tax(
+            total_taxable_at_source, total_source_tax,
+            personal_allowance, residence_rate)
+        if res_tax > 0:
+            if spending_acc and spending_acc in balances:
+                balances[spending_acc] = max(0.0, balances[spending_acc] - res_tax)
+            elif eligible:
+                total_el_bal = sum(balances.get(a["label"], 0) for a in eligible)
+                if total_el_bal > 0:
+                    for a in eligible:
+                        share = (balances.get(a["label"], 0) / total_el_bal) * res_tax
+                        balances[a["label"]] = max(0.0, balances[a["label"]] - share)
+        net_annual_tax = total_source_tax + res_tax
 
-            net_annual_tax = total_source_tax + res_tax
-
-        else:
-            surplus = pre_net
-            if surplus_strategy == "SurplusStrategy_SweepToAccount":
-                target = surplus_acc or spending_acc
-            else:
-                target = spending_acc
-
-            if target and target in balances:
-                balances[target] += surplus
-            else:
-                first_current = next(
-                    (a["label"] for a in all_accounts
-                     if a["account_class"] == "CashAccount"
-                     and a.get("account_type_local") == "CashAccountType_Current"),
-                    None
-                )
-                first_cash = next(
-                    (a["label"] for a in all_accounts
-                     if a["account_class"] == "CashAccount"),
-                    None
-                )
-                fallback = (
-                    first_current
-                    or first_cash
-                    or (all_accounts[0]["label"] if all_accounts else None)
-                )
-                if fallback:
-                    balances[fallback] += surplus
+        # Phase D — sweep the AFTER-TAX forced proceeds to the spending account.
+        # They weren't needed for spending; an RMD forces a taxable distribution
+        # that you then bank. Tax is attributed to the forced portion pro-rata.
+        if forced_gross > 0:
+            total_gross = sum(year_withdrawals.values())
+            forced_tax  = net_annual_tax * (forced_gross / total_gross) if total_gross > 0 else 0.0
+            forced_net  = max(0.0, forced_gross - forced_tax)
+            if sweep_target and sweep_target in balances and forced_net > 0:
+                balances[sweep_target] += forced_net
 
         cumulative_tax += net_annual_tax
 
@@ -1268,6 +1305,43 @@ def _simulate_run(
 
 
 # ---------------------------------------------------------------------------
+# ADR-018 migration — drawdownMaxAge (cutoff) → mandatoryWithdrawalAge
+# ---------------------------------------------------------------------------
+
+def migrate_drawdown_max_age_to_mandatory() -> int:
+    """Idempotently copy any legacy mrl:drawdownMaxAge to mrl:mandatoryWithdrawalAge.
+
+    ADR-018 retired the hard upper-age cutoff. This preserves the user's intended
+    age under the new meaning ("withdrawals must start") while leaving the rate
+    unset — so a migrated account simply becomes drawable again (no stranding)
+    and forces nothing until the user sets a rate. drawdownMaxAge is left in place
+    (deprecate-in-place). Safe to call on every relevant request; returns the
+    number of accounts migrated this call.
+    """
+    max_pred  = og.NamedNode(f"{MRL}drawdownMaxAge")
+    mand_pred = og.NamedNode(f"{MRL}mandatoryWithdrawalAge")
+    legacy = list(store.store.quads_for_pattern(None, max_pred, None, DATA_GRAPH))
+    if not legacy:
+        return 0
+    migrated = 0
+    for q in legacy:
+        subj = q.subject
+        if list(store.store.quads_for_pattern(subj, mand_pred, None, DATA_GRAPH)):
+            continue  # already migrated
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{
+                GRAPH <{DATA_GRAPH.value}> {{
+                    <{subj.value}> mrl:mandatoryWithdrawalAge "{q.object.value}"^^xsd:decimal .
+                }}
+            }}
+        """)
+        migrated += 1
+    return migrated
+
+
+# ---------------------------------------------------------------------------
 # Deterministic projection — thin wrapper over _simulate_run
 # ---------------------------------------------------------------------------
 
@@ -1292,6 +1366,8 @@ def run_projection(
     profile = load_profile()
     if not profile:
         return None
+
+    migrate_drawdown_max_age_to_mandatory()  # ADR-018: legacy cutoff → mandatory age
 
     if proj_settings is None:
         proj_settings = get_projection_settings()

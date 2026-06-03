@@ -28,6 +28,7 @@ from src.api.routes.projection import (
     get_projection_settings,
     save_projection_settings,
     load_all_accounts,
+    migrate_drawdown_max_age_to_mandatory,
 )
 
 router = APIRouter()
@@ -156,6 +157,7 @@ def _parse_overrides(body: dict) -> tuple[str | None, dict, list]:
 
 @router.get("/drawdown-strategy", response_class=HTMLResponse)
 async def drawdown_strategy_page(request: Request, saved: int = 0):
+    migrate_drawdown_max_age_to_mandatory()  # ADR-018: legacy cutoff → mandatory age
     all_accounts  = load_all_accounts()
     proj_settings = get_projection_settings()
 

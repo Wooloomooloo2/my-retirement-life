@@ -38,7 +38,7 @@ The following properties are added to `mrl:Account` and inherited by all subtype
 | Property | Type | Purpose |
 |---|---|---|
 | `mrl:drawdownMinAge` | `xsd:decimal` | Minimum age at which this account may be drawn. Decimal to support fractional ages (e.g. 59.5 for US 401(k), 57.0 for UK pension post-2028). |
-| `mrl:drawdownMaxAge` | `xsd:decimal` | Optional maximum age. |
+| `mrl:drawdownMaxAge` | `xsd:decimal` | Optional maximum age. **(Deprecated in 1.0.6 — superseded by ADR-018; no longer a cutoff. Replaced by `mrl:mandatoryWithdrawalAge` + `mrl:mandatoryWithdrawalRate`.)** |
 | `mrl:drawdownEarliestDate` | `xsd:date` | Fixed-term start date; account cannot be accessed before this date. Takes precedence over `drawdownMinAge` when set. |
 | `mrl:drawdownLatestDate` | `xsd:date` | Maturity or expiry date after which the account should be drawn down or closed. |
 
@@ -46,7 +46,7 @@ The projection engine filters the eligible account set each year before computin
 drawdown. An account is eligible in year Y if:
 
 - `drawdownMinAge` is absent, OR `person_age_in_year_Y ≥ drawdownMinAge`
-- `drawdownMaxAge` is absent, OR `person_age_in_year_Y ≤ drawdownMaxAge`
+- ~~`drawdownMaxAge` is absent, OR `person_age_in_year_Y ≤ drawdownMaxAge`~~ *(removed in 1.0.6 — see ADR-018; max age no longer gates eligibility)*
 - `drawdownEarliestDate` is absent, OR `Y ≥ year(drawdownEarliestDate)`
 - `drawdownLatestDate` is absent, OR `Y ≤ year(drawdownLatestDate)`
 

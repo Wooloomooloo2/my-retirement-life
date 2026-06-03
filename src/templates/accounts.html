@@ -792,12 +792,28 @@
 
                             <div class="form-control">
                                 <label class="label py-0.5">
-                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Maximum access age</span>
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Mandatory withdrawal age</span>
                                 </label>
-                                <input type="number" name="drawdownMaxAge" min="0" max="120" step="0.5"
-                                    value="{{ edit_account.drawdownMaxAge if edit_account and edit_account.drawdownMaxAge else '' }}"
+                                <input type="number" name="mandatoryWithdrawalAge" min="0" max="120" step="0.5"
+                                    value="{{ edit_account.mandatoryWithdrawalAge if edit_account and edit_account.mandatoryWithdrawalAge else '' }}"
                                     placeholder="e.g. 75.0"
                                     class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Age from which withdrawals are forced (e.g. 401(k)/IRA RMDs) — needs a rate below to take effect.</span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Mandatory withdrawal rate (%/yr)</span>
+                                </label>
+                                <input type="number" name="mandatoryWithdrawalRate" min="0" max="100" step="0.5"
+                                    value="{{ edit_account.mandatoryWithdrawalRate if edit_account and edit_account.mandatoryWithdrawalRate else '' }}"
+                                    placeholder="e.g. 4.0"
+                                    class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">Minimum % of the balance forced out each year from that age — taxed; any unspent surplus is swept to your spending account.</span>
+                                </label>
                             </div>
 
                             <div class="form-control">

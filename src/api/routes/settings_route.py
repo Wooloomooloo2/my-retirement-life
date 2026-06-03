@@ -168,6 +168,8 @@ def export_all_data() -> dict:
             "drawdownRatio":        _opt_float(iri, "drawdownRatio"),
             "drawdownMinAge":       _opt_float(iri, "drawdownMinAge"),
             "drawdownMaxAge":       _opt_float(iri, "drawdownMaxAge"),
+            "mandatoryWithdrawalAge":  _opt_float(iri, "mandatoryWithdrawalAge"),
+            "mandatoryWithdrawalRate": _opt_float(iri, "mandatoryWithdrawalRate"),
             "drawdownEarliestDate": _val(iri, "drawdownEarliestDate") or None,
             "drawdownLatestDate":   _val(iri, "drawdownLatestDate")   or None,
             # ADR-013: tax treatment
@@ -225,6 +227,8 @@ def export_all_data() -> dict:
             "drawdownRatio":        _opt_float(iri, "drawdownRatio"),
             "drawdownMinAge":       _opt_float(iri, "drawdownMinAge"),
             "drawdownMaxAge":       _opt_float(iri, "drawdownMaxAge"),
+            "mandatoryWithdrawalAge":  _opt_float(iri, "mandatoryWithdrawalAge"),
+            "mandatoryWithdrawalRate": _opt_float(iri, "mandatoryWithdrawalRate"),
             "drawdownEarliestDate": _val(iri, "drawdownEarliestDate") or None,
             "drawdownLatestDate":   _val(iri, "drawdownLatestDate")   or None,
             # ADR-013: tax treatment
@@ -401,6 +405,10 @@ def _triples_drawdown_tax(iri_str: str, item: dict) -> str:
         t += f'\n        <{iri_str}> mrl:drawdownMinAge "{item["drawdownMinAge"]}"^^xsd:decimal .'
     if item.get("drawdownMaxAge") is not None:
         t += f'\n        <{iri_str}> mrl:drawdownMaxAge "{item["drawdownMaxAge"]}"^^xsd:decimal .'
+    if item.get("mandatoryWithdrawalAge") is not None:
+        t += f'\n        <{iri_str}> mrl:mandatoryWithdrawalAge "{item["mandatoryWithdrawalAge"]}"^^xsd:decimal .'
+    if item.get("mandatoryWithdrawalRate") is not None:
+        t += f'\n        <{iri_str}> mrl:mandatoryWithdrawalRate "{item["mandatoryWithdrawalRate"]}"^^xsd:decimal .'
     if item.get("drawdownEarliestDate"):
         t += f'\n        <{iri_str}> mrl:drawdownEarliestDate "{item["drawdownEarliestDate"]}"^^xsd:date .'
     if item.get("drawdownLatestDate"):

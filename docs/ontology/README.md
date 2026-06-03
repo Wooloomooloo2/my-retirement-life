@@ -111,9 +111,11 @@ Superclass for all financial accounts and asset holdings. Instance pattern: `mrl
 | `mrl:drawdownPriority` | `xsd:integer` | Lower = drawn first. Used by Waterfall strategy |
 | `mrl:drawdownRatio` | `xsd:decimal` | Share of shortfall under Proportional strategy; normalised at runtime |
 | `mrl:drawdownMinAge` | `xsd:decimal` | Minimum age to draw (decimal supports e.g. 59.5) |
-| `mrl:drawdownMaxAge` | `xsd:decimal` | Optional maximum age |
+| `mrl:drawdownMaxAge` | `xsd:decimal` | _Deprecated 1.0.6 (ADR-018)_ — old hard cutoff; migrated to `mandatoryWithdrawalAge` |
 | `mrl:drawdownEarliestDate` | `xsd:date` | Fixed-term start; takes precedence over `drawdownMinAge` |
 | `mrl:drawdownLatestDate` | `xsd:date` | Maturity/expiry date |
+| `mrl:mandatoryWithdrawalAge` | `xsd:decimal` | Age from which a minimum withdrawal is forced each year (RMD-style); needs a rate to take effect |
+| `mrl:mandatoryWithdrawalRate` | `xsd:decimal` | Minimum % of balance forced out each year once `mandatoryWithdrawalAge` is reached |
 | `mrl:effectiveWithdrawalTaxRate` | `xsd:decimal` | Effective rate at withdrawal after treaty relief; user-specified |
 | `mrl:annualTaxFreeWithdrawal` | `xsd:decimal` | Annual tax-free withdrawal allowance; resets each projection year |
 | `mrl:exchangeRateToBase` | `xsd:decimal` | 1 unit account currency = N units base currency |
