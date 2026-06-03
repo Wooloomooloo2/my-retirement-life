@@ -10,6 +10,7 @@ from src.config import settings
 from src.api.routes import (
     profile, accounts, budget, life_events,
     projection, income, settings_route, investments,
+    drawdown,
 )
 from src.api.routes import scenarios as scenarios_routes
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -65,6 +66,7 @@ app.include_router(income.router)
 app.include_router(settings_route.router)
 app.include_router(projection.router)
 app.include_router(investments.router)
+app.include_router(drawdown.router)
 app.include_router(scenarios_routes.router)
 
 # ---------------------------------------------------------------------------

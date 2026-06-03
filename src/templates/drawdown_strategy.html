@@ -1,0 +1,553 @@
+{% extends "base.html" %}
+
+{% block title %}Drawdown strategy — {{ app_name }}{% endblock %}
+{% block page_title %}Drawdown strategy{% endblock %}
+{% block page_subtitle %}See every account's drawdown order and tax treatment together, and try changes live before saving.{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success mb-4 py-2">
+    <i class="ti ti-check"></i>
+    <span>Drawdown strategy saved. Your projection now uses this ordering and tax treatment.</span>
+</div>
+{% endif %}
+
+{% if not accounts %}
+<div class="rounded-lg border border-base-300 bg-base-100 p-8 text-center">
+    <i class="ti ti-wallet text-3xl text-base-content/30"></i>
+    <p class="mt-2 text-base-content/70">You need at least one account before you can model a drawdown strategy.</p>
+    <a href="/accounts" class="btn btn-primary btn-sm mt-3">Add an account</a>
+</div>
+{% else %}
+
+<!-- Strategy + actions bar -->
+<div class="rounded-lg border border-base-300 bg-base-100 p-4 mb-4 flex flex-wrap items-center gap-4">
+    <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-base-content/40 mb-1">Strategy</p>
+        <div class="join">
+            <button id="strat-waterfall" type="button" class="join-item btn btn-sm">Waterfall</button>
+            <button id="strat-proportional" type="button" class="join-item btn btn-sm">Proportional</button>
+        </div>
+    </div>
+    <div class="flex-1 min-w-[12rem]">
+        <p id="strat-hint" class="text-xs text-base-content/60"></p>
+    </div>
+    <div class="flex items-center gap-2">
+        <span id="dd-dirty" class="text-xs text-warning hidden"><i class="ti ti-alert-circle"></i> changed — recompute to update</span>
+        <button id="dd-recompute" type="button" class="btn btn-primary btn-sm gap-1">
+            <i class="ti ti-refresh text-sm"></i> Recompute
+        </button>
+        <button id="dd-save" type="button" class="btn btn-outline btn-sm gap-1">
+            <i class="ti ti-device-floppy text-sm"></i> Save strategy
+        </button>
+    </div>
+    <p id="dd-error" class="basis-full text-xs text-error hidden"></p>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+    <!-- LEFT: account list -->
+    <div class="rounded-lg border border-base-300 bg-base-100 p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-medium text-sm">Accounts <span class="text-base-content/40 font-normal">· top = drawn first</span></h3>
+            <span class="text-xs text-base-content/40">{{ accounts | length }} account{{ '' if accounts|length == 1 else 's' }}</span>
+        </div>
+
+        <ul id="dd-account-list" class="space-y-2">
+            {% for a in accounts %}
+            {% set bits = [] %}
+            {% if a.drawdown_min_age %}{% set _ = bits.append('from age ' ~ (a.drawdown_min_age | int)) %}{% endif %}
+            {% if a.drawdown_earliest_year %}{% set _ = bits.append('from ' ~ a.drawdown_earliest_year) %}{% endif %}
+            {% if a.drawdown_latest_year %}{% set _ = bits.append('by ' ~ a.drawdown_latest_year) %}{% endif %}
+            <li data-label="{{ a.label }}" class="dd-row rounded-lg border border-base-300 bg-base-200/40 px-3 py-2.5">
+                <div class="flex items-center gap-3">
+                    <span class="dd-handle cursor-grab text-base-content/30 hover:text-base-content/60" title="Drag to reorder">
+                        <i class="ti ti-grip-vertical"></i>
+                    </span>
+                    <span class="dd-order badge badge-neutral badge-sm w-6 justify-center">{{ loop.index }}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-sm truncate">{{ a.name }}</span>
+                            {% if a.account_class == 'CashAccount' %}
+                            <span class="badge badge-xs" style="background:#2563EB22;color:#2563EB;border:1px solid #2563EB55">Cash</span>
+                            {% else %}
+                            <span class="badge badge-xs" style="background:#05966922;color:#059669;border:1px solid #05966955">Invest</span>
+                            {% endif %}
+                            {% if bits %}
+                            <span class="badge badge-ghost badge-xs gap-1" title="Drawdown eligibility window">
+                                <i class="ti ti-clock text-[10px]"></i>{{ bits | join(' · ') }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <span class="text-xs text-base-content/50 whitespace-nowrap">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(a.balance) }}</span>
+                </div>
+
+                <div class="flex flex-wrap items-end gap-x-4 gap-y-2 mt-2 pl-9">
+                    <label class="flex flex-col gap-0.5">
+                        <span class="text-[11px] text-base-content/50">Tax treatment</span>
+                        <select data-field="tax" class="select select-bordered select-xs w-56">
+                            {% for opt in tax_treatment_options %}
+                            <option value="{{ opt.value }}" {% if a.tax_treatment == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-0.5">
+                        <span class="text-[11px] text-base-content/50">Eff. rate %</span>
+                        <input data-field="effrate" type="number" step="0.5" min="0" max="100"
+                               class="input input-bordered input-xs w-20"
+                               value="{{ (a.effective_withdrawal_tax_rate * 100) | round(2) }}">
+                    </label>
+                    <label class="flex flex-col gap-0.5">
+                        <span class="text-[11px] text-base-content/50">Tax-free /yr</span>
+                        <input data-field="taxfree" type="number" step="100" min="0"
+                               class="input input-bordered input-xs w-24"
+                               value="{{ a.annual_tax_free_withdrawal | round(0) | int }}">
+                    </label>
+                    <label class="dd-ratio flex flex-col gap-0.5">
+                        <span class="text-[11px] text-base-content/50">Ratio</span>
+                        <input data-field="ratio" type="number" step="0.1" min="0"
+                               class="input input-bordered input-xs w-16"
+                               value="{{ a.drawdown_ratio }}">
+                    </label>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="text-[11px] text-base-content/40 mt-3 leading-snug">
+            <span class="font-medium">Waterfall</span> drains accounts top-to-bottom. <span class="font-medium">Proportional</span> splits each year's
+            shortfall by the ratios (order still breaks ties / handles overflow). Eligibility windows are set per account on the Accounts page.
+        </p>
+    </div>
+
+    <!-- RIGHT: chart + summary -->
+    <div class="space-y-4">
+        <div class="rounded-lg border border-base-300 bg-base-100 p-4">
+            <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <h3 class="font-medium text-sm">Drawdown over time</h3>
+                <div class="join">
+                    <button id="mode-peraccount" type="button" class="join-item btn btn-xs">Per-account</button>
+                    <button id="mode-total" type="button" class="join-item btn btn-xs">Total</button>
+                </div>
+            </div>
+            <div id="dd-filter" class="flex flex-wrap gap-1.5 mb-2"></div>
+            <div class="relative" style="height:320px">
+                <canvas id="drawdownChart"></canvas>
+            </div>
+            <p class="text-[11px] text-base-content/40 mt-2">
+                Bars = amount withdrawn each year (left axis). Red line = tax paid (right axis). ★ marks your retirement year.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+                <p class="text-[11px] uppercase tracking-wide text-base-content/40">Savings last until</p>
+                <p id="dd-runsout" class="text-lg font-semibold mt-0.5">—</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+                <p class="text-[11px] uppercase tracking-wide text-base-content/40">Total tax paid</p>
+                <p id="dd-tax" class="text-lg font-semibold mt-0.5">—</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+                <p class="text-[11px] uppercase tracking-wide text-base-content/40">Final balance</p>
+                <p id="dd-final" class="text-lg font-semibold mt-0.5">—</p>
+            </div>
+            <div id="dd-confidence-card" class="rounded-lg border border-base-300 bg-base-100 p-3">
+                <p class="text-[11px] uppercase tracking-wide text-base-content/40">Outlook</p>
+                <p id="dd-confidence" class="text-lg font-semibold mt-0.5">—</p>
+            </div>
+        </div>
+        <p id="dd-confidence-msg" class="text-xs text-base-content/60"></p>
+    </div>
+
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if accounts %}
+<script src="/static/vendor/Sortable.min.js"></script>
+<script>
+const SYM            = {{ base_currency_symbol() | tojson }};
+const CASH_PALETTE   = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD'];
+const INVEST_PALETTE = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#0D9488', '#0F766E'];
+const CHIP_THRESHOLD = 8;
+
+let currentStrategy = {{ current_strategy | tojson }};
+let currentMode     = 'peraccount';
+let ddChart         = null;
+let lastResult      = null;
+
+const fmtMoney = v => SYM + Math.round(v).toLocaleString('en-GB');
+
+// ---------------------------------------------------------------------------
+// Strategy toggle + ratio visibility
+// ---------------------------------------------------------------------------
+function applyStrategyUI() {
+    const isWf = currentStrategy === 'DrawdownStrategy_Waterfall';
+    document.getElementById('strat-waterfall').classList.toggle('btn-active', isWf);
+    document.getElementById('strat-waterfall').classList.toggle('btn-primary', isWf);
+    document.getElementById('strat-proportional').classList.toggle('btn-active', !isWf);
+    document.getElementById('strat-proportional').classList.toggle('btn-primary', !isWf);
+    document.querySelectorAll('.dd-ratio').forEach(el => el.style.display = isWf ? 'none' : '');
+    document.getElementById('strat-hint').textContent = isWf
+        ? 'Each account is fully drained before moving to the next, in the order below.'
+        : 'Each year’s shortfall is split across eligible accounts by their ratios.';
+}
+
+function setStrategy(s) {
+    if (s === currentStrategy) return;
+    currentStrategy = s;
+    applyStrategyUI();
+    markDirty();
+}
+
+// ---------------------------------------------------------------------------
+// Collect current UI state (priority = drag order) → payload
+// ---------------------------------------------------------------------------
+function collectState() {
+    const rows = Array.from(document.querySelectorAll('#dd-account-list > li[data-label]'));
+    const accounts = rows.map((row, idx) => ({
+        label:           row.dataset.label,
+        priority:        idx + 1,
+        ratio:           parseFloat(row.querySelector('[data-field=ratio]').value)   || 0,
+        tax_treatment:   row.querySelector('[data-field=tax]').value,
+        effective_rate:  parseFloat(row.querySelector('[data-field=effrate]').value) || 0,
+        annual_tax_free: parseFloat(row.querySelector('[data-field=taxfree]').value) || 0,
+    }));
+    return { strategy: currentStrategy, accounts };
+}
+
+function renumber() {
+    document.querySelectorAll('#dd-account-list > li[data-label] .dd-order')
+        .forEach((el, i) => el.textContent = i + 1);
+}
+
+// ---------------------------------------------------------------------------
+// Dirty / error UI
+// ---------------------------------------------------------------------------
+function markDirty()  { document.getElementById('dd-dirty').classList.remove('hidden'); }
+function markClean()  { document.getElementById('dd-dirty').classList.add('hidden'); }
+function showError(m) { const e = document.getElementById('dd-error'); e.textContent = m; e.classList.remove('hidden'); }
+function clearError() { document.getElementById('dd-error').classList.add('hidden'); }
+
+// ---------------------------------------------------------------------------
+// Recompute (preview — no write) and Save
+// ---------------------------------------------------------------------------
+async function recompute() {
+    const btn = document.getElementById('dd-recompute');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Computing…';
+    clearError();
+    try {
+        const res  = await fetch('/api/drawdown/preview', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(collectState()),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Recompute failed');
+        applyResult(data);
+        markClean();
+    } catch (e) {
+        showError(e.message || 'Could not recompute.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    }
+}
+
+async function saveStrategy() {
+    const btn = document.getElementById('dd-save');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Saving…';
+    clearError();
+    try {
+        const res  = await fetch('/api/drawdown/save', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(collectState()),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Save failed');
+        window.location.assign(data.redirect || '/drawdown-strategy?saved=1');
+    } catch (e) {
+        showError(e.message || 'Could not save.');
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chart
+// ---------------------------------------------------------------------------
+function sortedLabels(data) {
+    return Object.keys(data.account_names).sort((a, b) => {
+        const aC = data.account_classes[a] === 'CashAccount';
+        const bC = data.account_classes[b] === 'CashAccount';
+        return (aC === bC) ? 0 : aC ? -1 : 1;
+    });
+}
+
+function buildDatasets(data, mode) {
+    const years = data.years;
+    const ry    = data.retirement_year;
+    const labels = sortedLabels(data);
+    const datasets = [];
+
+    if (mode === 'total') {
+        const total = years.map((_, i) =>
+            labels.reduce((s, l) => s + ((data.account_withdrawals[l] || [])[i] || 0), 0));
+        datasets.push({
+            label: 'Total drawdown', data: total, type: 'bar', stack: 'wd',
+            backgroundColor: '#6366F1BF', borderColor: '#6366F1', borderWidth: 1, yAxisID: 'y',
+        });
+    } else {
+        let ci = 0, ii = 0;
+        labels.forEach(l => {
+            const isCash = data.account_classes[l] === 'CashAccount';
+            const hex = isCash
+                ? CASH_PALETTE[ci++ % CASH_PALETTE.length]
+                : INVEST_PALETTE[ii++ % INVEST_PALETTE.length];
+            datasets.push({
+                label: data.account_names[l], data: data.account_withdrawals[l],
+                type: 'bar', stack: 'wd', _accLabel: l,
+                backgroundColor: hex + 'BF', borderColor: hex, borderWidth: 1, yAxisID: 'y',
+            });
+        });
+    }
+
+    // Tax line on the secondary axis (kept off the stacked withdrawal axis).
+    if ((data.tax_per_year || []).some(t => t > 0)) {
+        datasets.push({
+            label: 'Tax paid', data: data.tax_per_year, type: 'line', yAxisID: 'yTax',
+            borderColor: '#DC2626', backgroundColor: '#DC2626', borderWidth: 2,
+            pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false,
+        });
+    }
+
+    // Retirement-year ★ as a REAL data point (immune to x-axis autoSkip — the
+    // tick-callback approach drops the star when the year isn't a kept tick).
+    if (ry != null && years.indexOf(ry) !== -1) {
+        datasets.push({
+            label: 'Retirement', type: 'line', yAxisID: 'yTax', showLine: false,
+            data: years.map(y => y === ry ? 0 : null),
+            pointStyle: 'star', pointRadius: 11, pointHoverRadius: 13,
+            borderColor: '#4F46E5', backgroundColor: '#4F46E5',
+        });
+    }
+
+    return { years, datasets };
+}
+
+function renderChart() {
+    if (!lastResult) return;
+    const { years, datasets } = buildDatasets(lastResult, currentMode);
+
+    if (ddChart) {
+        ddChart.data.labels   = years;
+        ddChart.data.datasets = datasets;
+        ddChart.update();
+    } else {
+        ddChart = new Chart(document.getElementById('drawdownChart').getContext('2d'), {
+            type: 'bar',
+            data: { labels: years, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        filter: i => i.dataset.label !== 'Retirement',
+                        callbacks: {
+                            label: ctx => ` ${ctx.dataset.label}: ${fmtMoney(ctx.parsed.y)}`,
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true, grid: { display: false },
+                        ticks: {
+                            font: { size: 10 }, maxTicksLimit: 20,
+                            callback: (_, idx) => years[idx] % 5 === 0 ? years[idx] : '',
+                        }
+                    },
+                    y: {
+                        stacked: true, beginAtZero: true,
+                        ticks: { font: { size: 10 }, callback: v => SYM + (v / 1000).toFixed(0) + 'k' },
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        title: { display: true, text: 'Drawdown (' + SYM + '/yr)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
+                    },
+                    yTax: {
+                        position: 'right', beginAtZero: true,
+                        grid: { drawOnChartArea: false },
+                        ticks: { font: { size: 10 }, callback: v => SYM + (v / 1000).toFixed(0) + 'k' },
+                        title: { display: true, text: 'Tax (' + SYM + '/yr)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
+                    }
+                }
+            }
+        });
+    }
+    buildFilter();
+}
+
+function applyResult(data) {
+    lastResult = data;
+    renderChart();
+
+    document.getElementById('dd-runsout').textContent = data.runs_out_year ? data.runs_out_year : 'beyond plan';
+    document.getElementById('dd-tax').textContent     = fmtMoney(data.total_tax_paid);
+    document.getElementById('dd-final').textContent   = fmtMoney(data.final_balance);
+
+    const conf = document.getElementById('dd-confidence');
+    const map  = { green: 'text-success', amber: 'text-warning', red: 'text-error' };
+    conf.className = 'text-lg font-semibold mt-0.5 ' + (map[data.confidence] || '');
+    conf.textContent = data.confidence_label || '—';
+    document.getElementById('dd-confidence-msg').textContent = data.confidence_message || '';
+}
+
+// ---------------------------------------------------------------------------
+// Legend filter (per-account mode only) — chips ≤8, dropdown >8
+// ---------------------------------------------------------------------------
+function accountDatasetIndices() {
+    const idx = [];
+    ddChart.data.datasets.forEach((ds, i) => { if (ds._accLabel) idx.push(i); });
+    return idx;
+}
+
+function buildFilter() {
+    const el = document.getElementById('dd-filter');
+    el.innerHTML = '';
+    if (currentMode !== 'peraccount') return;
+    const idxs = accountDatasetIndices();
+    if (idxs.length <= 1) return;
+    if (idxs.length <= CHIP_THRESHOLD) buildChipFilter(el, idxs);
+    else buildDropdownFilter(el, idxs);
+}
+
+function buildChipFilter(el, idxs) {
+    const allBtn = document.createElement('button');
+    allBtn.className = 'btn btn-xs btn-ghost border border-base-300';
+    allBtn.textContent = 'All';
+    allBtn.onclick = () => {
+        idxs.forEach(i => ddChart.setDatasetVisibility(i, true));
+        ddChart.update();
+        el.querySelectorAll('[data-chip]').forEach(b => { b.style.opacity = '1'; b.dataset.on = '1'; });
+    };
+    el.appendChild(allBtn);
+
+    idxs.forEach(i => {
+        const ds = ddChart.data.datasets[i];
+        const chip = document.createElement('button');
+        chip.dataset.chip = i; chip.dataset.on = '1';
+        chip.className = 'btn btn-xs gap-1.5';
+        chip.style.cssText = `background:${ds.borderColor}22;border:1.5px solid ${ds.borderColor};color:inherit;`;
+        chip.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.borderColor}"></span><span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ds.label}</span>`;
+        chip.onclick = function () {
+            const on = this.dataset.on === '1';
+            ddChart.setDatasetVisibility(i, !on);
+            ddChart.update();
+            this.dataset.on = on ? '0' : '1';
+            this.style.opacity = on ? '0.35' : '1';
+        };
+        el.appendChild(chip);
+    });
+}
+
+function buildDropdownFilter(el, idxs) {
+    let open = false;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block';
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-xs btn-ghost border border-base-300 gap-1';
+    const updLbl = () => {
+        const vis = idxs.filter(i => ddChart.isDatasetVisible(i)).length;
+        lbl.textContent = vis === idxs.length ? `All ${idxs.length} accounts` : `${vis} of ${idxs.length} accounts`;
+    };
+    btn.innerHTML = '<i class="ti ti-filter text-xs"></i><span></span><i class="ti ti-chevron-down text-xs"></i>';
+    const lbl = btn.querySelector('span');
+    btn.onclick = (e) => { e.stopPropagation(); open = !open; panel.style.display = open ? 'block' : 'none'; };
+
+    const panel = document.createElement('div');
+    panel.style.cssText = 'display:none;position:absolute;left:0;top:28px;z-index:50;min-width:220px;' +
+        'background:var(--fallback-b1,oklch(var(--b1)));border:1px solid oklch(var(--b3));' +
+        'border-radius:0.5rem;box-shadow:0 4px 16px rgba(0,0,0,0.12);padding:10px;';
+
+    const ctrl = document.createElement('div');
+    ctrl.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid oklch(var(--b3))';
+    ['All', 'None'].forEach((label, sel) => {
+        const b = document.createElement('button');
+        b.className = 'btn btn-xs btn-ghost flex-1';
+        b.textContent = label;
+        b.onclick = () => {
+            idxs.forEach(i => ddChart.setDatasetVisibility(i, sel === 0));
+            ddChart.update(); cbs.forEach(cb => cb.checked = sel === 0); updLbl();
+        };
+        ctrl.appendChild(b);
+    });
+    panel.appendChild(ctrl);
+
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:224px;overflow-y:auto;padding-right:2px;';
+    const cbs = [];
+    idxs.forEach(i => {
+        const ds = ddChart.data.datasets[i];
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:3px 4px;border-radius:4px;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = true; cb.className = 'checkbox checkbox-xs';
+        cb.style.accentColor = ds.borderColor;
+        cb.onchange = () => { ddChart.setDatasetVisibility(i, cb.checked); ddChart.update(); updLbl(); };
+        cbs.push(cb);
+        const sw = document.createElement('span');
+        sw.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.borderColor};flex-shrink:0`;
+        const t = document.createElement('span');
+        t.style.cssText = 'font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px';
+        t.textContent = ds.label;
+        row.append(cb, sw, t); list.appendChild(row);
+    });
+    panel.appendChild(list);
+    document.addEventListener('click', () => { if (open) { open = false; panel.style.display = 'none'; } });
+
+    wrap.append(btn, panel); el.appendChild(wrap); updLbl();
+}
+
+function setMode(mode) {
+    if (mode === currentMode) return;
+    currentMode = mode;
+    document.getElementById('mode-peraccount').classList.toggle('btn-active', mode === 'peraccount');
+    document.getElementById('mode-peraccount').classList.toggle('btn-primary', mode === 'peraccount');
+    document.getElementById('mode-total').classList.toggle('btn-active', mode === 'total');
+    document.getElementById('mode-total').classList.toggle('btn-primary', mode === 'total');
+    renderChart();
+}
+
+// ---------------------------------------------------------------------------
+// Wire up
+// ---------------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    new Sortable(document.getElementById('dd-account-list'), {
+        handle: '.dd-handle', animation: 150, ghostClass: 'opacity-40',
+        onEnd: () => { renumber(); markDirty(); },
+    });
+
+    document.getElementById('strat-waterfall').onclick    = () => setStrategy('DrawdownStrategy_Waterfall');
+    document.getElementById('strat-proportional').onclick = () => setStrategy('DrawdownStrategy_Proportional');
+    document.getElementById('mode-peraccount').onclick    = () => setMode('peraccount');
+    document.getElementById('mode-total').onclick         = () => setMode('total');
+    document.getElementById('dd-recompute').onclick       = recompute;
+    document.getElementById('dd-save').onclick            = saveStrategy;
+
+    // any edit to the inline controls marks the view dirty
+    document.querySelectorAll('#dd-account-list input, #dd-account-list select')
+        .forEach(el => el.addEventListener('change', markDirty));
+
+    setMode('peraccount');
+    applyStrategyUI();
+    recompute();   // populate chart + summary from the current (saved) state on load
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1274,6 +1274,7 @@ def _simulate_run(
 def run_projection(
     inflation_rate: float = 2.5,
     proj_settings: dict | None = None,
+    account_overrides: dict | None = None,
 ) -> dict | None:
     """Per-account burndown projection.
 
@@ -1305,6 +1306,21 @@ def run_projection(
 
     if not all_accounts:
         return None
+
+    # Non-persisting what-if overrides (Drawdown Strategy page). Patches only the
+    # drawdown/tax fields of matching account dicts in memory before simulating;
+    # nothing is written to the store. account_overrides=None → byte-identical to
+    # a normal run, preserving engine parity for every existing caller.
+    if account_overrides:
+        for acc in all_accounts:
+            ov = account_overrides.get(acc["label"])
+            if not ov:
+                continue
+            for k in ("drawdown_priority", "drawdown_ratio", "tax_treatment",
+                      "effective_withdrawal_tax_rate", "annual_tax_free_withdrawal"):
+                if k in ov:
+                    acc[k] = ov[k]
+        all_accounts.sort(key=lambda a: a["drawdown_priority"])  # mirror load_all_accounts
 
     sim = _simulate_run(
         profile         = profile,
