@@ -230,6 +230,8 @@ Global assumptions for the retirement projection. Typically a single instance pe
 | `mrl:surplusStrategy` | `→ mrlx:SurplusStrategyType` | SweepToAccount or ReduceDrawdown |
 | `mrl:spendingAccount` | `→ mrl:Account` | Account into which all drawdown cash is deposited |
 | `mrl:surplusAccount` | `→ mrl:Account` | Account that receives swept surplus |
+| `mrl:emergencyFundAccount` | `→ mrl:Account` | Emergency fund — filled first on surplus, drawn first on shortfall (ADR-019) |
+| `mrl:emergencyFundMonths` | `xsd:decimal` | Emergency fund target in months of recurring spending (ADR-019) |
 
 ---
 

@@ -116,6 +116,8 @@
                         onclick="switchTab('overview')">Overview</button>
                 <button class="tab" id="tab-byaccount"
                         onclick="switchTab('byaccount')">By Account</button>
+                <button class="tab" id="tab-table"
+                        onclick="switchTab('table')">Table</button>
             </div>
         </h3>
 
@@ -138,6 +140,53 @@
                 ★ = retirement year &nbsp;|&nbsp;
                 <a href="/accounts" class="link link-primary">View per-account detail →</a>
             </p>
+        </div>
+
+        <!-- Table pane: year-by-year cashflow + per-account balances -->
+        {% set labels = projection.account_names.keys() | list %}
+        <div id="pane-table" style="display:none">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-xs text-base-content/50">Closing balances and annual flows for every year. ★ = retirement year.</p>
+                <button type="button" onclick="downloadCashflowCsv()" class="btn btn-ghost btn-xs gap-1">
+                    <i class="ti ti-download text-xs"></i> Download CSV
+                </button>
+            </div>
+            <div class="overflow-x-auto" style="max-height:440px">
+                <table id="cashflow-table" class="table table-xs table-pin-rows whitespace-nowrap">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th class="text-right">Income</th>
+                            <th class="text-right">Spending</th>
+                            <th class="text-right">Growth</th>
+                            <th class="text-right">Tax</th>
+                            <th class="text-right">Total</th>
+                            {% for label in labels %}
+                            {% set is_cash = projection.account_classes[label] == 'CashAccount' %}
+                            <th class="text-right">
+                                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;background:{{ '#2563EB' if is_cash else '#059669' }}"></span>{{ projection.account_names[label] }}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for y in projection.years %}
+                        {% set i = loop.index0 %}
+                        <tr class="{% if y.year == projection.retirement_year %}bg-primary/5 font-medium{% endif %}">
+                            <td>{{ y.year }}{% if y.year == projection.retirement_year %} ★{% endif %}</td>
+                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.income) }}</td>
+                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.mandatory + y.discretionary + y.loans) }}</td>
+                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.interest) }}</td>
+                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.tax_paid) }}</td>
+                            <td class="text-right font-medium">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.balance) }}</td>
+                            {% for label in labels %}
+                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(projection.account_balances[label][i]) }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -472,6 +521,38 @@
                         <span class="label-text-alt text-base-content/40">Where unspent drawdown is swept when using the Sweep to Account surplus strategy</span>
                     </label>
                 </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Emergency fund account</span>
+                    </label>
+                    <select name="emergency_fund_account_label" class="select select-bordered select-sm w-full">
+                        <option value="">— none —</option>
+                        {% for acc in all_accounts %}
+                        <option value="{{ acc.label }}"
+                            {% if proj_settings.emergency_fund_account_label == acc.label %}selected{% endif %}>
+                            {{ acc.name }}
+                            {% if acc.account_class == 'InvestmentAccount' %}(investment){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Surplus tops this account up to its target first; it's drawn down first in a shortfall year (ADR-019)</span>
+                    </label>
+                </div>
+
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Emergency fund target (months of spending)</span>
+                    </label>
+                    <input type="number" name="emergency_fund_months" min="0" max="60" step="0.5"
+                        value="{{ proj_settings.emergency_fund_months if proj_settings.emergency_fund_months else '' }}"
+                        placeholder="e.g. 6"
+                        class="input input-bordered input-sm w-full" />
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Held as this many months of your recurring spending — auto-scales with inflation. Leave 0 / blank for no target.</span>
+                    </label>
+                </div>
                 {% endif %}
 
                 <!-- Hidden: keep MC profile when saving from this form -->
@@ -521,13 +602,29 @@ const retirementYear = {{ projection.retirement_year }};
 function switchTab(tab) {
     document.getElementById('pane-overview').style.display   = tab === 'overview'   ? 'block' : 'none';
     document.getElementById('pane-byaccount').style.display  = tab === 'byaccount'  ? 'block' : 'none';
+    document.getElementById('pane-table').style.display      = tab === 'table'      ? 'block' : 'none';
     document.getElementById('tab-overview').classList.toggle('tab-active',   tab === 'overview');
     document.getElementById('tab-byaccount').classList.toggle('tab-active',  tab === 'byaccount');
+    document.getElementById('tab-table').classList.toggle('tab-active',      tab === 'table');
     // Lazy-init the by-account chart on first show; resize on subsequent shows
     if (tab === 'byaccount') {
         if (!byAccountChartInstance) initByAccountChart();
         else byAccountChartInstance.resize();
     }
+}
+
+// Export the cashflow table to CSV (client-side, from the rendered table).
+function downloadCashflowCsv() {
+    const rows = [...document.querySelectorAll('#cashflow-table tr')].map(tr =>
+        [...tr.querySelectorAll('th,td')]
+            .map(c => '"' + c.textContent.trim().replace(/★/g, '').trim().replace(/"/g, '""') + '"')
+            .join(','));
+    const blob = new Blob([rows.join('\n')], {type: 'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cashflow.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
 }
 
 // ---------------------------------------------------------------------------

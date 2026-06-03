@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.6" .
+    owl:versionInfo "1.0.7" .
 
 
 # ===========================================================================
@@ -1628,6 +1628,20 @@ mrl:surplusAccount a owl:ObjectProperty ;
     rdfs:comment        "The account that receives swept surplus when actual spending is below budget and the SweepToAccount strategy is selected. If absent and SweepToAccount is selected, the surplus remains in the spending account."@en ;
     rdfs:domain         mrl:ProjectionSettings ;
     rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:emergencyFundAccount a owl:ObjectProperty ;
+    rdfs:label          "emergency fund account"@en ;
+    rdfs:comment        "The account designated as the emergency fund (ADR-019). Each year, swept surplus tops this account up to its target (mrl:emergencyFundMonths) before any overflow reaches the surplus account; in a shortfall year it is drawn down before any other account. If absent, no emergency fund behaviour applies."@en ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          mrl:Account ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:emergencyFundMonths a owl:DatatypeProperty ;
+    rdfs:label          "emergency fund months"@en ;
+    rdfs:comment        "Size of the emergency fund target expressed in months of recurring spending (mandatory + discretionary + loan budget) for the year, e.g. 6.0 holds six months. The target auto-scales with inflation and budget changes. Absent or zero = no emergency fund target."@en ;
+    rdfs:domain         mrl:ProjectionSettings ;
+    rdfs:range          xsd:decimal ;
     rdfs:isDefinedBy    mrl: .
 
 

@@ -232,6 +232,8 @@ async def drawdown_save(request: Request):
         surplus_account_label     = ps["surplus_account_label"],
         annual_personal_allowance = ps["annual_personal_allowance"],
         residence_income_tax_rate = ps["residence_income_tax_rate"],
+        emergency_fund_account_label = ps["emergency_fund_account_label"],
+        emergency_fund_months        = ps["emergency_fund_months"],
     )
 
     # Per-account ordering + tax (effective_rate already decimal from _parse).

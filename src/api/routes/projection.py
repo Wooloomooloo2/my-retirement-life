@@ -618,6 +618,8 @@ def get_projection_settings() -> dict:
         "surplus_account_label":      None,
         "annual_personal_allowance":  0.0,
         "residence_income_tax_rate":  0.0,
+        "emergency_fund_account_label": None,
+        "emergency_fund_months":        0.0,
     }
 
     if not type_check:
@@ -639,6 +641,8 @@ def get_projection_settings() -> dict:
         "surplus_account_label":      _ps_local("surplusAccount"),
         "annual_personal_allowance":  _float(ps, "annualPersonalAllowance",  0.0),
         "residence_income_tax_rate":  _float(ps, "residenceIncomeTaxRate",   0.0),
+        "emergency_fund_account_label": _ps_local("emergencyFundAccount"),
+        "emergency_fund_months":        _float(ps, "emergencyFundMonths",     0.0),
     }
 
 
@@ -651,6 +655,8 @@ def save_projection_settings(
     surplus_account_label: str  | None = None,
     annual_personal_allowance: float = 0.0,
     residence_income_tax_rate: float = 0.0,
+    emergency_fund_account_label: str | None = None,
+    emergency_fund_months: float = 0.0,
 ) -> None:
     ps_iri     = f"{MRL}ProjectionSettings_1"
     person_iri = f"{MRL}Person_1"
@@ -672,6 +678,7 @@ def save_projection_settings(
             mrl:surplusStrategy           mrlx:{surplus_strategy} ;
             mrl:annualPersonalAllowance   "{annual_personal_allowance}"^^xsd:decimal ;
             mrl:residenceIncomeTaxRate    "{residence_income_tax_rate}"^^xsd:decimal ;
+            mrl:emergencyFundMonths       "{emergency_fund_months}"^^xsd:decimal ;
             mrl:projectionOwner           <{person_iri}> .
     """
 
@@ -679,6 +686,8 @@ def save_projection_settings(
         triples += f'\n        <{ps_iri}> mrl:spendingAccount mrl:{spending_account_label} .'
     if surplus_account_label:
         triples += f'\n        <{ps_iri}> mrl:surplusAccount  mrl:{surplus_account_label} .'
+    if emergency_fund_account_label:
+        triples += f'\n        <{ps_iri}> mrl:emergencyFundAccount mrl:{emergency_fund_account_label} .'
 
     store.update(f"""
         PREFIX mrl:  <{MRL}>
@@ -892,6 +901,8 @@ def _simulate_run(
     surplus_acc        = proj_settings.get("surplus_account_label")
     personal_allowance = proj_settings.get("annual_personal_allowance", 0.0)
     residence_rate     = proj_settings.get("residence_income_tax_rate",  0.0)
+    ef_label           = proj_settings.get("emergency_fund_account_label")  # ADR-019
+    ef_months          = proj_settings.get("emergency_fund_months", 0.0) or 0.0
 
     # Effective spending target — the account that surplus would actually land
     # in this scenario, even when the user hasn't explicitly configured one
@@ -1181,15 +1192,44 @@ def _simulate_run(
             if _is_eligible(acc, year, birth_year) and balances.get(acc["label"], 0) > 0
         ]
 
+        # Emergency fund (ADR-019). Target = months/12 of this year's RECURRING
+        # spend (mandatory + discretionary + loans; one-off life events excluded).
+        # sweep() tops the fund up to target before overflowing to sweep_target;
+        # the fund is also drawn first in Phase A. With no ef account set,
+        # ef_acct is None → sweep() is the plain old surplus sweep (parity).
+        ef_acct   = next((a for a in all_accounts if a["label"] == ef_label), None) if ef_label else None
+        ef_target = (ef_months / 12.0) * (mandatory + discretionary + loans) if (ef_acct and ef_months > 0) else 0.0
+
+        def sweep(amount):
+            if amount <= 0:
+                return
+            if ef_acct and ef_target > 0:
+                ef_bal = balances.get(ef_label, 0.0)
+                if ef_bal < ef_target:
+                    fill = min(amount, ef_target - ef_bal)
+                    balances[ef_label] = ef_bal + fill
+                    amount -= fill
+            if amount > 0 and sweep_target and sweep_target in balances:
+                balances[sweep_target] += amount
+
         # Phase A — cover this year's spending shortfall (or bank a surplus).
         if pre_net < 0:
             shortfall = -pre_net
+            # Emergency fund drawn first (ADR-019) — the buffer absorbs the shock
+            # before the chosen strategy liquidates anything else.
+            if ef_acct and shortfall > 0 and _is_eligible(ef_acct, year, birth_year):
+                ef_draw = min(balances.get(ef_label, 0.0), shortfall)
+                if ef_draw > 0:
+                    balances[ef_label] -= ef_draw
+                    year_withdrawals[ef_label] = year_withdrawals.get(ef_label, 0.0) + ef_draw
+                    shortfall -= ef_draw
+            remaining_eligible = [a for a in eligible if a["label"] != ef_label]
             for acc_label, gross_draw in _apply_drawdown(
-                    eligible, shortfall, drawdown_strategy, balances).items():
+                    remaining_eligible, shortfall, drawdown_strategy, balances).items():
                 balances[acc_label] -= gross_draw  # tax applied once in Phase C
                 year_withdrawals[acc_label] = year_withdrawals.get(acc_label, 0.0) + gross_draw
-        elif pre_net > 0 and sweep_target and sweep_target in balances:
-            balances[sweep_target] += pre_net
+        elif pre_net > 0:
+            sweep(pre_net)
 
         # Phase B — mandatory (RMD-style) minimum withdrawals (ADR-018). An
         # account past its mandatoryWithdrawalAge must draw at least
@@ -1246,8 +1286,7 @@ def _simulate_run(
             total_gross = sum(year_withdrawals.values())
             forced_tax  = net_annual_tax * (forced_gross / total_gross) if total_gross > 0 else 0.0
             forced_net  = max(0.0, forced_gross - forced_tax)
-            if sweep_target and sweep_target in balances and forced_net > 0:
-                balances[sweep_target] += forced_net
+            sweep(forced_net)  # ADR-019: tops up the emergency fund first, then overflows
 
         cumulative_tax += net_annual_tax
 
@@ -1675,6 +1714,8 @@ async def save_settings(
     surplus_account_label:     str   = Form(""),
     annual_personal_allowance: float = Form(0.0),
     residence_income_tax_rate: float = Form(0.0),
+    emergency_fund_account_label: str = Form(""),
+    emergency_fund_months:        float = Form(0.0),
 ):
     """Save all projection settings and redirect to the projection page."""
     from fastapi.responses import RedirectResponse
@@ -1687,6 +1728,8 @@ async def save_settings(
         surplus_account_label     = surplus_account_label  or None,
         annual_personal_allowance = annual_personal_allowance,
         residence_income_tax_rate = residence_income_tax_rate / 100.0,  # form sends %
+        emergency_fund_account_label = emergency_fund_account_label or None,
+        emergency_fund_months        = emergency_fund_months,
     )
     return RedirectResponse(url="/projection", status_code=303)
 
@@ -1708,5 +1751,7 @@ async def save_mc_profile(
         surplus_account_label     = ps["surplus_account_label"],
         annual_personal_allowance = ps["annual_personal_allowance"],
         residence_income_tax_rate = ps["residence_income_tax_rate"],
+        emergency_fund_account_label = ps["emergency_fund_account_label"],
+        emergency_fund_months        = ps["emergency_fund_months"],
     )
     return RedirectResponse(url="/projection", status_code=303)

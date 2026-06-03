@@ -363,6 +363,9 @@ def export_all_data() -> dict:
             # ADR-013: residence tax
             "annualPersonalAllowance": _float_val(ps, "annualPersonalAllowance", 0.0),
             "residenceIncomeTaxRate":  _float_val(ps, "residenceIncomeTaxRate",  0.0),
+            # ADR-019: emergency fund
+            "emergencyFundAccount":    _opt_str(ps, "emergencyFundAccount"),
+            "emergencyFundMonths":     _float_val(ps, "emergencyFundMonths", 0.0),
         }
 
     return {
@@ -835,6 +838,7 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
             mrl:inflationRate           "{ps_data.get('inflationRate', 2.5)}"^^xsd:decimal ;
             mrl:annualPersonalAllowance "{ps_data.get('annualPersonalAllowance', 0.0)}"^^xsd:decimal ;
             mrl:residenceIncomeTaxRate  "{ps_data.get('residenceIncomeTaxRate', 0.0)}"^^xsd:decimal ;
+            mrl:emergencyFundMonths     "{ps_data.get('emergencyFundMonths', 0.0)}"^^xsd:decimal ;
             mrl:projectionOwner         <{person_iri}> .
             """
 
@@ -849,6 +853,8 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                 triples += f'\n        <{ps_iri}> mrl:spendingAccount mrl:{ps_data["spendingAccount"]} .'
             if ps_data.get("surplusAccount"):
                 triples += f'\n        <{ps_iri}> mrl:surplusAccount mrl:{ps_data["surplusAccount"]} .'
+            if ps_data.get("emergencyFundAccount"):
+                triples += f'\n        <{ps_iri}> mrl:emergencyFundAccount mrl:{ps_data["emergencyFundAccount"]} .'
 
             store.update(f"""
                 PREFIX mrl:  <{MRL}>
@@ -971,6 +977,8 @@ async def update_inflation(
         surplus_account_label     = ps["surplus_account_label"],
         annual_personal_allowance = ps["annual_personal_allowance"],
         residence_income_tax_rate = ps["residence_income_tax_rate"],
+        emergency_fund_account_label = ps["emergency_fund_account_label"],
+        emergency_fund_months        = ps["emergency_fund_months"],
     )
 
     data_count = len(list(store.store.quads_for_pattern(None, None, None, DATA_GRAPH)))
