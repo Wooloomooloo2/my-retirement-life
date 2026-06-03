@@ -2,7 +2,7 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-01 (session 8 — routed income / spending equivalence, Windfall sign, retirement-year star marker)
+> Last updated: 2026-06-03 (session 9 — Drawdown Strategy page, ADR-018 mandatory/RMD withdrawal age, ADR-019 emergency fund + year-by-year table)
 
 ---
 
@@ -15,7 +15,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
 - **Platform:** Windows (VS Code), repo at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, `.venv` present. Also runs on macOS (Apple Silicon) at `/Users/markhall/Projects/my-retirement-life` — session 6 added macOS packaging + native window support. Linux deferred.
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.5** (ADR-016 follow-on — per-line currency + FX on `mrl:BudgetLine`). 17 `Currency` individuals total.
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.7** (ADR-019 — emergency fund on `mrl:ProjectionSettings`; 1.0.6 added the ADR-018 mandatory-withdrawal pair on `mrl:Account`). 17 `Currency` individuals total. Live store reloaded to 1.0.7 on 2026-06-03 (was lagging at 1.0.4 — caught at the start of session 9; `tools/reload_ontology.py` run, verified).
 
 ---
 
@@ -32,7 +32,35 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-06-01 — eighth session)
+## Changes this session (2026-06-03 — ninth session)
+
+_Three commits, all themed on **retirement drawdown mechanics**. Verified on isolated store copies (the live data graph was untouched during development) — parity, migration, and the new behaviours were each checked via standalone probes; **not yet end-to-end smoke-tested by Mark in the live app**. One outstanding step from these commits — the ontology reload — was completed at the start of the next working session (live store 1.0.4 → 1.0.7, verified)._
+
+57. **Drawdown Strategy page (`/drawdown-strategy`) — commit `7a4a7eb`.** A live sandbox that shows every account's drawdown order and tax treatment together, so the user can see and tune the decumulation plan in one place rather than inferring it from per-account forms.
+    - **Engine** (`src/api/routes/projection.py`): `run_projection()` gains a **parity-safe** `account_overrides` param. With `account_overrides=None` (the default, and every existing caller) the projection is byte-identical to before — the override path only activates for the page's preview.
+    - **Route** (`src/api/routes/drawdown.py`, new ~246-line module): `GET` page; `POST /api/drawdown/preview` runs a **non-persisting** projection with the sandbox's ordering/tax overrides applied (no write to the store); `POST /api/drawdown/save` persists ordering + tax treatments + strategy. A targeted `update_account_drawdown()` rewrites only the five drawdown/tax predicates per account, leaving balance/name/eligibility triples untouched.
+    - **Template** (`src/templates/drawdown_strategy.html`, new ~553 lines): drag-to-reorder (vendored `src/static/vendor/Sortable.min.js`, offline-first — same pattern as `chart.umd.min.js`), inline tax edits, a manual **Recompute** button that calls the preview endpoint, and a withdrawals-over-time Chart.js chart (Total / Per-account toggle + a tax line).
+    - Wired in via `src/templates/base.html` (nav link) and `src/api/app.py` (router registration).
+
+58. **ADR-018 — mandatory (RMD-style) withdrawal age; retire the drawdown cutoff — commit `2b04d40`.** Surfaced while testing the new Drawdown Strategy page. `mrl:drawdownMaxAge` (ADR-011) was a **hard cutoff**: past the age, `_is_eligible()` returned `False` and the account became undrawable. A US 401(k) capped at 75 therefore stopped funding spending from age 75 — and because the engine does not record an uncovered shortfall, it silently drew nothing while the ~£3M pot compounded untouched to ~£9M, so the projection reported "On track" on money it said could never be spent.
+    - **Redefined** as the age withdrawals must **start** (forced decumulation, RMD pattern), with a user-set % per account. User-set percentage chosen over deplete-over-life or the IRS Uniform Lifetime Table because it's jurisdiction-neutral (the tool spans countries) and simple to reason about.
+    - **Ontology 1.0.5 → 1.0.6** (`docs/ontology/mrl-ontology.ttl`): + `mrl:mandatoryWithdrawalAge` (decimal), + `mrl:mandatoryWithdrawalRate` (decimal); `mrl:drawdownMaxAge` **deprecated-in-place** (retained on the class so pre-1.0.6 data migrates). Needs `tools/reload_ontology.py`.
+    - **Engine** (`projection.py`): `_is_eligible()` no longer consults `drawdownMaxAge`; min-age / earliest-date / latest-date eligibility unchanged. Step 7 restructured into phases — **A** cover shortfall, **B** force RMD minimums (`balance × rate%`, counting any shortfall draw already taken that year), **C** tax all draws once (ADR-013 two-layer model), **D** sweep after-tax forced surplus to the spending account via the existing surplus-routing fallback. Migration helper copies legacy `drawdownMaxAge → mandatoryWithdrawalAge` (rate left unset) on load (in `run_projection`, GET accounts, GET drawdown-strategy).
+    - **Read/write/Form plumbing**: `accounts.py`, `investments.py`, `accounts.html` (field relabelled "Maximum access age" → "Mandatory withdrawal age" + a rate % field, with help text); `settings_route.py` export/restore carries the two new fields; `drawdown_strategy.html` eligibility chip shows "RMD X%/yr from age Y".
+    - **Verified on isolated store copies**: parity exact with no rate set (engine output byte-identical to the old engine — final, tax, runs-out, every per-account withdrawal); migration un-strands the 401(k) (final £9.2M → £3.35M usable) and is idempotent; RMD forces draws, taxes them, sweeps after-tax net to spending; form save, RMD chip, backup round-trip, and legacy-backup migration all pass.
+    - **Carried-forward concern (not decided here):** the engine still does not flag a spending shortfall it cannot fund from eligible accounts. Removing the cutoff makes this far less likely to bite, but a "spending unfunded from year N" signal remains a worthwhile follow-on.
+
+59. **ADR-019 — emergency fund + year-by-year cashflow table — commit `5e0741a`.** The emergency fund was surfaced by the Jamie Smith scenario, where cash accounts never built a buffer (routed income offsets spending as cashflow; surplus is swept to investments) and were wiped by the first deficit year — after which shortfalls were met by liquidating investments. No way to model the everyday-finance staple of a cash buffer you build up and draw on first.
+    - **Ontology 1.0.6 → 1.0.7** (`docs/ontology/mrl-ontology.ttl`): + `mrl:emergencyFundAccount` (object → `mrl:Account`), + `mrl:emergencyFundMonths` (decimal) on `mrl:ProjectionSettings`. Target = `months / 12 × recurring_spend` (mandatory + discretionary + loan budget; one-off life events excluded) — months-of-spending chosen over a fixed amount so the buffer auto-scales with inflation and budget changes. Needs `tools/reload_ontology.py`.
+    - **Engine** (`projection.py` `_simulate_run`): the designated fund is **filled first** each year — a `sweep()` helper tops it up to target before overflowing to the surplus account, used for both the normal surplus sweep and the after-tax RMD proceeds (ADR-018) — and **drawn first** in a shortfall year, ahead of the Waterfall/Proportional strategy, subject to `_is_eligible` and a positive balance.
+    - **Plumbing**: `get_/save_projection_settings` + all round-trip callers + backup export/restore (`settings_route.py`) carry the two new settings; `POST /projection/settings` gains the Form params; `projection.html` settings form gains the Emergency fund account + months fields.
+    - **Year-by-year table** (new "Table" tab on `/projection`, `projection.html`): server-rendered from the existing `run_projection` output (no new computation) — columns Year · Income · Spending · Growth · Tax · Total, then one column per account (blue dot = `CashAccount`, green otherwise), retirement row highlighted with ★, `table-pin-rows` header, client-side "Download CSV" via `downloadCashflowCsv()`.
+    - **Verified on isolated store copies**: parity exact — no emergency fund set ⇒ engine byte-identical to the ADR-018 engine (final, tax, runs-out, balances, per-account withdrawals); EF fills to the 6-month target then overflows, and is drawn first on the 2030 spike; settings UI pre-selects, POST persists, backup round-trips; table renders 57 rows with correct figures + CSV.
+    - **Future refinements noted in the ADR:** the fund is a single account (no split-across-accounts), and a fixed-amount target alternative — both deferred.
+
+---
+
+## Changes in session 8 (2026-06-01)
 
 _Shipped in commit **`127953b`** — "Engine + UX fixes: routed income, windfall sign, retirement star marker" (items 54–56). Three independent fixes that surfaced while debugging a 36-year-old's plan (Jamie Smith scenario): pension drawing down at age 36, savings account being credited and debited in the same year, inheritance windfall showing as a debit, retirement-year ★ missing from the per-account chart. Not yet end-to-end smoke-tested by Mark — the engine change was verified directly via a standalone probe (`run_projection` on Jamie's live data graph), and the Windfall sign fix verified via code inspection of the duplicate-form selector bug._
 
