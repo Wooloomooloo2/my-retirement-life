@@ -2,21 +2,27 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-03 (session 9 — Drawdown Strategy page, ADR-018 mandatory/RMD withdrawal age, ADR-019 emergency fund + year-by-year table)
+> Last updated: 2026-06-05 (session 10 — automated smoke test of the session-9 drawdown features; 25/25 backend+HTTP checks pass)
 
 ---
 
-## ▶ Next session — resume here (paused 2026-06-03, picking up 2026-06-04)
+## ▶ Next session — resume here (paused 2026-06-05)
 
-Session 9 shipped three drawdown features (items 57–59), all committed and code-complete, but **none have been end-to-end smoke-tested by Mark in the live app** — that is the one open task. The ontology is already reloaded (live store at 1.0.7, verified), so the new fields will resolve; no reload needed before testing.
+Session 10 **automatically smoke-tested all three session-9 drawdown features** (items 57–59) — **25/25 checks pass** at the backend + HTTP layer. The features are confirmed working; what remains is **browser-only UX that can't be driven headlessly** (item 60 below has the full detail):
 
-**Smoke-test checklist for the three session-9 features:**
+- **Drag-to-reorder gesture** on `/drawdown-strategy` (the persistence + reorder endpoint are verified; only the SortableJS drag interaction itself is unconfirmed).
+- **Chart visually rendering** with its Total / Per-account toggle + tax line (the preview JSON that feeds it is verified).
+- **CSV actually downloading** from the Table tab (the `downloadCashflowCsv()` button + table data are verified).
 
-1. **Drawdown Strategy page** (`/drawdown-strategy`) — drag-to-reorder persists; inline tax edits save; **Recompute** runs a preview without writing to the store (confirm the live projection is unchanged until **Save**); withdrawals chart renders with Total / Per-account toggle + tax line.
-2. **ADR-018 mandatory/RMD withdrawal** — on `/accounts`, the field reads "Mandatory withdrawal age" + rate %; set an age **with** a rate on a pension and confirm the projection forces a taxed minimum from that age and sweeps the after-tax surplus to spending; set an age with **no** rate and confirm nothing strands (account stays normally drawable); RMD chip on the drawdown page shows "RMD X%/yr from age Y".
-3. **ADR-019 emergency fund + Table tab** — on `/projection` settings, pick an emergency-fund account + months; confirm surplus fills it to target before overflowing, and a shortfall year draws it first (before Waterfall/Proportional). Open the new **Table** tab: 57 rows, retirement row ★-marked, "Download CSV" works.
+To close these, drive a real webview via `/run` (or `/verify`) and click through the three pages. **No code changes are outstanding** — this is confirmation only.
 
-Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once. Reach for the `/run` or `/verify` flow to drive this.
+**Two data-driven findings worth carrying forward (NOT bugs):**
+1. On Mark's live data a **4% RMD rate is nearly non-binding** — he already draws `MS 401(k)` faster than 4%, so a realistic RMD % just shifts timing. The floor only bites at higher rates (verified at 25%: forced draw £118k→£683k, final balance £2.13M→£100k).
+2. Mark's plan has **only 2 surplus years (2026–27)** — he retires in 2027, then it's pure drawdown — so an **emergency fund can never fill to a months-of-spend target** (~£43k for 6mo); it fills with the ~£6.7k of available surplus then is drawn first in 2028. Mechanism is correct; there's just nothing to build from given immediate retirement.
+
+Also note: the **Table tab renders one row per projection year = 39 rows for Mark's plan** (not the "57" in the old session-9 checklist — that figure was from a longer-horizon scenario).
+
+Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once.
 
 ---
 
@@ -46,7 +52,17 @@ The user is a business architect and data modeller — Claude does all coding.
 
 ---
 
-## Changes this session (2026-06-03 — ninth session)
+## Changes in session 10 (2026-06-05)
+
+_No code changes — an **automated smoke test** of the three session-9 drawdown features (items 57–59). Driven against an **isolated copy** of the live store (`cp -R` of `~/Library/Application Support/MyRetirementLife/store` → `/tmp/mrl-smoke/data`); the live data graph was never opened (verified: `CURRENT` mtime unchanged). Tested in one process via FastAPI's `TestClient` (no port, no store-lock contention) plus direct `run_projection()` engine probes. `httpx` was temporarily `pip install`ed into `.venv` for `TestClient`, then **uninstalled** — `requirements.txt` deliberately still has no `httpx` (per item 50). Harness kept at `/tmp/mrl-smoke/harness.py`._
+
+60. **Automated smoke test — session-9 drawdown features. 25/25 checks pass.**
+    - **Drawdown Strategy page (`/drawdown-strategy`)**: GET 200 with Recompute button, vendored `Sortable.min.js`, chart canvas, account list + tax dropdown. **`POST /api/drawdown/preview` is non-persisting** — sent a reordering payload, confirmed `InvestmentAccount_2` `drawdownPriority` unchanged in the store afterward (12→12). **`POST /api/drawdown/save`** returns `ok` + PRG redirect to `?saved=1`, writes the reorder (priority→1), and `?saved=1` shows the saved banner. **Save round-trips tax rates** — confirmed `InvestmentAccount_5`'s 0.20 `effectiveWithdrawalTaxRate` survives a save (0.2→0.2). **Caught a test-only gotcha** (not a product bug): `update_account_drawdown` deletes-then-conditionally-reinserts the five drawdown/tax predicates, so a save payload with `effective_rate: 0` **wipes** the stored rate. The real page pre-fills `effective_withdrawal_tax_rate*100` / `annual_tax_free_withdrawal` / `drawdown_ratio` into the inputs (drawdown_strategy.html:105,111,117) and the JS reads them back, so genuine saves preserve them — but any future change that stops pre-filling would silently zero everyone's tax. Verified via the round-trip assertion above.
+    - **ADR-018 mandatory/RMD withdrawal**: "age **with no rate**" (`MS 401(k)`, age 75) is **still eligible at age 80** (`_is_eligible` no longer blocks on upper age — no stranding) and is **byte-identical to removing the age entirely** (true no-op). "age **with a rate**": at 4% the floor applies (2047 draw ≥ 4% of prior balance); at a binding 25% the forced 2047 draw jumps **£118k→£683k**, is **taxed that year (£26k→£150k)**, early-window (age 75–85) throughput rises **£1.60M→£2.65M**, and the final balance correctly collapses **£2.13M→£100k** (forced decumulation out of a high-growth pot into low-growth cash). **NB on Mark's data a realistic ~4% rate is nearly non-binding** (he already draws faster than 4%) — only shifts timing. Note for future tests: **lifetime** totals (cumulative withdrawals, total tax) can *fall* under an aggressive RMD because draining a compounding pot early reduces lifetime throughput — assert **per-year** invariants (the forced draw + the tax in that year), not lifetime sums.
+    - **ADR-019 emergency fund + Table tab**: parity exact when unset (engine byte-identical to baseline). **Fill-first**: in a surplus year the EF account is topped up ahead of the overflow target (EF bal 2027 £4k→£10.7k with EF on). **Draw-first**: drawn first in the 2028 shortfall, before the waterfall touches other accounts. But **Mark's plan has only 2 surplus years (2026–27)** so the fund never reaches its months-of-spend target — correct behaviour, just no surplus to build from. **Table tab** on `/projection`: has the `switchTab('table')` tab + `downloadCashflowCsv()` button, renders **one row per year (39 for Mark's plan)**, retirement row ★-marked.
+    - **Not covered (genuine browser-only UX, deferred to a `/run` pass — no code outstanding):** the SortableJS drag gesture itself, the Chart.js chart visually rendering with its Total/Per-account toggle, and the CSV file actually downloading. The endpoints, persistence, and data behind all three are verified.
+
+## Changes in session 9 (2026-06-03)
 
 _Three commits, all themed on **retirement drawdown mechanics**. Verified on isolated store copies (the live data graph was untouched during development) — parity, migration, and the new behaviours were each checked via standalone probes; **not yet end-to-end smoke-tested by Mark in the live app**. One outstanding step from these commits — the ontology reload — was completed at the start of the next working session (live store 1.0.4 → 1.0.7, verified)._
 
