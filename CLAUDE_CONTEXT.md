@@ -2,25 +2,28 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-05 (session 10 — automated smoke test of the session-9 drawdown features; 25/25 backend+HTTP checks pass)
+> Last updated: 2026-06-05 (session 11 — ADR-018 follow-on: "spending unfunded" signal; engine + projection UI + drawdown preview)
 
 ---
 
 ## ▶ Next session — resume here (paused 2026-06-05)
 
-Session 10 **automatically smoke-tested all three session-9 drawdown features** (items 57–59) — **25/25 checks pass** at the backend + HTTP layer. The features are confirmed working; what remains is **browser-only UX that can't be driven headlessly** (item 60 below has the full detail):
+Session 11 shipped the **"spending unfunded" signal** (item 61 below) — the engine now flags spending it can't draw from eligible accounts, closing the item-65 false-positive where a plan reported green "On track" on money locked in not-yet-accessible accounts. Committed + code-complete; **verified headlessly (16 checks) but not yet smoke-tested by Mark in the live app.**
 
-- **Drag-to-reorder gesture** on `/drawdown-strategy` (the persistence + reorder endpoint are verified; only the SortableJS drag interaction itself is unconfirmed).
-- **Chart visually rendering** with its Total / Per-account toggle + tax line (the preview JSON that feeds it is verified).
-- **CSV actually downloading** from the Table tab (the `downloadCashflowCsv()` button + table data are verified).
+**Open verification tasks (no code outstanding — confirmation only):**
+1. **Session 11 — "spending unfunded" UI** (item 61): in the live app, build a plan that strands spending (e.g. set a high `drawdownMinAge` on the investment/pension accounts so cash exhausts first) and confirm: the confidence card flips to red **"Spending unfunded from YYYY"** with the locked-balances clause; the `/projection` **Table** tab grows an **Unfunded** column with red-highlighted rows; CSV includes it; a healthy plan shows none of this (no column).
+2. **Session 9 browser-only UX** (item 60), still open: drag-to-reorder gesture on `/drawdown-strategy`, the withdrawals chart rendering with its Total/Per-account toggle, and the Table CSV actually downloading. Drive a real webview via `/run` (or `/verify`).
 
-To close these, drive a real webview via `/run` (or `/verify`) and click through the three pages. **No code changes are outstanding** — this is confirmation only.
+**Backlog (carried forward, pick from these next):**
+- **Monte Carlo doesn't count unfunded** — `run_monte_carlo` `success_rate` still keys off balance>0 only, so MC can call a locked-money plan a success while the deterministic engine flags it unfunded. Natural follow-on to item 61.
+- **Disappearing-★ chart bug** (item 56) — real bug still in 5 charts (`projection.html` ×3, `budget.html`, `dashboard.html`); proven data-point-marker fix in `investment_projection.html` to copy.
+- **Routing-vs-drawdown trap UI guard** (item 54 carry-forward).
 
-**Two data-driven findings worth carrying forward (NOT bugs):**
-1. On Mark's live data a **4% RMD rate is nearly non-binding** — he already draws `MS 401(k)` faster than 4%, so a realistic RMD % just shifts timing. The floor only bites at higher rates (verified at 25%: forced draw £118k→£683k, final balance £2.13M→£100k).
-2. Mark's plan has **only 2 surplus years (2026–27)** — he retires in 2027, then it's pure drawdown — so an **emergency fund can never fill to a months-of-spend target** (~£43k for 6mo); it fills with the ~£6.7k of available surplus then is drawn first in 2028. Mechanism is correct; there's just nothing to build from given immediate retirement.
+**Two data-driven findings (NOT bugs), from session 10:**
+1. On Mark's live data a **4% RMD rate is nearly non-binding** — he already draws `MS 401(k)` faster than 4%; the floor only bites at higher rates.
+2. Mark's plan has **only 2 surplus years (2026–27)** — he retires in 2027 — so an **emergency fund can't fill to a months-of-spend target**; it fills with the ~£6.7k of surplus then is drawn first in 2028. Both correct behaviour.
 
-Also note: the **Table tab renders one row per projection year = 39 rows for Mark's plan** (not the "57" in the old session-9 checklist — that figure was from a longer-horizon scenario).
+Also note: the **Table tab renders one row per projection year = 39 rows for Mark's plan** (the old "57" was a longer-horizon scenario).
 
 Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once.
 
@@ -51,6 +54,19 @@ The user is a business architect and data modeller — Claude does all coding.
 - Deliver full files, never snippets, with the full repo path; user assembles manually one at a time. Minimise re-touching already-installed files.
 
 ---
+
+## Changes in session 11 (2026-06-05)
+
+_One feature, no ontology change. Driven against an isolated copy of the live store (`DATA_DIR=/tmp`); live data verified intact afterward (12 accounts, baseline £2,133,952 — unchanged). Note: the live store's `CURRENT`/`LOG` housekeeping files showed an open at 09:27 with **no data writes** (no new `.sst`, no flushes) — almost certainly Mark's own app, since every harness command set `DATA_DIR=/tmp`; the live data graph was never written by this session._
+
+61. **ADR-018 follow-on — "spending unfunded" signal. Closes the item-65 false positive.** Until now the engine **silently discarded** any spending shortfall that eligible accounts couldn't cover: `_apply_drawdown` caps each draw at the account balance and returns partial coverage, and the leftover was dropped with no record. Worse, `confidence`/`runs_out_year` key only off **total** balance ≤ 0, so the **locked-money case** — spending the plan can't fund while a pension below its access age keeps compounding — reported green **"On track"** on money that could never be spent (the exact failure item 65 warned about).
+    - **Engine** (`src/api/routes/projection.py`): `_simulate_run` Phase A now records `year_unfunded = max(0, shortfall − EF draw − Σ drawdown draws)` (GROSS — "couldn't draw enough to meet spending", separate from the Phase-C tax on what *was* drawn; distinct from `runs_out_year`). New per-year `"unfunded"` field on each year dict; new `total_unfunded` + `first_unfunded_year` on the `_simulate_run` and `run_projection` returns. **Confidence override**: any unfunded year forces `confidence="red"`, label **"Spending unfunded"**, message naming the first year + total, with a "balances remain locked in accounts not yet available to draw" clause when `runs_out_year is None`. This branch takes precedence over the existing green/amber/red runs-out logic.
+    - **Parity preserved**: with no unfunded year, `year_unfunded` is 0 everywhere, `total_unfunded=0`, `first_unfunded_year=None`, the confidence branch is skipped, and balances/draws/tax are untouched → byte-identical. Verified: Mark's real plan still £2,133,952 / "On track", every year dict carries `unfunded=0`.
+    - **UI** (`src/templates/projection.html`): the Table tab gains an **Unfunded** column rendered **only when `projection.first_unfunded_year` is set** (healthy plans are visually unchanged — no extra column); unfunded rows highlighted `bg-error/10`, the unfunded cell `text-error`. The existing confidence card already styles `red` (🔴 + error colours) so the new label/message render with no card change. `downloadCashflowCsv()` reads the rendered cells, so CSV picks up the column automatically — no JS change.
+    - **Drawdown sandbox** (`src/api/routes/drawdown.py`): `POST /api/drawdown/preview` JSON now carries `total_unfunded` + `first_unfunded_year`; the page's confidence card already shows the message via `confidence_message`.
+    - **Consumers checked**: `run_monte_carlo` reads only `result["years"][*]["balance"]`, so the added keys are harmless there — BUT MC's `success_rate` still keys off balance>0 only, so it does **not** yet count unfunded/locked-money runs as failures (logged as the top backlog item).
+    - **Verified (16 checks, all pass)** via direct engine probes + FastAPI `TestClient` on isolated copies: parity on Mark's plan; a constructed locked-money scenario (all investments `drawdownMinAge=90` → cash exhausts ~2031 while ~£11.9M stays locked) correctly flips from the *old* false "On track, £11.9M remaining" to **red "Spending unfunded from 2031 — £3,532,550 unfunded, balances locked"**; `/projection` + `/drawdown-strategy` both render 200; Unfunded column + row highlight present only when relevant; preview JSON carries the new keys. `httpx` was `pip install`ed for `TestClient` then **uninstalled** (`requirements.txt` still has none, per item 50).
+    - **Definition choices / not-done**: unfunded is GROSS (didn't fold in the after-tax gross-up nuance — a separate, smaller concern, noted in the engine comment). Single-cut UI: confidence message + Table column; did not add a separate standalone banner (the red card is prominent enough).
 
 ## Changes in session 10 (2026-06-05)
 
