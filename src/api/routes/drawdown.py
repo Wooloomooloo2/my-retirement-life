@@ -211,6 +211,8 @@ async def drawdown_preview(request: Request):
         "confidence":          projection["confidence"],
         "confidence_label":    projection["confidence_label"],
         "confidence_message":  projection["confidence_message"],
+        "total_unfunded":      projection["total_unfunded"],
+        "first_unfunded_year": projection["first_unfunded_year"],
     }
 
 

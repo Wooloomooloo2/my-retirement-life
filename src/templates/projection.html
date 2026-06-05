@@ -160,6 +160,7 @@
                             <th class="text-right">Spending</th>
                             <th class="text-right">Growth</th>
                             <th class="text-right">Tax</th>
+                            {% if projection.first_unfunded_year %}<th class="text-right text-error">Unfunded</th>{% endif %}
                             <th class="text-right">Total</th>
                             {% for label in labels %}
                             {% set is_cash = projection.account_classes[label] == 'CashAccount' %}
@@ -172,12 +173,13 @@
                     <tbody>
                         {% for y in projection.years %}
                         {% set i = loop.index0 %}
-                        <tr class="{% if y.year == projection.retirement_year %}bg-primary/5 font-medium{% endif %}">
+                        <tr class="{% if y.unfunded > 0 %}bg-error/10{% elif y.year == projection.retirement_year %}bg-primary/5 font-medium{% endif %}">
                             <td>{{ y.year }}{% if y.year == projection.retirement_year %} ★{% endif %}</td>
                             <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.income) }}</td>
                             <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.mandatory + y.discretionary + y.loans) }}</td>
                             <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.interest) }}</td>
                             <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.tax_paid) }}</td>
+                            {% if projection.first_unfunded_year %}<td class="text-right {% if y.unfunded > 0 %}text-error font-medium{% endif %}">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.unfunded) }}</td>{% endif %}
                             <td class="text-right font-medium">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.balance) }}</td>
                             {% for label in labels %}
                             <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(projection.account_balances[label][i]) }}</td>

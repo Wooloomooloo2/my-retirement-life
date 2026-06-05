@@ -1000,6 +1000,8 @@ def _simulate_run(
     projection_years         = []
     cumulative_tax           = 0.0
     cumulative_contributions = 0.0
+    cumulative_unfunded      = 0.0    # ADR-018 follow-on: spending that could not be drawn
+    first_unfunded_year      = None
 
     for yi, year in enumerate(range(current_year, end_year + 1)):
         years_from_start = year - current_year
@@ -1167,6 +1169,7 @@ def _simulate_run(
         total_source_tax        = 0.0
         total_taxable_at_source = 0.0
         net_annual_tax          = 0.0
+        year_unfunded           = 0.0    # spending this year that no eligible account could cover
         year_withdrawals: dict[str, float] = {}
         person_age              = year - birth_year
 
@@ -1224,10 +1227,20 @@ def _simulate_run(
                     year_withdrawals[ef_label] = year_withdrawals.get(ef_label, 0.0) + ef_draw
                     shortfall -= ef_draw
             remaining_eligible = [a for a in eligible if a["label"] != ef_label]
-            for acc_label, gross_draw in _apply_drawdown(
-                    remaining_eligible, shortfall, drawdown_strategy, balances).items():
+            drawdown = _apply_drawdown(
+                remaining_eligible, shortfall, drawdown_strategy, balances)
+            for acc_label, gross_draw in drawdown.items():
                 balances[acc_label] -= gross_draw  # tax applied once in Phase C
                 year_withdrawals[acc_label] = year_withdrawals.get(acc_label, 0.0) + gross_draw
+            # ADR-018 follow-on — record any shortfall that NO eligible account could
+            # cover. `shortfall` is already net of the emergency-fund draw; whatever
+            # the drawdown strategy couldn't supply (every eligible balance exhausted)
+            # is unfunded spending. This is a GROSS measure — it flags "you couldn't
+            # draw enough to meet spending", separate from the source/residence tax
+            # that Phase C then levies on what *was* drawn. It is distinct from
+            # runs_out_year: money locked in not-yet-eligible accounts (e.g. a pension
+            # below its access age) can leave spending unfunded while total balance > 0.
+            year_unfunded = max(0.0, shortfall - sum(drawdown.values()))
         elif pre_net > 0:
             sweep(pre_net)
 
@@ -1289,6 +1302,10 @@ def _simulate_run(
             sweep(forced_net)  # ADR-019: tops up the emergency fund first, then overflows
 
         cumulative_tax += net_annual_tax
+        if year_unfunded > 0:
+            cumulative_unfunded += year_unfunded
+            if first_unfunded_year is None:
+                first_unfunded_year = year
 
         # 7b. Asset appreciation / disposal (Phase 3).
         # Assets appreciate at their own rate each year up to (but not
@@ -1322,6 +1339,7 @@ def _simulate_run(
             "life_event_receipts": round(life_event_receipts, 0),
             "interest":            round(returns_this_year, 0),
             "tax_paid":            round(net_annual_tax, 0),
+            "unfunded":            round(year_unfunded, 0),
             "is_retirement_year":  year == retirement_year,
         })
 
@@ -1334,6 +1352,8 @@ def _simulate_run(
         "asset_balances":              asset_history,
         "total_tax_paid":              round(cumulative_tax, 0),
         "total_contributions":         round(cumulative_contributions, 0),
+        "total_unfunded":              round(cumulative_unfunded, 0),
+        "first_unfunded_year":         first_unfunded_year,
         "opening_balance":             round(total_opening, 0),
         "opening_investment_balance":  round(inv_opening, 0),
         "weighted_rate":               round(weighted_rate_pct, 2),
@@ -1455,8 +1475,23 @@ def run_projection(
         (y["year"] for y in sim["years"] if y["balance"] <= 0), None)
     final_balance = sim["years"][-1]["balance"] if sim["years"] else 0
     end_year      = sim["end_year"]
+    total_unfunded      = sim["total_unfunded"]
+    first_unfunded_year = sim["first_unfunded_year"]
 
-    if runs_out_year is None:
+    # ADR-018 follow-on: an unfunded shortfall is the most serious outcome and
+    # takes precedence over runs_out_year. It catches the silent case runs_out
+    # misses — spending the plan can't cover while money sits locked in accounts
+    # not yet eligible for drawdown, so total balance never reaches zero.
+    if first_unfunded_year is not None:
+        confidence       = "red"
+        confidence_label = "Spending unfunded"
+        locked = " (some balances remain locked in accounts not yet available to draw)" \
+                 if runs_out_year is None else ""
+        confidence_message = (
+            f"From {first_unfunded_year} your eligible accounts can't cover planned "
+            f"spending — £{total_unfunded:,.0f} of spending goes unfunded over the plan{locked}."
+        )
+    elif runs_out_year is None:
         confidence       = "green"
         confidence_label = "On track"
         confidence_message = (
@@ -1490,6 +1525,8 @@ def run_projection(
         "confidence":                 confidence,
         "confidence_label":           confidence_label,
         "confidence_message":         confidence_message,
+        "total_unfunded":             total_unfunded,
+        "first_unfunded_year":        first_unfunded_year,
         "weighted_rate":              sim["weighted_rate"],
         "col_ratio":                  col_ratio,
         "account_balances":           sim["account_balances"],
