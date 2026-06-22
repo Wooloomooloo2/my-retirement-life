@@ -2,20 +2,31 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-05 (session 11 — ADR-018 follow-on: "spending unfunded" signal; engine + projection UI + drawdown preview)
+> Last updated: 2026-06-22 (session 12 — branding + synthetic demo data + marketing screenshots + MRL website brief; no engine change)
 
 ---
 
-## ▶ Next session — resume here (paused 2026-06-05)
+## ▶ Next session — resume here (paused 2026-06-22 — session 12 done on macOS; resuming on Windows)
 
-Session 11 shipped the **"spending unfunded" signal** (item 61 below) — the engine now flags spending it can't draw from eligible accounts, closing the item-65 false-positive where a plan reported green "On track" on money locked in not-yet-accessible accounts. Committed + code-complete; **verified headlessly (16 checks) but not yet smoke-tested by Mark in the live app.**
+Session 12 was a **branding + marketing** session (no engine/ontology change). Shipped on branch **`branding-demo-and-marketing-assets`** (commit `fdb0c07`), pushed to origin, **NOT yet merged to main** — open a PR or fast-forward `main`. Full detail in "Changes in session 12" (item 62). What shipped:
+- **Garelochsoft + MRL branding** in the app: favicon, sidebar-header MRL hex mark, sidebar-footer "Published by Garelochsoft" (logo + wordmark), Settings ▸ About card. New assets in `src/static/img/`.
+- **Synthetic demo dataset** `sample-data/demo-backup-alex-sterling.json` — fictional UK planner, healthy "On track" plan, exercises every page. Restore via **Settings ▸ Import** (wipes the data graph — export real data first).
+- **9 marketing screenshots** in `MRL_screenshots/` (Mark renamed from `screenshots/`).
+- **Website brief** `docs/MRL_WEBSITE_BRIEF.md` — selling MRL on the site + Mac App Store / Microsoft Store / Steam.
 
-**Open verification tasks (no code outstanding — confirmation only):**
-1. **Session 11 — "spending unfunded" UI** (item 61): in the live app, build a plan that strands spending (e.g. set a high `drawdownMinAge` on the investment/pension accounts so cash exhausts first) and confirm: the confidence card flips to red **"Spending unfunded from YYYY"** with the locked-balances clause; the `/projection` **Table** tab grows an **Unfunded** column with red-highlighted rows; CSV includes it; a healthy plan shows none of this (no column).
-2. **Session 9 browser-only UX** (item 60), still open: drag-to-reorder gesture on `/drawdown-strategy`, the withdrawals chart rendering with its Total/Per-account toggle, and the Table CSV actually downloading. Drive a real webview via `/run` (or `/verify`).
+**To resume on Windows** (repo: `C:\Users\hallm\Documents\GitHub\my-retirement-life`):
+1. `git fetch && git checkout branding-demo-and-marketing-assets` (or merge to `main` first).
+2. The **source logo art is NOT in the repo** — it lived in the Mac's `~/Downloads/` (`garelochsoft.png`, `MFL and MRL Icons Full Sized.png`). The *derived* assets in `src/static/img/` ARE committed, so the app renders fine; only re-cropping needs the originals (Pillow was used then uninstalled — never added to requirements.txt).
+3. To re-shoot screenshots on Windows: run against an isolated store + demo data (method in item 62), drive headless **Edge** (`msedge --headless=new --screenshot=... --window-size=1440,H`).
+
+**Optional branding follow-ups offered, not done:** (a) make the logos' faint grey background transparent; (b) generate a proper `.icns`/`.ico` for the macOS Dock / Windows / store listings; (c) a dark-mode screenshot set + a red "spending unfunded" state shot for the website.
+
+**Still-open verification tasks carried from session 11 (no code outstanding):**
+1. **"Spending unfunded" red-state UI** (item 61): still NOT visually confirmed — the session-12 demo is a *healthy* plan, so the red card / Unfunded column never appeared. Build a strained plan (high `drawdownMinAge` so cash exhausts first) and confirm the red **"Spending unfunded from YYYY"** card + the `/projection` Table **Unfunded** column + CSV. (Session 12 did confirm all 9 pages render 200 with realistic data via headless capture.)
+2. **Session 9 browser-only UX** (item 60): drag-to-reorder on `/drawdown-strategy`, the withdrawals chart Total/Per-account toggle, Table CSV download.
 
 **Backlog (carried forward, pick from these next):**
-- **Monte Carlo doesn't count unfunded** — `run_monte_carlo` `success_rate` still keys off balance>0 only, so MC can call a locked-money plan a success while the deterministic engine flags it unfunded. Natural follow-on to item 61.
+- **Monte Carlo doesn't count unfunded** — `run_monte_carlo` `success_rate` keys off balance>0 only, so MC can call a locked-money plan a success while the deterministic engine flags it unfunded. Follow-on to item 61.
 - **Disappearing-★ chart bug** (item 56) — real bug still in 5 charts (`projection.html` ×3, `budget.html`, `dashboard.html`); proven data-point-marker fix in `investment_projection.html` to copy.
 - **Routing-vs-drawdown trap UI guard** (item 54 carry-forward).
 
@@ -25,7 +36,7 @@ Session 11 shipped the **"spending unfunded" signal** (item 61 below) — the en
 
 Also note: the **Table tab renders one row per projection year = 39 rows for Mark's plan** (the old "57" was a longer-horizon scenario).
 
-Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once.
+Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once. (Session 12 sidesteps it by always using an isolated `DATA_DIR` + a non-default port.)
 
 ---
 
@@ -54,6 +65,17 @@ The user is a business architect and data modeller — Claude does all coding.
 - Deliver full files, never snippets, with the full repo path; user assembles manually one at a time. Minimise re-touching already-installed files.
 
 ---
+
+## Changes in session 12 (2026-06-22)
+
+_Branding + marketing session — **no engine/ontology change**. Shipped on branch **`branding-demo-and-marketing-assets`** (commit `fdb0c07`), pushed to origin, **not yet merged to main**. Done on the macOS machine. All app-driving used isolated store copies (`DATA_DIR=/tmp/...` + non-default ports 8765/8766); the live data graph was never opened._
+
+62. **Garelochsoft/MRL branding, synthetic demo dataset, marketing screenshots, and the MRL website brief.**
+    - **Branding** — first image assets in the app (was text + Tabler icon fonts only). The MRL hex mark (gold "R" + sunset + sailboat) was cropped from Mark's combined `MFL and MRL Icons Full Sized.png` (right hexagon; left is MFL) and the Garelochsoft banner downsized; both vendored to **`src/static/img/`** as `mrl-icon.png` (512), `favicon.png` (64), `apple-touch-icon.png` (180), `garelochsoft.png` (480w). Pillow was `pip install`ed for the crop/resize then **uninstalled** (requirements.txt unchanged — same convention as httpx, item 50). Wired into `src/templates/base.html`: favicon + apple-touch `<link>`s; MRL hex in the sidebar header beside the title; sidebar footer gains "Published by" + the Garelochsoft logo **and a readable "Garelochsoft" wordmark** (Mark's request — the logo's own text is small). `src/templates/settings.html`: About card gains the MRL mark at top + a "Published by [Garelochsoft]" row. Verified all 4 assets serve 200 and every page references them (TestClient + headless capture).
+    - **Demo dataset** — `sample-data/demo-backup-alex-sterling.json`, a restore-ready backup (export schema 0.3.1) for fictional persona **Alex Sterling** (UK, b.1972-04-15 → age 54, retires at 62, life-exp 92). Healthy, fundable, "On track" plan exercising every page: 3 cash + 4 investment accounts (S&S ISA, Workplace Pension min-age 57 + £8k PCLS shield, SIPP 20%, GIA gains-only) + 3 physical assets (home appreciating, Tesla depreciating, watch collection — **all "hold", no sale year**); salary + rental + state-pension income; salary-sacrifice employer-match + ISA contributions; 6 categories / 7 budget lines incl. a multi-stage groceries line (£650→£480 at retirement) + a mortgage ending 2031; emergency fund (6mo on savings); 2 life events (kitchen-reno cost, inheritance windfall); waterfall drawdown + personal allowance £12,570 + 20% marginal. **Restore via Settings ▸ Import (wipes the data graph — export real data first).** Verified headlessly: restores clean (all 11 entity types round-trip), projects green "On track", 39-year horizon, zero unfunded. **Assets deliberately have no sale year** — the engine zeroes a sold asset and routes proceeds *only* via the auto-managed `AssetSale` life event, which export/restore does NOT carry the `sourceAsset` link for; "hold" avoids a money-disappears / double-count trap. (For a planned-sale screenshot, set the sale year via the UI so the linked event auto-generates.)
+    - **Screenshots** — `MRL_screenshots/` (Mark renamed from `screenshots/`): 9 clean light-theme 2× captures (dashboard, projection, drawdown-strategy, accounts, income, budget, life-events, profile, settings) from the demo data. Method: bootstrap an isolated store (load ontology + restore demo in a short-lived process so the RocksDB lock releases), launch `uvicorn src.api.app:app` on a non-default port with `DATA_DIR` set, poll `/health`, then drive **headless Microsoft Edge** (`--headless=new --screenshot --window-size=1440,H --force-device-scale-factor=2`) per route. `chromium-cli`/Playwright were NOT available on the Mac; Edge's built-in screenshot mode needs no driver. All pages 200. NB the app uses an `h-screen` shell (content scrolls internally) → window height ≈ page height; oversize gives trailing grey, not a full-page scroll.
+    - **Website brief** — `docs/MRL_WEBSITE_BRIEF.md`, a self-contained 14-section marketing/sales brief modelled on the MFL brief Mark supplied. Positions MRL as the "money's future" sibling to MFL's "money today"; recommends **product-scoped routes** (MRL doesn't hardcode store URLs yet, unlike MFL's flat `/buy` etc.); frames macOS-live / Windows+store-channels-coming honestly; flags the **"not financial/tax advice"** disclaimer as load-bearing; documents MRL's **sunset-orange** signature accent within the shared teal/gold family; points at `src/static/img/` + `MRL_screenshots/`.
+    - **Also this session (environment, not code):** Mark's `python -m venv .venv` over the existing venv only rewrote the activate scripts — deps stayed intact (no reinstall needed); his `.venv/bin/activate` failures were the missing `source` prefix; and a `pip install -r requirements.txt` run with no active venv landed in conda **base** (harmless to the app; base now carries the deps + some version-conflict warnings vs its opencv/transformers). Simplest launch that dodges all of it: `.venv/bin/python main.py`.
 
 ## Changes in session 11 (2026-06-05)
 
