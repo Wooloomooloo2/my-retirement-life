@@ -2,27 +2,26 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-22 (session 12 — branding + synthetic demo data + marketing screenshots + MRL website brief; no engine change)
+> Last updated: 2026-06-23 (session 13 — transparent logo backgrounds; fixed the item-61 "spending unfunded" false positive on Mark's real data, item 63)
 
 ---
 
-## ▶ Next session — resume here (paused 2026-06-22 — session 12 done on macOS; resuming on Windows)
+## ▶ Next session — resume here (paused 2026-06-23 — sessions 12–13 done on macOS, all on `main`; resuming on Windows)
 
-Session 12 was a **branding + marketing** session (no engine/ontology change). Shipped on branch **`branding-demo-and-marketing-assets`** (commit `fdb0c07`), pushed to origin, **NOT yet merged to main** — open a PR or fast-forward `main`. Full detail in "Changes in session 12" (item 62). What shipped:
-- **Garelochsoft + MRL branding** in the app: favicon, sidebar-header MRL hex mark, sidebar-footer "Published by Garelochsoft" (logo + wordmark), Settings ▸ About card. New assets in `src/static/img/`.
-- **Synthetic demo dataset** `sample-data/demo-backup-alex-sterling.json` — fictional UK planner, healthy "On track" plan, exercises every page. Restore via **Settings ▸ Import** (wipes the data graph — export real data first).
-- **9 marketing screenshots** in `MRL_screenshots/` (Mark renamed from `screenshots/`).
-- **Website brief** `docs/MRL_WEBSITE_BRIEF.md` — selling MRL on the site + Mac App Store / Microsoft Store / Steam.
+Everything from sessions 12–13 is **merged to `main` and pushed** (the `branding-demo-and-marketing-assets` branch was merged then deleted). A plain `git pull` on `main` from Windows (`C:\Users\hallm\Documents\GitHub\my-retirement-life`) brings it all down. Recent work:
+- **Session 12 (item 62):** Garelochsoft + MRL branding (favicon, sidebar header hex, footer "Published by Garelochsoft" logo+wordmark, Settings About); synthetic demo dataset `sample-data/demo-backup-alex-sterling.json`; 9 screenshots in `MRL_screenshots/`; website brief `docs/MRL_WEBSITE_BRIEF.md`.
+- **Session 13 — logos:** the logo grey backgrounds were made **transparent** (`src/static/img/*.png`; flood-fill + edge defringe; Pillow used then uninstalled).
+- **Session 13 — item 63 (engine bugfix):** fixed the **"spending unfunded" false positive** — see "Changes in session 13" below. ⚠️ **Mark must restart the running app** to pick up the new code.
 
-**To resume on Windows** (repo: `C:\Users\hallm\Documents\GitHub\my-retirement-life`):
-1. `git fetch && git checkout branding-demo-and-marketing-assets` (or merge to `main` first).
-2. The **source logo art is NOT in the repo** — it lived in the Mac's `~/Downloads/` (`garelochsoft.png`, `MFL and MRL Icons Full Sized.png`). The *derived* assets in `src/static/img/` ARE committed, so the app renders fine; only re-cropping needs the originals (Pillow was used then uninstalled — never added to requirements.txt).
-3. To re-shoot screenshots on Windows: run against an isolated store + demo data (method in item 62), drive headless **Edge** (`msedge --headless=new --screenshot=... --window-size=1440,H`).
+**⚠️ Open data question for Mark (not a code bug):** when verifying item 63, a copy of his **live store on disk projected a £5.22M final balance**, but his on-screen "Mark Hall Real" scenario (with an **unsaved** Save badge) showed **£2.84M**. So his on-disk data graph ≠ what his app is displaying — likely an unsaved/just-loaded scenario in memory. If he wants to keep the £2.84M plan he must **Save** it before restarting (else the app reloads the on-disk version). Worth a closer look at scenario/save state with the app closed.
 
-**Optional branding follow-ups offered, not done:** (a) make the logos' faint grey background transparent; (b) generate a proper `.icns`/`.ico` for the macOS Dock / Windows / store listings; (c) a dark-mode screenshot set + a red "spending unfunded" state shot for the website.
+- The **source logo art is NOT in the repo** — it lived in the Mac's `~/Downloads/` (`garelochsoft.png`, `MFL and MRL Icons Full Sized.png`). The *derived* assets in `src/static/img/` ARE committed, so the app renders fine; only re-cropping needs the originals.
+- Re-shoot screenshots: isolated store + demo data (method in item 62), drive headless **Edge** (`msedge --headless=new --screenshot=... --window-size=1440,H`).
 
-**Still-open verification tasks carried from session 11 (no code outstanding):**
-1. **"Spending unfunded" red-state UI** (item 61): still NOT visually confirmed — the session-12 demo is a *healthy* plan, so the red card / Unfunded column never appeared. Build a strained plan (high `drawdownMinAge` so cash exhausts first) and confirm the red **"Spending unfunded from YYYY"** card + the `/projection` Table **Unfunded** column + CSV. (Session 12 did confirm all 9 pages render 200 with realistic data via headless capture.)
+**Optional branding follow-ups offered, not done:** (a) ~~transparent logo backgrounds~~ **DONE (session 13)**; (b) generate a proper `.icns`/`.ico` for the macOS Dock / Windows / store listings; (c) a dark-mode screenshot set + a red "spending unfunded" state shot for the website.
+
+**Still-open verification tasks (no code outstanding):**
+1. **"Spending unfunded" red-state UI** (item 61) — now **confirmed real AND fixed**: Mark hit the false positive on his own data (red card, "£0 unfunded"); root-caused to a missing tolerance and fixed in item 63. The genuine red state was confirmed via the stranded-plan test (£367k unfunded). Visual confirmation in the live app still nice-to-have but no longer blocking.
 2. **Session 9 browser-only UX** (item 60): drag-to-reorder on `/drawdown-strategy`, the withdrawals chart Total/Per-account toggle, Table CSV download.
 
 **Backlog (carried forward, pick from these next):**
@@ -65,6 +64,18 @@ The user is a business architect and data modeller — Claude does all coding.
 - Deliver full files, never snippets, with the full repo path; user assembles manually one at a time. Minimise re-touching already-installed files.
 
 ---
+
+## Changes in session 13 (2026-06-23)
+
+_Two small things on `main`: a logo polish and an engine bugfix surfaced by Mark opening his real data._
+
+63. **Fixed the item-61 "spending unfunded" false positive (commit on `main`).** Mark opened his real plan and saw a red **"Spending unfunded — from 2037 your eligible accounts can't cover planned spending — £0 of spending goes unfunded"** card, while every metric was healthy (final balance shown, runs-out *Never*, MC 100%). Self-contradictory: red alarm + **£0** unfunded.
+    - **Root cause** (`src/api/routes/projection.py`): `year_unfunded = max(0.0, shortfall − sum(drawdown.values()))` is a difference of floats. When eligible accounts *fully* cover the shortfall, float subtraction leaves a sub-penny residue that is `> 0`, and the trigger was a bare `if year_unfunded > 0:` (line ~1305). That set `first_unfunded_year` and the confidence override (line ~1485) keys off `first_unfunded_year is not None` **regardless of magnitude** → whole projection painted red, while `total_unfunded` rounded to £0. A multi-decade plan whose total rounds to £0 is < £0.50 cumulative = immaterial.
+    - **Fix:** new module constant **`UNFUNDED_EPSILON = 1.0`** (£1, near the other constants ~line 47) and changed the trigger to `if year_unfunded > UNFUNDED_EPSILON:`. Sub-£1 annual residue no longer sets `first_unfunded_year` or accumulates; a genuine shortfall still does. `final_balance`/drawdown/tax untouched (the change only gates the unfunded flag).
+    - **Verified** on isolated stores: (A) the healthy demo plan stays **green**, `first_unfunded_year=None`, £0 — parity; (B) a stranded plan (all investments `drawdownMinAge=90` → cash exhausts) still goes **red** "Spending unfunded" with a **material £367,257** total + first year 2038 — the real warning survives. On a **copy** of Mark's live store the projection returns green/£0 with the fix. (Copy projected £5.22M final vs his on-screen £2.84M — flagged separately as a scenario/save-state question, see the resume block; unrelated to this fix, which doesn't touch balances.)
+    - **NB the fix is in code only — Mark must restart his running app to see the red card clear.**
+
+64. **Transparent logo backgrounds.** The MRL hex + Garelochsoft logos shipped in session 12 with a faint uniform grey field. Made transparent via corner flood-fill + an edge-only defringe pass (peels the ~1px anti-aliased halo without punching interior holes); favicon + apple-touch regenerated from the transparent master. Clean on the light-theme sidebar / white settings card / browser tab; the thin light edge that remains on *dark* backgrounds is the artwork's own sticker outline. Pillow installed for the job then uninstalled (requirements.txt unchanged). `src/static/img/*.png` only — no template change.
 
 ## Changes in session 12 (2026-06-22)
 
