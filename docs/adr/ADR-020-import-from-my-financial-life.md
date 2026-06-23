@@ -202,3 +202,20 @@ refresh; only the imported facts (balances, holdings, valuations) are updated.
 Each phase is independently testable against `mfl_public.mfl` before the UI
 exists, and the engine/projection is never modified — this is purely an
 additive data-in path.
+
+## Implementation notes
+
+**Phase 1 (reader) — done.** `src/mfl_import/reader.py` reads a `.mfl` read-only
+into an `MflSnapshot`, verified against the committed public demo
+(`tests/fixtures/mfl_public.mfl`) by `tools/verify_mfl_reader.py` (29 checks,
+all account balances reconcile to the penny incl. bond ×10 / option ×100 price
+multipliers). Two refinements to the design wording, found against real data:
+
+- The `lot` and `valuation` tables are **empty in practice** — MFL derives
+  positions by replaying the share legs of the ledger, so the reader does the
+  same (net quantity per security × latest price × multiplier) rather than
+  reading `lot`. Property/vehicle worth **prefers a `valuation` row when present
+  but falls back to the recorded balance** (`opening_balance + Σ txn.amount`).
+- "Top-level" budget category means the **child of a kind-root**
+  (Housing, Groceries, …), not the kind-root itself (Expense/Income/Transfer/
+  Interest/Uncategorised are organisational and excluded as line names).
