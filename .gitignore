@@ -42,3 +42,8 @@ htmlcov/
 
 # Claude Code per-user settings (project-level settings.json is committed)
 .claude/settings.local.json
+# SQLite WAL/shared-memory sidecars (transient)
+*.mfl-wal
+*.mfl-shm
+*.db-wal
+*.db-shm
