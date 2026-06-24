@@ -2,22 +2,25 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-24 (session 14 — ADR-020 Import-from-MFL Phases 1–4 + ontology 1.0.8; Projection-vs-net-worth clarification)
+> Last updated: 2026-06-24 (session 14 — ADR-020 Import-from-MFL COMPLETE, Phases 1–5 + ontology 1.0.8; Projection-vs-net-worth clarification)
 
 ---
 
 ## ▶ Next session — resume here (paused 2026-06-24 — sessions 12–14 on macOS, all on `main`; resuming on Windows)
 
-**NEXT TASK: ADR-020 Phase 5** — the import-from-MFL refresh **review diff** (the final phase). Phases 1–4 are built, verified, and on `main`; the wizard works end-to-end. `git pull` on `main` from Windows (`C:\Users\hallm\Documents\GitHub\my-retirement-life`) brings it all down.
+**ADR-020 Import-from-MFL is COMPLETE (Phases 1–5)** — built, verified, on `main`; the wizard works end-to-end incl. the re-import diff. `git pull` on `main` from Windows (`C:\Users\hallm\Documents\GitHub\my-retirement-life`) brings it all down. This was "the final large feature before distributing the apps together."
 
-**⚠️ Before the import wizard runs on the LIVE store:** run `python tools\reload_ontology.py` (app closed) — the ontology is now **1.0.8** (item 66 added import-provenance properties) and the live store is still on 1.0.7.
+**NEXT TASK — smoke-test the import on live/real data:**
+1. **⚠️ Run `python tools\reload_ontology.py` (app closed)** — ontology is now **1.0.8** (item 66 import-provenance props); the live store is still 1.0.7.
+2. In the live app, **Import from MFL** → pick a real `.mfl` (e.g. Mark's own MFL data, or `tests/fixtures/mfl_public.mfl`), walk preview → apply, then complete the retirement layer (profile/income/drawdown). Re-import the same file to see the diff (Update/Keep) and confirm no duplicates.
+   (All import verification so far was headless/TestClient on isolated stores — not yet driven in the live desktop app.)
 
 **ADR-020 — Import from My Financial Life (item 66, status Accepted).** New package `src/mfl_import/`, verified against the committed public demo `tests/fixtures/mfl_public.mfl` ("Jordan Avery"):
 - **Phase 1** `reader.py` — reads an MFL `.mfl` SQLite file **read-only** → `MflSnapshot`. `tools/verify_mfl_reader.py` (29/29).
 - **Phase 2** `mapping.py` — `MflSnapshot` → `ImportPlan` (proposed MRL entities + provenance). `tools/verify_mfl_mapping.py` (29/29).
 - **Phase 3** `apply.py` + ontology 1.0.8 — create path + **idempotent refresh** (matches on `mrl:importSourceRef`, updates only the balance, preserves user-entered fields). `tools/verify_mfl_apply.py` (17/17).
 - **Phase 4** `src/api/routes/import_mfl.py` + `import_start/review/done.html` (sidebar "Import from MFL") — file pick → preview/edit → apply → next-steps. Verified via TestClient (13/13).
-- **Phase 5 TO BUILD:** on re-import, show a **create-vs-update diff** in the preview ("will update X, create Y, keep Z") before applying. The refresh logic already works in `apply.py`; Phase 5 only surfaces it in the wizard. (`apply_plan` returns created/refreshed/budget_skipped counts to build on; `_find_imported()` gives the existing provenance map.)
+- **Phase 5** `apply.compute_diff()` + review-template diff (commit `dba04a3`): on re-import, a banner ("N new, M to update, K kept") + per-row Status badge (New/Update/Keep) + an **orphans** section (imported-before but no longer in the file — left untouched). `tools/verify_mfl_diff.py` (13/13). (Jinja gotcha fixed: `diff.counts.update` hit `dict.update`; use `['update']`.)
 
 **MFL facts** (from inspecting `/Users/markhall/Documents/GitHub/my-financial-life`): transaction-ledger **SQLite** app, **no JSON export**; balances **derived** (`opening_balance + Σ txn.amount` in pence; investments = cash leg + Σ net_qty×price×price_multiplier — `lot`/`valuation` tables empty in practice, positions replayed from txns); MFL `account.family` = cash/credit/investment/loan/property/vehicle; budget categories roll up to child-of-kind-root (Housing, Groceries…). Mapping: cash/investment→accounts, property/vehicle→physical assets, loan→`BudgetLineType_Loan` line, credit→skipped; investment growth rates flagged for the user (MFL has no forecasts).
 
@@ -75,8 +78,8 @@ _The MFL import (ADR-020) Phases 1–4 plus an on-screen clarification. All on `
     - **Phase 2 — `mapping.py`** (commit `0eaf42a`): `MflSnapshot` → `ImportPlan`. cash/investment→accounts (typed via name heuristics; cash TaxFree, investments get a suggested tax treatment but growth/dividend **left unset + flagged** `needs_rate`); property/vehicle→physical assets; **loan→`BudgetLineType_Loan`** line with from/to from start+term; **credit cards + budget income skipped**; non-base-currency flagged `needs_fx`. Every entity carries a provenance `source_ref`. `tools/verify_mfl_mapping.py` 29/29.
     - **Phase 3 — `apply.py` + ontology 1.0.8** (commit `bc36c8d`): new `mrl:importSourceApp`/`importSourceRef`/`importedAt`. Reuses MRL's `save_*` functions so imported rows look hand-entered. **Create** (new) vs **refresh** (matched on `importSourceRef`): refresh **surgically updates only the balance/date**, preserving user-entered growth/tax/drawdown; budget lines are create-only on refresh. `tools/verify_mfl_apply.py` 17/17 — re-import duplicates nothing, refreshes balances, preserves a user-set growth rate.
     - **Phase 4 — wizard UI** (commit `d90719a`): `src/api/routes/import_mfl.py` (`/import`, `/import/preview`, `/import/apply`) + `import_start/review/done.html` + sidebar "Import from MFL". Upload `.mfl` → staged read-only under `data_dir` → editable review (per-row include, investment growth/dividend, FX confirm with a suggested rate, loan/budget amounts + from/to) → apply (overlays edits, cleans up staged file) → next-steps checklist. Verified end-to-end via TestClient (13/13). Form arrays align by row index; includes via checkbox-value set.
-    - **Phase 5 (NOT built):** show a create-vs-update **diff** in the preview on re-import. Refresh logic already works; this is UI only.
-    - **Live-store action:** ontology 1.0.7 → 1.0.8 needs `tools/reload_ontology.py` once (writes don't depend on the declarations — pyoxigraph is schemaless).
+    - **Phase 5** `apply.compute_diff()` + review diff (commit `dba04a3`): re-import banner + per-row New/Update/Keep badge + orphans section (imported-before, no longer in the file — left untouched). `tools/verify_mfl_diff.py` (13/13). **ADR-020 complete.**
+    - **Live-store action:** ontology 1.0.7 → 1.0.8 needs `tools/reload_ontology.py` once (writes don't depend on the declarations — pyoxigraph is schemaless), then smoke-test the wizard in the live app.
 
 65. **Projection vs Dashboard net-worth — on-screen clarification (commit `423ffff`).** The two screens showed similar-looking figures with no statement of scope. Added mirrored captions: `projection.html` — these are **spendable savings** (cash + investments) that fund retirement, property/assets not counted, see Dashboard net worth; `dashboard.html` — **net worth** includes property/physical assets (**estate value**), Projection tracks spendable savings only (so its figures are lower). On the demo the ~£1.6M gap = the physical assets.
 
