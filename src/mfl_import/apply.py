@@ -143,7 +143,9 @@ def apply_plan(plan: ImportPlan, imported_at: Optional[str] = None) -> ApplyResu
             n = next_n(get_all_investment_accounts())
             save_investment_account(
                 n=n, name=a.name, balance=float(a.balance), balance_date=when,
-                currency_local=a.currency, growth_rate=0.0, dividend_rate=0.0,
+                currency_local=a.currency,
+                growth_rate=float(a.growth_rate) if a.growth_rate is not None else 0.0,
+                dividend_rate=float(a.dividend_rate) if a.dividend_rate is not None else 0.0,
                 reinvest_dividends=True, jurisdiction_local=jurisdiction,
                 account_type=a.account_type, exchange_rate=float(a.exchange_rate),
                 exchange_rate_date=when, notes="Imported from My Financial Life",

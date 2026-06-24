@@ -1,7 +1,7 @@
 # ADR-020: Import from My Financial Life (MFL)
 
 **Date:** 2026-06-23
-**Status:** Proposed
+**Status:** Accepted
 **Deciders:** Project owner
 
 ---

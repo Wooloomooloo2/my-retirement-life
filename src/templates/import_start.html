@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Import from My Financial Life — {{ app_name }}{% endblock %}
+{% block page_title %}Import from My Financial Life{% endblock %}
+{% block page_subtitle %}Seed your plan from your MFL data{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-error mb-5">
+    <i class="ti ti-alert-circle"></i>
+    <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<div class="max-w-2xl">
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-6">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-file-import text-base-content/40" aria-hidden="true"></i>
+                Choose your My Financial Life file
+            </h3>
+
+            <p class="text-sm text-base-content/70 mb-4">
+                My Retirement Life can read your <strong>My Financial Life</strong> data
+                file (<code>.mfl</code>) to set up your accounts, investments, property and
+                budget — so you don't have to type them in again. Your file is read
+                <strong>only</strong>; nothing is written back to it, and nothing leaves your device.
+            </p>
+
+            <div class="rounded-lg border border-base-200 bg-base-200/40 p-4 mb-5 text-sm text-base-content/70">
+                <p class="font-medium text-base-content mb-1">What comes across</p>
+                <ul class="list-disc list-inside space-y-0.5">
+                    <li>Cash &amp; investment accounts, with current balances</li>
+                    <li>Property &amp; vehicles (as physical assets)</li>
+                    <li>Loans &rarr; repayment budget lines; your budget categories</li>
+                </ul>
+                <p class="font-medium text-base-content mt-3 mb-1">What you'll still add in MRL</p>
+                <p>Your retirement profile, income, drawdown order &amp; tax, and life
+                   events — the forward-looking parts MFL doesn't hold. You'll also set a
+                   growth rate for each investment (MFL tracks past returns, not forecasts).</p>
+            </div>
+
+            <form method="post" action="/import/preview" enctype="multipart/form-data">
+                <div class="form-control mb-4">
+                    <input type="file" name="mfl_file" accept=".mfl,.db,.sqlite" required
+                           class="file-input file-input-bordered file-input-sm w-full" />
+                    <label class="label py-1">
+                        <span class="label-text-alt text-base-content/40">
+                            Select a <code>.mfl</code> file (your MFL backup or data file)
+                        </span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm gap-2">
+                    <i class="ti ti-arrow-right" aria-hidden="true"></i>
+                    Read file &amp; preview
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

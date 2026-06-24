@@ -10,7 +10,7 @@ from src.config import settings
 from src.api.routes import (
     profile, accounts, budget, life_events,
     projection, income, settings_route, investments,
-    drawdown,
+    drawdown, import_mfl,
 )
 from src.api.routes import scenarios as scenarios_routes
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -68,6 +68,7 @@ app.include_router(projection.router)
 app.include_router(investments.router)
 app.include_router(drawdown.router)
 app.include_router(scenarios_routes.router)
+app.include_router(import_mfl.router)
 
 # ---------------------------------------------------------------------------
 # Jinja2 template globals
