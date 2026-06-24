@@ -6,6 +6,25 @@
 
 {% block content %}
 
+{% macro status_badge(st) -%}
+  {% if st == 'new' %}<span class="badge badge-success badge-sm">New</span>
+  {% elif st == 'update' %}<span class="badge badge-info badge-sm">Update</span>
+  {% elif st == 'keep' %}<span class="badge badge-ghost badge-sm">Keep</span>{% endif %}
+{%- endmacro %}
+
+{% if diff and diff.is_reimport %}
+<div class="alert alert-info py-2 text-sm mb-5">
+    <i class="ti ti-refresh"></i>
+    <span>
+        <strong>Re-import</strong> — matching against what you imported before:
+        <strong>{{ diff.counts['new'] }}</strong> new,
+        <strong>{{ diff.counts['update'] }}</strong> to update (balances refreshed, your edits kept),
+        <strong>{{ diff.counts['keep'] }}</strong> budget line(s) kept as-is{% if diff.counts['orphans'] %},
+        <strong>{{ diff.counts['orphans'] }}</strong> no longer in MFL (left untouched){% endif %}.
+    </span>
+</div>
+{% endif %}
+
 <form method="post" action="/import/apply">
 
 <!-- Summary -->
@@ -45,13 +64,14 @@
         </h3>
         <table class="table table-sm">
             <thead><tr class="text-xs text-base-content/50">
-                <th>Import</th><th>Name</th><th>Type</th><th class="text-right">Balance</th>
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Balance</th>
                 <th>Growth %</th><th>Dividend %</th><th>FX → base</th>
             </tr></thead>
             <tbody>
             {% for a in plan.accounts %}
                 <tr class="{% if a.needs_rate %}bg-warning/5{% endif %}">
                     <td><input type="checkbox" name="acct_include" value="{{ a.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(a.source_ref)) }}</td>
                     <td class="font-medium">{{ a.name }}</td>
                     <td><span class="badge badge-ghost badge-sm">{{ a.account_type.split('_')[-1] }}</span></td>
                     <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
@@ -85,12 +105,13 @@
         </h3>
         <table class="table table-sm">
             <thead><tr class="text-xs text-base-content/50">
-                <th>Import</th><th>Name</th><th>Type</th><th class="text-right">Value</th><th>Appreciation %/yr</th>
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Value</th><th>Appreciation %/yr</th>
             </tr></thead>
             <tbody>
             {% for a in plan.assets %}
                 <tr>
                     <td><input type="checkbox" name="asset_include" value="{{ a.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(a.source_ref)) }}</td>
                     <td class="font-medium">{{ a.name }}</td>
                     <td><span class="badge badge-ghost badge-sm">{{ a.subclass.replace('Asset','') }}</span></td>
                     <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
@@ -113,12 +134,13 @@
         <p class="text-xs text-base-content/40 mb-2">Amounts are monthly. Leave “To” blank for an ongoing line; you can add stages later on the Budget page.</p>
         <table class="table table-sm">
             <thead><tr class="text-xs text-base-content/50">
-                <th>Import</th><th>Name</th><th>Type</th><th>Monthly</th><th>From</th><th>To</th>
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th>Monthly</th><th>From</th><th>To</th>
             </tr></thead>
             <tbody>
             {% for b in plan.budget_lines %}
                 <tr class="{% if b.needs_amount %}bg-warning/5{% endif %}">
                     <td><input type="checkbox" name="bl_include" value="{{ b.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(b.source_ref)) }}</td>
                     <td class="font-medium">{{ b.name }}{% if b.category_name %} <span class="text-xs text-base-content/40">· {{ b.category_name }}</span>{% endif %}</td>
                     <td><span class="badge badge-ghost badge-sm">{{ b.line_type.split('_')[-1] }}</span></td>
                     <td><input type="number" step="0.01" name="bl_amount" value="{{ "%.2f"|format(b.monthly_amount) }}" class="input input-bordered input-xs w-24 {% if b.needs_amount %}input-warning{% endif %}" /></td>
@@ -142,6 +164,26 @@
         <ul class="space-y-1 text-sm text-base-content/60">
         {% for s in plan.skipped %}
             <li><span class="font-medium text-base-content/80">{{ s.name }}</span> — {{ s.reason }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+{% if diff and diff.orphans %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-2 border-b border-base-200">
+            <i class="ti ti-unlink text-base-content/40"></i> No longer in your MFL file
+        </h3>
+        <p class="text-xs text-base-content/50 mb-2">
+            These were imported previously but aren't in this file. They're
+            <strong>left untouched</strong> in MRL — remove them yourself if you no longer want them.
+        </p>
+        <ul class="space-y-1 text-sm text-base-content/60">
+        {% for o in diff.orphans %}
+            <li><span class="font-medium text-base-content/80">{{ o.name }}</span>
+                <span class="text-xs text-base-content/40">({{ o.local }})</span></li>
         {% endfor %}
         </ul>
     </div>

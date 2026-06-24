@@ -86,6 +86,45 @@ def _write_provenance(local: str, source_app: str, source_ref: str, when: str) -
     """)
 
 
+def _entity_name(local: str) -> str:
+    iri = og.NamedNode(f"{MRL}{local}")
+    for prop in ("accountName", "budgetLineName"):
+        for q in store.store.quads_for_pattern(
+                iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH):
+            return q.object.value
+    return local
+
+
+def compute_diff(plan: ImportPlan) -> dict:
+    """Compare an ImportPlan against what's already been imported (ADR-020 Phase 5).
+
+    Returns per-source_ref status ('new' | 'update' | 'keep') plus the
+    'orphans' — entities a previous import created that are no longer in this
+    MFL file (left untouched, never auto-deleted). Drives the wizard's
+    create-vs-update preview diff. On a first import everything is 'new'.
+    """
+    existing = _find_imported()
+    status: dict[str, str] = {}
+    refs: set[str] = set()
+    for a in plan.accounts:
+        refs.add(a.source_ref)
+        status[a.source_ref] = "update" if a.source_ref in existing else "new"
+    for a in plan.assets:
+        refs.add(a.source_ref)
+        status[a.source_ref] = "update" if a.source_ref in existing else "new"
+    for b in plan.budget_lines:
+        refs.add(b.source_ref)
+        status[b.source_ref] = "keep" if b.source_ref in existing else "new"
+    orphans = [{"name": _entity_name(local), "local": local}
+               for ref, local in sorted(existing.items()) if ref not in refs]
+    counts = {"new": 0, "update": 0, "keep": 0}
+    for s in status.values():
+        counts[s] += 1
+    counts["orphans"] = len(orphans)
+    return {"status": status, "orphans": orphans, "counts": counts,
+            "is_reimport": bool(existing)}
+
+
 def _refresh_balance(local: str, balance: float, balance_date: str) -> None:
     """Surgically update only the balance/date triples — preserves user edits."""
     iri = f"{MRL}{local}"

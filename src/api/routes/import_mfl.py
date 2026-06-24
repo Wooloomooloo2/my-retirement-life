@@ -24,7 +24,7 @@ from src.api.templates import templates
 from src.config import settings as app_settings
 from src.mfl_import.reader import read_snapshot, MflReadError
 from src.mfl_import.mapping import build_plan
-from src.mfl_import.apply import apply_plan
+from src.mfl_import.apply import apply_plan, compute_diff
 
 router = APIRouter()
 
@@ -77,7 +77,7 @@ async def import_preview(request: Request, mfl_file: UploadFile = File(...)):
 
     return templates.TemplateResponse(
         request=request, name="import_review.html",
-        context=_ctx(plan=plan, summary=plan.summary(),
+        context=_ctx(plan=plan, summary=plan.summary(), diff=compute_diff(plan),
                      filename=mfl_file.filename or "your MFL file"))
 
 
