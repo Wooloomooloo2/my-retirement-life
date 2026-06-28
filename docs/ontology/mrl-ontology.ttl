@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.7" .
+    owl:versionInfo "1.0.8" .
 
 
 # ===========================================================================
@@ -1945,3 +1945,31 @@ mrl:Jurisdiction_CN
 
 mrl:Jurisdiction_AE
     mrl:standardPersonalAllowance  "0.0"^^xsd:decimal .        # AED — UAE has no personal income tax; allowance is moot (set 0)
+
+
+# ---------------------------------------------------------------------------
+# Import provenance (ADR-020, ontology 1.0.8)
+# ---------------------------------------------------------------------------
+# Stamped on any entity (Account subclass, PhysicalAsset, BudgetLine) created by
+# the Import-from-My-Financial-Life wizard, so a later re-import can match the
+# entity it previously created and UPDATE it (refresh the balance) rather than
+# duplicating it. User-entered fields are preserved across a refresh; only the
+# imported facts are updated.
+
+mrl:importSourceApp a owl:DatatypeProperty ;
+    rdfs:label          "import source app"@en ;
+    rdfs:comment        "The application this entity was imported from, e.g. \"MFL\" (My Financial Life). Absent on hand-entered entities."@en ;
+    rdfs:range          xsd:string ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:importSourceRef a owl:DatatypeProperty ;
+    rdfs:label          "import source reference"@en ;
+    rdfs:comment        "Stable identifier of the source record in the originating app (e.g. the MFL account IRI, or 'budget:<category>'). The match key for an idempotent re-import."@en ;
+    rdfs:range          xsd:string ;
+    rdfs:isDefinedBy    mrl: .
+
+mrl:importedAt a owl:DatatypeProperty ;
+    rdfs:label          "imported at"@en ;
+    rdfs:comment        "Date this entity was last created or refreshed by an import."@en ;
+    rdfs:range          xsd:date ;
+    rdfs:isDefinedBy    mrl: .

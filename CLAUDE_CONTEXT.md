@@ -2,30 +2,44 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-05 (session 11 — ADR-018 follow-on: "spending unfunded" signal; engine + projection UI + drawdown preview)
+> Last updated: 2026-06-24 (session 14 — ADR-020 Import-from-MFL COMPLETE, Phases 1–5 + ontology 1.0.8; Projection-vs-net-worth clarification)
 
 ---
 
-## ▶ Next session — resume here (paused 2026-06-05)
+## ▶ Next session — resume here (paused 2026-06-24 — sessions 12–14 on macOS, all on `main`; resuming on Windows)
 
-Session 11 shipped the **"spending unfunded" signal** (item 61 below) — the engine now flags spending it can't draw from eligible accounts, closing the item-65 false-positive where a plan reported green "On track" on money locked in not-yet-accessible accounts. Committed + code-complete; **verified headlessly (16 checks) but not yet smoke-tested by Mark in the live app.**
+**ADR-020 Import-from-MFL is COMPLETE (Phases 1–5)** — built, verified, on `main`; the wizard works end-to-end incl. the re-import diff. `git pull` on `main` from Windows (`C:\Users\hallm\Documents\GitHub\my-retirement-life`) brings it all down. This was "the final large feature before distributing the apps together."
 
-**Open verification tasks (no code outstanding — confirmation only):**
-1. **Session 11 — "spending unfunded" UI** (item 61): in the live app, build a plan that strands spending (e.g. set a high `drawdownMinAge` on the investment/pension accounts so cash exhausts first) and confirm: the confidence card flips to red **"Spending unfunded from YYYY"** with the locked-balances clause; the `/projection` **Table** tab grows an **Unfunded** column with red-highlighted rows; CSV includes it; a healthy plan shows none of this (no column).
-2. **Session 9 browser-only UX** (item 60), still open: drag-to-reorder gesture on `/drawdown-strategy`, the withdrawals chart rendering with its Total/Per-account toggle, and the Table CSV actually downloading. Drive a real webview via `/run` (or `/verify`).
+**NEXT TASK — smoke-test the import on live/real data:**
+1. **⚠️ Run `python tools\reload_ontology.py` (app closed)** — ontology is now **1.0.8** (item 66 import-provenance props); the live store is still 1.0.7.
+2. In the live app, **Import from MFL** → pick a real `.mfl` (e.g. Mark's own MFL data, or `tests/fixtures/mfl_public.mfl`), walk preview → apply, then complete the retirement layer (profile/income/drawdown). Re-import the same file to see the diff (Update/Keep) and confirm no duplicates.
+   (All import verification so far was headless/TestClient on isolated stores — not yet driven in the live desktop app.)
 
-**Backlog (carried forward, pick from these next):**
-- **Monte Carlo doesn't count unfunded** — `run_monte_carlo` `success_rate` still keys off balance>0 only, so MC can call a locked-money plan a success while the deterministic engine flags it unfunded. Natural follow-on to item 61.
-- **Disappearing-★ chart bug** (item 56) — real bug still in 5 charts (`projection.html` ×3, `budget.html`, `dashboard.html`); proven data-point-marker fix in `investment_projection.html` to copy.
-- **Routing-vs-drawdown trap UI guard** (item 54 carry-forward).
+**ADR-020 — Import from My Financial Life (item 66, status Accepted).** New package `src/mfl_import/`, verified against the committed public demo `tests/fixtures/mfl_public.mfl` ("Jordan Avery"):
+- **Phase 1** `reader.py` — reads an MFL `.mfl` SQLite file **read-only** → `MflSnapshot`. `tools/verify_mfl_reader.py` (29/29).
+- **Phase 2** `mapping.py` — `MflSnapshot` → `ImportPlan` (proposed MRL entities + provenance). `tools/verify_mfl_mapping.py` (29/29).
+- **Phase 3** `apply.py` + ontology 1.0.8 — create path + **idempotent refresh** (matches on `mrl:importSourceRef`, updates only the balance, preserves user-entered fields). `tools/verify_mfl_apply.py` (17/17).
+- **Phase 4** `src/api/routes/import_mfl.py` + `import_start/review/done.html` (sidebar "Import from MFL") — file pick → preview/edit → apply → next-steps. Verified via TestClient (13/13).
+- **Phase 5** `apply.compute_diff()` + review-template diff (commit `dba04a3`): on re-import, a banner ("N new, M to update, K kept") + per-row Status badge (New/Update/Keep) + an **orphans** section (imported-before but no longer in the file — left untouched). `tools/verify_mfl_diff.py` (13/13). (Jinja gotcha fixed: `diff.counts.update` hit `dict.update`; use `['update']`.)
 
-**Two data-driven findings (NOT bugs), from session 10:**
-1. On Mark's live data a **4% RMD rate is nearly non-binding** — he already draws `MS 401(k)` faster than 4%; the floor only bites at higher rates.
-2. Mark's plan has **only 2 surplus years (2026–27)** — he retires in 2027 — so an **emergency fund can't fill to a months-of-spend target**; it fills with the ~£6.7k of surplus then is drawn first in 2028. Both correct behaviour.
+**MFL facts** (from inspecting `/Users/markhall/Documents/GitHub/my-financial-life`): transaction-ledger **SQLite** app, **no JSON export**; balances **derived** (`opening_balance + Σ txn.amount` in pence; investments = cash leg + Σ net_qty×price×price_multiplier — `lot`/`valuation` tables empty in practice, positions replayed from txns); MFL `account.family` = cash/credit/investment/loan/property/vehicle; budget categories roll up to child-of-kind-root (Housing, Groceries…). Mapping: cash/investment→accounts, property/vehicle→physical assets, loan→`BudgetLineType_Loan` line, credit→skipped; investment growth rates flagged for the user (MFL has no forecasts).
 
-Also note: the **Table tab renders one row per projection year = 39 rows for Mark's plan** (the old "57" was a longer-horizon scenario).
+**Also landed this stretch, on `main`:**
+- **Item 65** — Projection vs Dashboard **net-worth clarification**: mirrored on-screen captions (Projection = spendable savings cash+investments; Dashboard net worth = incl. property/assets = estate value).
+- **Sessions 12–13:** branding (Garelochsoft + MRL hex, transparent logos), demo data `sample-data/demo-backup-alex-sterling.json`, 9 screenshots `MRL_screenshots/`, website brief `docs/MRL_WEBSITE_BRIEF.md`, and the **"spending unfunded" false-positive fix (item 63)** — ⚠️ Mark must **restart the running app** to pick it up.
 
-Watch the store-lock contention noted in session 6 (line ~130) if a dev server and the packaged app run at once.
+**⚠️ Open data question for Mark (not a code bug):** verifying item 63, a copy of his **live store projected £5.22M** but his on-screen "Mark Hall Real" scenario (unsaved) showed **£2.84M** — on-disk data ≠ in-app state, likely an unsaved/just-loaded scenario. **Save** before restarting to keep the £2.84M plan. Worth a look at scenario/save state with the app closed.
+
+**Backlog / still-open (carried):**
+- **Session 9 browser-only UX** (item 60): drag-to-reorder on `/drawdown-strategy`, withdrawals chart Total/Per-account toggle, Table CSV download.
+- **Monte Carlo doesn't count unfunded** — `run_monte_carlo` `success_rate` keys off balance>0 only (follow-on to item 61).
+- **Disappearing-★ chart bug** (item 56) — still in 5 charts (`projection.html` ×3, `budget.html`, `dashboard.html`); proven fix in `investment_projection.html` to copy.
+- **Routing-vs-drawdown trap UI guard** (item 54).
+- Optional branding: `.icns`/`.ico` for Dock/Windows/store; dark-mode + red "spending unfunded" state screenshots for the website.
+
+**Data findings (NOT bugs, session 10):** a 4% RMD rate is nearly non-binding on Mark's data; his plan has only 2 surplus years (2026–27) so the emergency fund never reaches its months-of-spend target. The Table tab renders one row per projection year (39 for Mark's plan).
+
+Watch store-lock contention (session 6) if a dev server + packaged app run at once — sidestep with an isolated `DATA_DIR` + non-default port (the pattern used for all import verification this session).
 
 ---
 
@@ -39,7 +53,7 @@ The user is a business architect and data modeller — Claude does all coding.
 - **Platform:** Windows (VS Code), repo at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, `.venv` present. Also runs on macOS (Apple Silicon) at `/Users/markhall/Projects/my-retirement-life` — session 6 added macOS packaging + native window support. Linux deferred.
 - **Windows venv setup:** `main.py` opens the app in a native pywebview window, so a fresh venv on Windows must install pywebview + its Win32 backend before `python main.py` will start (otherwise `ModuleNotFoundError: No module named 'webview'`). `requirements.txt` already lists `pywebview>=5.4` and `pythonnet>=3.0; sys_platform == "win32"` — just run `.venv\Scripts\python.exe -m pip install -r requirements.txt` (the `pyobjc-*` lines are macOS-only via markers and are skipped). Currently installed here: pywebview 6.2.1 + pythonnet 3.1.0. WebView2 runtime ships preinstalled on Win10/11, so no separate runtime install is needed. (Session 6 only set this up on the macOS box; first encountered + fixed on this Windows machine 2026-06-07.)
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.7** (ADR-019 — emergency fund on `mrl:ProjectionSettings`; 1.0.6 added the ADR-018 mandatory-withdrawal pair on `mrl:Account`). 17 `Currency` individuals total. Live store reloaded to 1.0.7 on 2026-06-03 (was lagging at 1.0.4 — caught at the start of session 9; `tools/reload_ontology.py` run, verified).
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.8** (ADR-020 — `mrl:importSourceApp`/`importSourceRef`/`importedAt` import-provenance props; 1.0.7 added the ADR-019 emergency fund on `mrl:ProjectionSettings`; 1.0.6 the ADR-018 mandatory-withdrawal pair on `mrl:Account`). 17 `Currency` individuals total. **⚠️ The live store is still on 1.0.7 — run `tools/reload_ontology.py` (app closed) before the import wizard touches live data.** (Live store last reloaded to 1.0.7 on 2026-06-03.)
 
 ---
 
@@ -55,6 +69,43 @@ The user is a business architect and data modeller — Claude does all coding.
 - Deliver full files, never snippets, with the full repo path; user assembles manually one at a time. Minimise re-touching already-installed files.
 
 ---
+
+## Changes in session 14 (2026-06-24)
+
+_The MFL import (ADR-020) Phases 1–4 plus an on-screen clarification. All on `main`. Ontology bumped 1.0.7 → 1.0.8. Engine/projection untouched; all import verification ran against isolated stores + the committed public demo._
+
+66. **ADR-020 — Import from My Financial Life: Phases 1–4 (Accepted).** Lets a user seed MRL's "today" balance sheet from their MFL data, then add the retirement layer; designed for a yearly **idempotent refresh**. Investigation of `/Users/markhall/Documents/GitHub/my-financial-life` found MFL is a **transaction-ledger SQLite app with no JSON export**, so MRL reads the `.mfl` SQLite **directly, read-only** via stdlib `sqlite3` (no new dependency, no MFL change). New package `src/mfl_import/`:
+    - **Phase 1 — `reader.py`** (commit `7c3922f`): `.mfl` → `MflSnapshot`. Balances mirror MFL's own maths: cash/credit/property/vehicle/loan = `opening_balance + Σ txn.amount` (integer **pence**); investment = cash leg + `Σ net_qty × latest_price × price_multiplier` (replays the share legs — the `lot`/`valuation` tables are **empty** in practice). Budget categories roll up to the **child-of-kind-root** level (Housing, Groceries — not the Expense/Income roots). Schema-guarded; clean `MflReadError`. `tools/verify_mfl_reader.py` 29/29 — all balances reconcile to the penny incl. bond ×10 / option ×100 multipliers. Public demo committed at `tests/fixtures/mfl_public.mfl` ("Jordan Avery").
+    - **Phase 2 — `mapping.py`** (commit `0eaf42a`): `MflSnapshot` → `ImportPlan`. cash/investment→accounts (typed via name heuristics; cash TaxFree, investments get a suggested tax treatment but growth/dividend **left unset + flagged** `needs_rate`); property/vehicle→physical assets; **loan→`BudgetLineType_Loan`** line with from/to from start+term; **credit cards + budget income skipped**; non-base-currency flagged `needs_fx`. Every entity carries a provenance `source_ref`. `tools/verify_mfl_mapping.py` 29/29.
+    - **Phase 3 — `apply.py` + ontology 1.0.8** (commit `bc36c8d`): new `mrl:importSourceApp`/`importSourceRef`/`importedAt`. Reuses MRL's `save_*` functions so imported rows look hand-entered. **Create** (new) vs **refresh** (matched on `importSourceRef`): refresh **surgically updates only the balance/date**, preserving user-entered growth/tax/drawdown; budget lines are create-only on refresh. `tools/verify_mfl_apply.py` 17/17 — re-import duplicates nothing, refreshes balances, preserves a user-set growth rate.
+    - **Phase 4 — wizard UI** (commit `d90719a`): `src/api/routes/import_mfl.py` (`/import`, `/import/preview`, `/import/apply`) + `import_start/review/done.html` + sidebar "Import from MFL". Upload `.mfl` → staged read-only under `data_dir` → editable review (per-row include, investment growth/dividend, FX confirm with a suggested rate, loan/budget amounts + from/to) → apply (overlays edits, cleans up staged file) → next-steps checklist. Verified end-to-end via TestClient (13/13). Form arrays align by row index; includes via checkbox-value set.
+    - **Phase 5** `apply.compute_diff()` + review diff (commit `dba04a3`): re-import banner + per-row New/Update/Keep badge + orphans section (imported-before, no longer in the file — left untouched). `tools/verify_mfl_diff.py` (13/13). **ADR-020 complete.**
+    - **Live-store action:** ontology 1.0.7 → 1.0.8 needs `tools/reload_ontology.py` once (writes don't depend on the declarations — pyoxigraph is schemaless), then smoke-test the wizard in the live app.
+
+65. **Projection vs Dashboard net-worth — on-screen clarification (commit `423ffff`).** The two screens showed similar-looking figures with no statement of scope. Added mirrored captions: `projection.html` — these are **spendable savings** (cash + investments) that fund retirement, property/assets not counted, see Dashboard net worth; `dashboard.html` — **net worth** includes property/physical assets (**estate value**), Projection tracks spendable savings only (so its figures are lower). On the demo the ~£1.6M gap = the physical assets.
+
+## Changes in session 13 (2026-06-23)
+
+_Two small things on `main`: a logo polish and an engine bugfix surfaced by Mark opening his real data._
+
+63. **Fixed the item-61 "spending unfunded" false positive (commit on `main`).** Mark opened his real plan and saw a red **"Spending unfunded — from 2037 your eligible accounts can't cover planned spending — £0 of spending goes unfunded"** card, while every metric was healthy (final balance shown, runs-out *Never*, MC 100%). Self-contradictory: red alarm + **£0** unfunded.
+    - **Root cause** (`src/api/routes/projection.py`): `year_unfunded = max(0.0, shortfall − sum(drawdown.values()))` is a difference of floats. When eligible accounts *fully* cover the shortfall, float subtraction leaves a sub-penny residue that is `> 0`, and the trigger was a bare `if year_unfunded > 0:` (line ~1305). That set `first_unfunded_year` and the confidence override (line ~1485) keys off `first_unfunded_year is not None` **regardless of magnitude** → whole projection painted red, while `total_unfunded` rounded to £0. A multi-decade plan whose total rounds to £0 is < £0.50 cumulative = immaterial.
+    - **Fix:** new module constant **`UNFUNDED_EPSILON = 1.0`** (£1, near the other constants ~line 47) and changed the trigger to `if year_unfunded > UNFUNDED_EPSILON:`. Sub-£1 annual residue no longer sets `first_unfunded_year` or accumulates; a genuine shortfall still does. `final_balance`/drawdown/tax untouched (the change only gates the unfunded flag).
+    - **Verified** on isolated stores: (A) the healthy demo plan stays **green**, `first_unfunded_year=None`, £0 — parity; (B) a stranded plan (all investments `drawdownMinAge=90` → cash exhausts) still goes **red** "Spending unfunded" with a **material £367,257** total + first year 2038 — the real warning survives. On a **copy** of Mark's live store the projection returns green/£0 with the fix. (Copy projected £5.22M final vs his on-screen £2.84M — flagged separately as a scenario/save-state question, see the resume block; unrelated to this fix, which doesn't touch balances.)
+    - **NB the fix is in code only — Mark must restart his running app to see the red card clear.**
+
+64. **Transparent logo backgrounds.** The MRL hex + Garelochsoft logos shipped in session 12 with a faint uniform grey field. Made transparent via corner flood-fill + an edge-only defringe pass (peels the ~1px anti-aliased halo without punching interior holes); favicon + apple-touch regenerated from the transparent master. Clean on the light-theme sidebar / white settings card / browser tab; the thin light edge that remains on *dark* backgrounds is the artwork's own sticker outline. Pillow installed for the job then uninstalled (requirements.txt unchanged). `src/static/img/*.png` only — no template change.
+
+## Changes in session 12 (2026-06-22)
+
+_Branding + marketing session — **no engine/ontology change**. Shipped on branch **`branding-demo-and-marketing-assets`** (commit `fdb0c07`), pushed to origin, **not yet merged to main**. Done on the macOS machine. All app-driving used isolated store copies (`DATA_DIR=/tmp/...` + non-default ports 8765/8766); the live data graph was never opened._
+
+62. **Garelochsoft/MRL branding, synthetic demo dataset, marketing screenshots, and the MRL website brief.**
+    - **Branding** — first image assets in the app (was text + Tabler icon fonts only). The MRL hex mark (gold "R" + sunset + sailboat) was cropped from Mark's combined `MFL and MRL Icons Full Sized.png` (right hexagon; left is MFL) and the Garelochsoft banner downsized; both vendored to **`src/static/img/`** as `mrl-icon.png` (512), `favicon.png` (64), `apple-touch-icon.png` (180), `garelochsoft.png` (480w). Pillow was `pip install`ed for the crop/resize then **uninstalled** (requirements.txt unchanged — same convention as httpx, item 50). Wired into `src/templates/base.html`: favicon + apple-touch `<link>`s; MRL hex in the sidebar header beside the title; sidebar footer gains "Published by" + the Garelochsoft logo **and a readable "Garelochsoft" wordmark** (Mark's request — the logo's own text is small). `src/templates/settings.html`: About card gains the MRL mark at top + a "Published by [Garelochsoft]" row. Verified all 4 assets serve 200 and every page references them (TestClient + headless capture).
+    - **Demo dataset** — `sample-data/demo-backup-alex-sterling.json`, a restore-ready backup (export schema 0.3.1) for fictional persona **Alex Sterling** (UK, b.1972-04-15 → age 54, retires at 62, life-exp 92). Healthy, fundable, "On track" plan exercising every page: 3 cash + 4 investment accounts (S&S ISA, Workplace Pension min-age 57 + £8k PCLS shield, SIPP 20%, GIA gains-only) + 3 physical assets (home appreciating, Tesla depreciating, watch collection — **all "hold", no sale year**); salary + rental + state-pension income; salary-sacrifice employer-match + ISA contributions; 6 categories / 7 budget lines incl. a multi-stage groceries line (£650→£480 at retirement) + a mortgage ending 2031; emergency fund (6mo on savings); 2 life events (kitchen-reno cost, inheritance windfall); waterfall drawdown + personal allowance £12,570 + 20% marginal. **Restore via Settings ▸ Import (wipes the data graph — export real data first).** Verified headlessly: restores clean (all 11 entity types round-trip), projects green "On track", 39-year horizon, zero unfunded. **Assets deliberately have no sale year** — the engine zeroes a sold asset and routes proceeds *only* via the auto-managed `AssetSale` life event, which export/restore does NOT carry the `sourceAsset` link for; "hold" avoids a money-disappears / double-count trap. (For a planned-sale screenshot, set the sale year via the UI so the linked event auto-generates.)
+    - **Screenshots** — `MRL_screenshots/` (Mark renamed from `screenshots/`): 9 clean light-theme 2× captures (dashboard, projection, drawdown-strategy, accounts, income, budget, life-events, profile, settings) from the demo data. Method: bootstrap an isolated store (load ontology + restore demo in a short-lived process so the RocksDB lock releases), launch `uvicorn src.api.app:app` on a non-default port with `DATA_DIR` set, poll `/health`, then drive **headless Microsoft Edge** (`--headless=new --screenshot --window-size=1440,H --force-device-scale-factor=2`) per route. `chromium-cli`/Playwright were NOT available on the Mac; Edge's built-in screenshot mode needs no driver. All pages 200. NB the app uses an `h-screen` shell (content scrolls internally) → window height ≈ page height; oversize gives trailing grey, not a full-page scroll.
+    - **Website brief** — `docs/MRL_WEBSITE_BRIEF.md`, a self-contained 14-section marketing/sales brief modelled on the MFL brief Mark supplied. Positions MRL as the "money's future" sibling to MFL's "money today"; recommends **product-scoped routes** (MRL doesn't hardcode store URLs yet, unlike MFL's flat `/buy` etc.); frames macOS-live / Windows+store-channels-coming honestly; flags the **"not financial/tax advice"** disclaimer as load-bearing; documents MRL's **sunset-orange** signature accent within the shared teal/gold family; points at `src/static/img/` + `MRL_screenshots/`.
+    - **Also this session (environment, not code):** Mark's `python -m venv .venv` over the existing venv only rewrote the activate scripts — deps stayed intact (no reinstall needed); his `.venv/bin/activate` failures were the missing `source` prefix; and a `pip install -r requirements.txt` run with no active venv landed in conda **base** (harmless to the app; base now carries the deps + some version-conflict warnings vs its opencv/transformers). Simplest launch that dodges all of it: `.venv/bin/python main.py`.
 
 ## Changes in session 11 (2026-06-05)
 

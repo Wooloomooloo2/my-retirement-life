@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Import complete — {{ app_name }}{% endblock %}
+{% block page_title %}Import complete{% endblock %}
+{% block page_subtitle %}Your MFL data is now in My Retirement Life{% endblock %}
+
+{% block content %}
+
+<div class="max-w-2xl">
+    <div class="alert alert-success mb-5">
+        <i class="ti ti-circle-check"></i>
+        <span>
+            Imported
+            <strong>{{ result.created }}</strong> new item{{ '' if result.created == 1 else 's' }}{% if result.refreshed %},
+            refreshed <strong>{{ result.refreshed }}</strong>{% endif %}{% if result.budget_skipped_existing %},
+            kept <strong>{{ result.budget_skipped_existing }}</strong> existing budget line{{ '' if result.budget_skipped_existing == 1 else 's' }}{% endif %}.
+        </span>
+    </div>
+
+    <div class="card bg-base-100 shadow-sm mb-5">
+        <div class="card-body p-6">
+            <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+                <i class="ti ti-list-check text-base-content/40"></i>
+                Finish setting up your plan
+            </h3>
+            <p class="text-sm text-base-content/70 mb-4">
+                MFL gives MRL your balance sheet today. To project it forward, add the
+                retirement-specific pieces MFL doesn't hold:
+            </p>
+            <ul class="space-y-2 text-sm">
+                <li class="flex items-center gap-3">
+                    <i class="ti ti-user text-primary"></i>
+                    <a href="/profile" class="link link-hover font-medium">Set your retirement profile</a>
+                    <span class="text-base-content/50">— date of birth, target retirement age, life expectancy</span>
+                </li>
+                <li class="flex items-center gap-3">
+                    <i class="ti ti-trending-up text-primary"></i>
+                    <a href="/accounts" class="link link-hover font-medium">Check investment growth rates</a>
+                    <span class="text-base-content/50">— any you left blank still need a rate</span>
+                </li>
+                <li class="flex items-center gap-3">
+                    <i class="ti ti-cash text-primary"></i>
+                    <a href="/income" class="link link-hover font-medium">Add your income</a>
+                    <span class="text-base-content/50">— salary, pensions, rental</span>
+                </li>
+                <li class="flex items-center gap-3">
+                    <i class="ti ti-stack-2 text-primary"></i>
+                    <a href="/drawdown-strategy" class="link link-hover font-medium">Set drawdown order &amp; tax</a>
+                    <span class="text-base-content/50">— how accounts are drawn in retirement</span>
+                </li>
+                <li class="flex items-center gap-3">
+                    <i class="ti ti-calendar-event text-primary"></i>
+                    <a href="/life-events" class="link link-hover font-medium">Add life events</a>
+                    <span class="text-base-content/50">— one-off costs and windfalls</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+        <a href="/projection" class="btn btn-primary btn-sm gap-2">
+            <i class="ti ti-chart-line"></i> View projection
+        </a>
+        <a href="/" class="btn btn-ghost btn-sm">Go to dashboard</a>
+    </div>
+</div>
+
+{% endblock %}

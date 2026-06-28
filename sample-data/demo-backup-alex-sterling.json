@@ -1,0 +1,279 @@
+{
+  "version": "0.3.1",
+  "exported": "2026-06-22",
+  "app": "My Retirement Life",
+  "_note": "SYNTHETIC DEMO DATA — fictional person 'Alex Sterling'. Safe for screenshots/marketing. Restore via Settings > Import. Back up your real data first; import wipes the data graph.",
+  "data": {
+    "profile": {
+      "firstName": "Alex",
+      "lastName": "Sterling",
+      "dateOfBirth": "1972-04-15",
+      "employmentStatus": "EmploymentStatus_Employed",
+      "targetRetirementAge": 62,
+      "lifeExpectancy": 92,
+      "baseCurrency": "Currency_GBP",
+      "jurisdiction": "Jurisdiction_GB",
+      "plansToRetireIn": "Jurisdiction_GB"
+    },
+
+    "income_sources": [
+      {
+        "n": "1",
+        "name": "Salary — Software Director",
+        "incomeType": "IncomeSourceType_Employment",
+        "annualAmount": 62000,
+        "growthRate": 2.5,
+        "isNetOfTax": "true",
+        "startYear": 2026,
+        "endYear": 2034,
+        "creditedToAccount": "CashAccount_1"
+      },
+      {
+        "n": "2",
+        "name": "Rental Income — Flat 2B",
+        "incomeType": "IncomeSourceType_Property",
+        "annualAmount": 9600,
+        "growthRate": 2.0,
+        "isNetOfTax": "true",
+        "startYear": 2026,
+        "creditedToAccount": "CashAccount_1"
+      },
+      {
+        "n": "3",
+        "name": "State Pension",
+        "incomeType": "IncomeSourceType_Retirement_StatePension",
+        "annualAmount": 11500,
+        "growthRate": 2.5,
+        "isNetOfTax": "true",
+        "startYear": 2039,
+        "creditedToAccount": "CashAccount_1"
+      }
+    ],
+
+    "accounts": [
+      {
+        "n": "1",
+        "name": "Everyday Current Account",
+        "balance": 12500,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "interestRate": 1.0,
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "CashAccountType_Current",
+        "notes": "Main spending account — salary and rental land here.",
+        "drawdownPriority": 1,
+        "taxTreatment": "TaxTreatment_TaxFree"
+      },
+      {
+        "n": "2",
+        "name": "Rainy Day Savings",
+        "balance": 25000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "interestRate": 4.2,
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "CashAccountType_Savings",
+        "notes": "Designated emergency fund.",
+        "drawdownPriority": 2,
+        "taxTreatment": "TaxTreatment_TaxFree"
+      },
+      {
+        "n": "3",
+        "name": "Cash ISA",
+        "balance": 18000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "interestRate": 4.5,
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "CashAccountType_TaxAdvantaged",
+        "drawdownPriority": 3,
+        "taxTreatment": "TaxTreatment_TaxFree"
+      }
+    ],
+
+    "investment_accounts": [
+      {
+        "n": "1",
+        "name": "Stocks & Shares ISA",
+        "balance": 145000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "growthRate": 6.0,
+        "dividendRate": 1.8,
+        "reinvestDividends": "true",
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "InvestmentAccountType_TaxAdvantaged",
+        "drawdownPriority": 5,
+        "taxTreatment": "TaxTreatment_TaxFree"
+      },
+      {
+        "n": "2",
+        "name": "Workplace Pension",
+        "balance": 310000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "growthRate": 5.5,
+        "dividendRate": 0,
+        "reinvestDividends": "true",
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "InvestmentAccountType_WorkPension",
+        "drawdownPriority": 7,
+        "drawdownMinAge": 57,
+        "taxTreatment": "TaxTreatment_PostTaxTaxFreeWithdrawal",
+        "effectiveWithdrawalTaxRate": 0.20,
+        "annualTaxFreeWithdrawal": 8000
+      },
+      {
+        "n": "3",
+        "name": "SIPP — Private Pension",
+        "balance": 95000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "growthRate": 6.0,
+        "dividendRate": 0,
+        "reinvestDividends": "true",
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "InvestmentAccountType_Pension",
+        "drawdownPriority": 6,
+        "drawdownMinAge": 57,
+        "taxTreatment": "TaxTreatment_PreTaxWholeWithdrawal",
+        "effectiveWithdrawalTaxRate": 0.20
+      },
+      {
+        "n": "4",
+        "name": "General Investment Account",
+        "balance": 42000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "growthRate": 6.5,
+        "dividendRate": 2.2,
+        "reinvestDividends": "true",
+        "jurisdiction": "Jurisdiction_GB",
+        "accountType": "InvestmentAccountType_StocksShares",
+        "drawdownPriority": 4,
+        "taxTreatment": "TaxTreatment_PostTaxGainsOnly",
+        "effectiveWithdrawalTaxRate": 0.10
+      }
+    ],
+
+    "physical_assets": [
+      {
+        "n": "1",
+        "subclass": "PropertyAsset",
+        "name": "Family Home",
+        "balance": 485000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "notes": "Primary residence — held, not for sale.",
+        "appreciationRate": 3.0
+      },
+      {
+        "n": "1",
+        "subclass": "VehicleAsset",
+        "name": "Tesla Model 3",
+        "balance": 28000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "appreciationRate": -12.0
+      },
+      {
+        "n": "1",
+        "subclass": "CollectibleAsset",
+        "name": "Watch Collection",
+        "balance": 15000,
+        "balanceDate": "2026-06-22",
+        "currency": "Currency_GBP",
+        "appreciationRate": 4.0
+      }
+    ],
+
+    "account_contributions": [
+      {
+        "ownerLabel": "InvestmentAccount_2",
+        "amount": 500,
+        "employerAmount": 350,
+        "fromPayroll": true,
+        "frequency": "FrequencyType_Monthly",
+        "startYear": 2026,
+        "endYear": 2034,
+        "note": "Salary-sacrifice workplace pension with employer match.",
+        "growthRate": 2.5
+      },
+      {
+        "ownerLabel": "InvestmentAccount_1",
+        "amount": 400,
+        "employerAmount": 0,
+        "fromPayroll": false,
+        "frequency": "FrequencyType_Monthly",
+        "startYear": 2026,
+        "endYear": 2034,
+        "note": "Monthly ISA top-up from take-home pay.",
+        "growthRate": 0
+      }
+    ],
+
+    "budget_categories": [
+      { "n": "1", "name": "Housing",          "displayOrder": 1, "source": "user" },
+      { "n": "2", "name": "Food & Groceries", "displayOrder": 2, "source": "user" },
+      { "n": "3", "name": "Transport",        "displayOrder": 3, "source": "user" },
+      { "n": "4", "name": "Travel & Leisure", "displayOrder": 4, "source": "user" },
+      { "n": "5", "name": "Health",           "displayOrder": 5, "source": "user" },
+      { "n": "6", "name": "Bills & Utilities","displayOrder": 6, "source": "user" }
+    ],
+
+    "budget_lines": [
+      { "n": "1", "name": "Mortgage",              "lineType": "BudgetLineType_Loan",         "categoryN": "BudgetCategory_1" },
+      { "n": "2", "name": "Groceries",             "lineType": "BudgetLineType_Mandatory",    "categoryN": "BudgetCategory_2" },
+      { "n": "3", "name": "Utilities & Council Tax","lineType": "BudgetLineType_Mandatory",   "categoryN": "BudgetCategory_6" },
+      { "n": "4", "name": "Car & Transport",       "lineType": "BudgetLineType_Mandatory",    "categoryN": "BudgetCategory_3" },
+      { "n": "5", "name": "Holidays & Travel",     "lineType": "BudgetLineType_Discretionary","categoryN": "BudgetCategory_4" },
+      { "n": "6", "name": "Dining & Entertainment","lineType": "BudgetLineType_Discretionary","categoryN": "BudgetCategory_4" },
+      { "n": "7", "name": "Health & Insurance",    "lineType": "BudgetLineType_Mandatory",    "categoryN": "BudgetCategory_5" }
+    ],
+
+    "budget_line_segments": [
+      { "n": "1", "ownerLabel": "BudgetLine_1", "startYear": 2026, "endYear": 2031, "amount": 1450, "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "2", "ownerLabel": "BudgetLine_2", "startYear": 2026, "endYear": 2033, "amount": 650,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "3", "ownerLabel": "BudgetLine_2", "startYear": 2034, "amount": 480,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "4", "ownerLabel": "BudgetLine_3", "startYear": 2026, "amount": 420,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "5", "ownerLabel": "BudgetLine_4", "startYear": 2026, "amount": 380,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "6", "ownerLabel": "BudgetLine_5", "startYear": 2026, "amount": 500,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "7", "ownerLabel": "BudgetLine_6", "startYear": 2026, "amount": 350,  "frequency": "FrequencyType_Monthly", "changeRate": 0 },
+      { "n": "8", "ownerLabel": "BudgetLine_7", "startYear": 2026, "amount": 220,  "frequency": "FrequencyType_Monthly", "changeRate": 0 }
+    ],
+
+    "life_events": [
+      {
+        "n": "1",
+        "name": "Kitchen Renovation",
+        "year": 2028,
+        "amount": 25000,
+        "eventType": "LifeEventType_LargeExpenditure",
+        "notes": "Planned home improvement, funded from savings.",
+        "fundedByAccount": "CashAccount_2"
+      },
+      {
+        "n": "2",
+        "name": "Inheritance",
+        "year": 2036,
+        "amount": -75000,
+        "eventType": "LifeEventType_Windfall",
+        "notes": "Expected legacy — invested into the S&S ISA.",
+        "receivedByAccount": "InvestmentAccount_1"
+      }
+    ],
+
+    "projection_settings": {
+      "inflationRate": 2.5,
+      "monteCarloProfile": "MonteCarloProfile_Moderate",
+      "drawdownStrategy": "DrawdownStrategy_Waterfall",
+      "surplusStrategy": "SurplusStrategy_SweepToAccount",
+      "spendingAccount": "CashAccount_1",
+      "surplusAccount": "InvestmentAccount_1",
+      "annualPersonalAllowance": 12570,
+      "residenceIncomeTaxRate": 0.20,
+      "emergencyFundAccount": "CashAccount_2",
+      "emergencyFundMonths": 6
+    }
+  }
+}

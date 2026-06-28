@@ -18,6 +18,10 @@
     <!-- Tabler Icons -->
     <link rel="stylesheet" href="/static/vendor/tabler/tabler-icons.min.css" />
 
+    <!-- App icon / favicon (My Retirement Life hex mark) -->
+    <link rel="icon" type="image/png" href="/static/img/favicon.png" />
+    <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png" />
+
     {% block head %}{% endblock %}
 </head>
 <body class="bg-base-200 min-h-screen">
@@ -26,9 +30,13 @@
 
         <!-- Sidebar -->
         <aside class="w-56 bg-base-100 border-r border-base-300 flex flex-col">
-            <div class="p-4 border-b border-base-300">
-                <h1 class="font-semibold text-base-content text-sm">My Retirement Life</h1>
-                <p class="text-xs text-base-content/50 mt-0.5">personal planning</p>
+            <div class="p-4 border-b border-base-300 flex items-center gap-3">
+                <img src="/static/img/mrl-icon.png" alt="My Retirement Life"
+                     class="w-9 h-9 rounded-lg flex-shrink-0" />
+                <div class="min-w-0">
+                    <h1 class="font-semibold text-base-content text-sm leading-tight">My Retirement Life</h1>
+                    <p class="text-xs text-base-content/50 mt-0.5">personal planning</p>
+                </div>
             </div>
             <nav class="flex-1 py-3 overflow-y-auto">
 
@@ -59,6 +67,9 @@
                 <a href="/life-events" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'life-events' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
                     <i class="ti ti-calendar-event text-base" aria-hidden="true"></i> Life events
                 </a>
+                <a href="/import" class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-base-200 {% if active == 'import' %}bg-base-200 font-medium border-l-2 border-primary{% endif %}">
+                    <i class="ti ti-file-import text-base" aria-hidden="true"></i> Import from MFL
+                </a>
 
                 <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Coming soon</p>
                 <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
@@ -72,10 +83,20 @@
                 </span>
 
             </nav>
-            <div class="p-4 border-t border-base-300">
+            <div class="p-4 border-t border-base-300 space-y-3">
                 <a href="/settings" class="flex items-center gap-2 text-xs text-base-content/40 hover:text-base-content/70 {% if active == 'settings' %}text-base-content/70{% endif %}">
                     <i class="ti ti-settings text-sm" aria-hidden="true"></i> Settings &amp; backup
                 </a>
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-base-content/30 mb-1.5">Published by</p>
+                    <a href="https://garelochsoft.com" target="_blank" rel="noopener"
+                       title="Garelochsoft — garelochsoft.com"
+                       class="flex items-center gap-2 group">
+                        <img src="/static/img/garelochsoft.png" alt="Garelochsoft"
+                             class="h-8 w-auto rounded opacity-90 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                        <span class="text-xs font-semibold tracking-tight text-base-content/60 group-hover:text-base-content/80 transition-colors">Garelochsoft</span>
+                    </a>
+                </div>
             </div>
         </aside>
 

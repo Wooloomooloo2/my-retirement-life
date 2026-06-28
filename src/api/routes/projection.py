@@ -45,6 +45,15 @@ RESIDENCE_EXEMPT_TREATMENTS = frozenset({
     "TaxTreatment_TaxFree",
 })
 
+# ADR-018 follow-on (item 61) — minimum annual shortfall, in base currency, that
+# counts as genuinely "unfunded". `year_unfunded = shortfall - sum(drawdown)` is a
+# difference of floats, so a fully-covered year can leave a sub-penny residual that
+# is `> 0` in float arithmetic. Without a tolerance that residue sets
+# first_unfunded_year and paints the whole projection red while total_unfunded still
+# rounds to £0 — the contradictory "spending unfunded — £0 unfunded" false positive.
+# £1/year is comfortably below anything material and kills the noise.
+UNFUNDED_EPSILON = 1.0
+
 
 # ---------------------------------------------------------------------------
 # Low-level data helpers (unchanged from v0.2)
@@ -1302,7 +1311,7 @@ def _simulate_run(
             sweep(forced_net)  # ADR-019: tops up the emergency fund first, then overflows
 
         cumulative_tax += net_annual_tax
-        if year_unfunded > 0:
+        if year_unfunded > UNFUNDED_EPSILON:
             cumulative_unfunded += year_unfunded
             if first_unfunded_year is None:
                 first_unfunded_year = year

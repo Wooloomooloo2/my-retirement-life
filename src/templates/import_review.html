@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Review import — {{ app_name }}{% endblock %}
+{% block page_title %}Review what will be imported{% endblock %}
+{% block page_subtitle %}From {{ filename }}{% endblock %}
+
+{% block content %}
+
+{% macro status_badge(st) -%}
+  {% if st == 'new' %}<span class="badge badge-success badge-sm">New</span>
+  {% elif st == 'update' %}<span class="badge badge-info badge-sm">Update</span>
+  {% elif st == 'keep' %}<span class="badge badge-ghost badge-sm">Keep</span>{% endif %}
+{%- endmacro %}
+
+{% if diff and diff.is_reimport %}
+<div class="alert alert-info py-2 text-sm mb-5">
+    <i class="ti ti-refresh"></i>
+    <span>
+        <strong>Re-import</strong> — matching against what you imported before:
+        <strong>{{ diff.counts['new'] }}</strong> new,
+        <strong>{{ diff.counts['update'] }}</strong> to update (balances refreshed, your edits kept),
+        <strong>{{ diff.counts['keep'] }}</strong> budget line(s) kept as-is{% if diff.counts['orphans'] %},
+        <strong>{{ diff.counts['orphans'] }}</strong> no longer in MFL (left untouched){% endif %}.
+    </span>
+</div>
+{% endif %}
+
+<form method="post" action="/import/apply">
+
+<!-- Summary -->
+<div class="card bg-primary/5 border border-primary/20 shadow-sm mb-5">
+    <div class="card-body p-4 flex flex-row flex-wrap items-center gap-x-6 gap-y-2">
+        <div class="text-sm"><span class="font-semibold text-primary">{{ summary.accounts }}</span> accounts</div>
+        <div class="text-sm"><span class="font-semibold text-primary">{{ summary.assets }}</span> physical assets</div>
+        <div class="text-sm"><span class="font-semibold text-primary">{{ summary.budget_lines }}</span> budget lines</div>
+        {% if summary.skipped %}<div class="text-sm text-base-content/50">{{ summary.skipped }} skipped</div>{% endif %}
+        <div class="ml-auto">
+            <button type="submit" class="btn btn-primary btn-sm gap-2">
+                <i class="ti ti-database-import" aria-hidden="true"></i> Import into MRL
+            </button>
+        </div>
+    </div>
+</div>
+
+{% if summary.needs_rate or summary.needs_fx %}
+<div class="alert alert-warning py-2 text-xs mb-5">
+    <i class="ti ti-alert-triangle"></i>
+    <span>
+        {% if summary.needs_rate %}{{ summary.needs_rate }} investment account(s) need an annual growth rate — MFL tracks past returns, not forecasts. {% endif %}
+        {% if summary.needs_fx %}{{ summary.needs_fx }} account(s) are in a foreign currency — confirm the exchange rate to base.{% endif %}
+    </span>
+</div>
+{% endif %}
+
+{% for w in plan.warnings %}
+<div class="alert alert-info py-2 text-xs mb-3"><i class="ti ti-info-circle"></i><span>{{ w }}</span></div>
+{% endfor %}
+
+<!-- Accounts -->
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-wallet text-base-content/40"></i> Accounts
+        </h3>
+        <table class="table table-sm">
+            <thead><tr class="text-xs text-base-content/50">
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Balance</th>
+                <th>Growth %</th><th>Dividend %</th><th>FX → base</th>
+            </tr></thead>
+            <tbody>
+            {% for a in plan.accounts %}
+                <tr class="{% if a.needs_rate %}bg-warning/5{% endif %}">
+                    <td><input type="checkbox" name="acct_include" value="{{ a.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(a.source_ref)) }}</td>
+                    <td class="font-medium">{{ a.name }}</td>
+                    <td><span class="badge badge-ghost badge-sm">{{ a.account_type.split('_')[-1] }}</span></td>
+                    <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
+                    {% if a.kind == 'investment' %}
+                    <td><input type="number" step="0.1" name="acct_growth" placeholder="e.g. 5" class="input input-bordered input-xs w-20 {% if a.needs_rate %}input-warning{% endif %}" /></td>
+                    <td><input type="number" step="0.1" name="acct_dividend" placeholder="0" class="input input-bordered input-xs w-20" /></td>
+                    {% else %}
+                    <td><input type="hidden" name="acct_growth" value="" />—</td>
+                    <td><input type="hidden" name="acct_dividend" value="" />—</td>
+                    {% endif %}
+                    <td>
+                        {% if a.needs_fx %}
+                        <input type="number" step="0.0001" name="acct_fx" value="{{ a.exchange_rate }}" class="input input-bordered input-xs w-24 input-warning" />
+                        {% else %}
+                        <input type="hidden" name="acct_fx" value="" /><span class="text-base-content/30">1.0</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Physical assets -->
+{% if plan.assets %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-building-estate text-base-content/40"></i> Physical assets
+        </h3>
+        <table class="table table-sm">
+            <thead><tr class="text-xs text-base-content/50">
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Value</th><th>Appreciation %/yr</th>
+            </tr></thead>
+            <tbody>
+            {% for a in plan.assets %}
+                <tr>
+                    <td><input type="checkbox" name="asset_include" value="{{ a.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(a.source_ref)) }}</td>
+                    <td class="font-medium">{{ a.name }}</td>
+                    <td><span class="badge badge-ghost badge-sm">{{ a.subclass.replace('Asset','') }}</span></td>
+                    <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
+                    <td><input type="number" step="0.1" name="asset_appr" placeholder="0" class="input input-bordered input-xs w-20" /></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Budget lines (loans + spending) -->
+{% if plan.budget_lines %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-chart-bar text-base-content/40"></i> Budget lines
+        </h3>
+        <p class="text-xs text-base-content/40 mb-2">Amounts are monthly. Leave “To” blank for an ongoing line; you can add stages later on the Budget page.</p>
+        <table class="table table-sm">
+            <thead><tr class="text-xs text-base-content/50">
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th>Monthly</th><th>From</th><th>To</th>
+            </tr></thead>
+            <tbody>
+            {% for b in plan.budget_lines %}
+                <tr class="{% if b.needs_amount %}bg-warning/5{% endif %}">
+                    <td><input type="checkbox" name="bl_include" value="{{ b.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(b.source_ref)) }}</td>
+                    <td class="font-medium">{{ b.name }}{% if b.category_name %} <span class="text-xs text-base-content/40">· {{ b.category_name }}</span>{% endif %}</td>
+                    <td><span class="badge badge-ghost badge-sm">{{ b.line_type.split('_')[-1] }}</span></td>
+                    <td><input type="number" step="0.01" name="bl_amount" value="{{ "%.2f"|format(b.monthly_amount) }}" class="input input-bordered input-xs w-24 {% if b.needs_amount %}input-warning{% endif %}" /></td>
+                    <td><input type="number" name="bl_from" value="{{ b.from_year }}" class="input input-bordered input-xs w-20" /></td>
+                    <td><input type="number" name="bl_to" value="{{ b.to_year if b.to_year is not none else '' }}" placeholder="ongoing" class="input input-bordered input-xs w-24" /></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Skipped -->
+{% if plan.skipped %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-2 border-b border-base-200">
+            <i class="ti ti-ban text-base-content/40"></i> Not imported
+        </h3>
+        <ul class="space-y-1 text-sm text-base-content/60">
+        {% for s in plan.skipped %}
+            <li><span class="font-medium text-base-content/80">{{ s.name }}</span> — {{ s.reason }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+{% if diff and diff.orphans %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-2 border-b border-base-200">
+            <i class="ti ti-unlink text-base-content/40"></i> No longer in your MFL file
+        </h3>
+        <p class="text-xs text-base-content/50 mb-2">
+            These were imported previously but aren't in this file. They're
+            <strong>left untouched</strong> in MRL — remove them yourself if you no longer want them.
+        </p>
+        <ul class="space-y-1 text-sm text-base-content/60">
+        {% for o in diff.orphans %}
+            <li><span class="font-medium text-base-content/80">{{ o.name }}</span>
+                <span class="text-xs text-base-content/40">({{ o.local }})</span></li>
+        {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<div class="flex items-center gap-3">
+    <button type="submit" class="btn btn-primary btn-sm gap-2">
+        <i class="ti ti-database-import" aria-hidden="true"></i> Import into MRL
+    </button>
+    <a href="/import" class="btn btn-ghost btn-sm">Cancel</a>
+</div>
+
+</form>
+
+{% endblock %}
