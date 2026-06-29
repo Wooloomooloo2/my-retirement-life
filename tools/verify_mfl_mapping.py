@@ -3,7 +3,7 @@
 Standalone, assertion-based. Reads the committed fixture, builds the import plan,
 and checks the MFL→MRL mapping decisions: families routed correctly, investments
 flagged for a rate, USD account flagged for FX, loans turned into budget lines
-with the right window, budget categories typed, and credit/income skipped.
+with the right window, budget categories typed, income mapped, and credit skipped.
 
 RUN:  python tools/verify_mfl_mapping.py
 """
@@ -37,7 +37,8 @@ def main() -> int:
     check(s["accounts"] == 6, f"6 accounts (3 cash + 3 investment) (got {s['accounts']})")
     check(s["assets"] == 2, f"2 physical assets (got {s['assets']})")
     check(s["budget_lines"] == 12, f"12 budget lines (2 loans + 10 expense) (got {s['budget_lines']})")
-    check(s["skipped"] == 2, f"2 skipped (credit card + income) (got {s['skipped']})")
+    check(s["income"] == 1, f"1 income source (Salary) (got {s['income']})")
+    check(s["skipped"] == 1, f"1 skipped (credit card only) (got {s['skipped']})")
     check(s["needs_rate"] == 3, f"3 investments need a growth rate (got {s['needs_rate']})")
     check(s["needs_fx"] == 1, f"1 account needs FX confirmation (got {s['needs_fx']})")
 
@@ -88,10 +89,16 @@ def main() -> int:
     check(all(b.from_year == 2026 for b in plan.budget_lines if b.source_kind == "budget"),
           "budget lines default from current year (2026)")
 
-    # Skips
+    # Skips (credit card only — income is now imported, not skipped)
     skip_names = {x.name for x in plan.skipped}
     check("Aspire Rewards Card" in skip_names, "credit card skipped")
-    check(any("Salary" in n for n in skip_names), "budget income (Salary) skipped")
+
+    # Income: budget income → MRL IncomeSource (mapped, not skipped)
+    salary = next((i for i in plan.income if "Salary" in i.name), None)
+    check(salary is not None, "budget income (Salary) → income source")
+    check(salary and salary.income_type == "IncomeSourceType_Employment",
+          "Salary typed as Employment")
+    check(salary and salary.annual_amount > 0, "Salary has an annual amount")
 
     passed = sum(1 for ok, _ in checks if ok)
     for ok, label in checks:

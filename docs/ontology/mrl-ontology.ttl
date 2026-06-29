@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.8" .
+    owl:versionInfo "1.0.9" .
 
 
 # ===========================================================================
@@ -984,6 +984,19 @@ mrl:creditedToAccount a owl:ObjectProperty ;
     rdfs:comment "The account into which this income stream is deposited each year. When set, the engine adds the year's income amount directly to this account's balance instead of treating it as cashflow against the projection's spending account. When absent, income flows through the projection's surplus-routing fallback (typically into the configured spending account). Mirrors the mrl:fundedByAccount / mrl:receivedByAccount pattern on life events."@en ;
     rdfs:domain mrl:IncomeSource ;
     rdfs:range mrl:Account .
+
+# Rental income from a linked property (ADR-021, ontology 1.0.9).
+mrl:rentalProperty a owl:ObjectProperty ;
+    rdfs:label "rental property"@en ;
+    rdfs:comment "Links a rental income source to the mrl:PhysicalAsset (typically a mrl:PropertyAsset) that generates it. When set together with mrl:rentalYieldRate, the projection engine derives this source's annual income as rentalYieldRate% of the linked asset's value at the start of each year, instead of using the static mrl:incomeAnnualAmount. Because the engine zeroes a sold asset (mrl:assetSaleYear) the derived income automatically stops on sale, and it tracks the asset's appreciation. Optional; only meaningful for rental sources."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range mrl:PhysicalAsset .
+
+mrl:rentalYieldRate a owl:DatatypeProperty ;
+    rdfs:label "rental yield rate"@en ;
+    rdfs:comment "Annual rental yield as a percentage of the linked property's current value, e.g. 4.5 for 4.5%. Interpreted as a NET yield (after letting costs and tax), consistent with MRL modelling income as take-home. Used only when mrl:rentalProperty is also set; the engine then derives income as rentalYieldRate/100 × the property's start-of-year value, ignoring mrl:incomeAnnualAmount and mrl:incomeGrowthRate (growth comes from the property's own appreciation, so applying a separate growth rate would double-count)."@en ;
+    rdfs:domain mrl:IncomeSource ;
+    rdfs:range xsd:decimal .
 
 
 # ===========================================================================

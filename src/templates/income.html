@@ -166,7 +166,9 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
                     </label>
-                    <select name="incomeSourceType" class="select select-bordered select-sm w-full">
+                    <select name="incomeSourceType" id="incomeSourceType"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateRentalVisibility()">
                         {% for key, label in income_type_options.items() %}
                         <option value="{{ key }}"
                             {% if edit_source and edit_source.incomeType == key %}selected
@@ -187,8 +189,50 @@
                         placeholder="e.g. 45000"
                         class="input input-bordered input-sm w-full" />
                     <label class="label py-0.5">
-                        <span class="label-text-alt text-base-content/40">Annual take-home amount in the currency selected below</span>
+                        <span class="label-text-alt text-base-content/40" id="amountHint">Annual take-home amount in the currency selected below</span>
                     </label>
+                </div>
+
+                <!-- ADR-021: rental income linked to a property. Shown only for
+                     the Property (rental income) type; when a property is linked
+                     the engine derives the rent from the property's value × the
+                     net yield each year, ignoring the manual amount above. -->
+                <div class="form-control col-span-2 rounded-lg bg-base-200/40 p-3" id="rental-fields" style="display:none">
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <div class="form-control">
+                            <label class="label py-0.5">
+                                <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Linked property <span class="font-normal normal-case">(optional)</span></span>
+                            </label>
+                            <select name="rentalProperty" id="rentalProperty"
+                                    class="select select-bordered select-sm w-full"
+                                    onchange="updateRentalVisibility()">
+                                <option value="" data-value="0">— not linked (use the amount above) —</option>
+                                {% for p in properties %}
+                                <option value="{{ p.label }}" data-value="{{ p.value }}"
+                                    {% if edit_source and edit_source.rentalProperty == p.label %}selected{% endif %}>
+                                    {{ p.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <label class="label py-0.5">
+                                <span class="label-text-alt text-base-content/40">{% if properties %}Rent tracks this property's value and stops when it's sold{% else %}Add a property on the Accounts page to link rental income to it{% endif %}</span>
+                            </label>
+                        </div>
+                        <div class="form-control">
+                            <label class="label py-0.5">
+                                <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Net annual yield %</span>
+                            </label>
+                            <input type="number" name="rentalYieldRate" id="rentalYieldRate"
+                                step="0.1" min="0" max="100"
+                                value="{{ edit_source.rentalYieldRate if edit_source and edit_source.rentalYieldRate else '' }}"
+                                placeholder="e.g. 4.5"
+                                oninput="updateRentalVisibility()"
+                                class="input input-bordered input-sm w-full" />
+                            <label class="label py-0.5">
+                                <span class="label-text-alt text-base-content/40" id="rentalHint">Net rent (after costs &amp; tax) as a % of the property's value</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 {% set selected_currency = edit_source.currency if edit_source and edit_source.currency else base_currency.local %}
@@ -258,16 +302,24 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Deposit account <span class="font-normal normal-case">(optional)</span></span>
                     </label>
-                    <select name="creditedToAccount" class="select select-bordered select-sm w-full">
-                        <option value="">— follow projection surplus routing (default) —</option>
+                    <select name="creditedToAccount" id="creditedToAccount"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateDepositWarning()">
+                        <option value="" data-priority="">— follow projection surplus routing (default) —</option>
                         {% for acc in all_accounts %}
                         {% set acc_label = acc.account_class ~ '_' ~ acc.n %}
                         <option value="{{ acc_label }}"
+                            data-priority="{{ account_priorities.get(acc_label, 999) }}"
                             {% if edit_source and edit_source.creditedToAccount == acc_label %}selected{% endif %}>
                             {{ acc.name }}{% if acc.account_class == 'InvestmentAccount' %} (investment){% endif %}
                         </option>
                         {% endfor %}
                     </select>
+                    <!-- Item 54: routing-vs-drawdown trap warning (soft — save still allowed). -->
+                    <p id="deposit-warning" class="text-xs text-warning mt-1 flex items-start gap-1.5" style="display:none">
+                        <i class="ti ti-alert-triangle mt-0.5 flex-shrink-0" aria-hidden="true"></i>
+                        <span id="deposit-warning-text"></span>
+                    </p>
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40">The account this income lands in each year (e.g. salary → current account, pension → ISA). When unset, income is credited to the projection's spending account and offsets that year's spending directly.</span>
                     </label>
@@ -428,5 +480,88 @@
             }
         });
     }
+
+    // -----------------------------------------------------------------------
+    // ADR-021: rental-property fields. The linked-property + yield block shows
+    // only for the Property (rental income) type. When a property is linked the
+    // engine derives the rent from the property's value × yield, so the manual
+    // amount above is made read-only and a live first-year estimate is shown.
+    // -----------------------------------------------------------------------
+    const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
+    function updateRentalVisibility() {
+        const type    = document.getElementById('incomeSourceType');
+        const block   = document.getElementById('rental-fields');
+        const propSel = document.getElementById('rentalProperty');
+        const yieldIn = document.getElementById('rentalYieldRate');
+        const amount  = document.querySelector('input[name="incomeAnnualAmount"]');
+        const amtHint = document.getElementById('amountHint');
+        const rHint   = document.getElementById('rentalHint');
+        if (!type || !block) return;
+
+        const isRental = type.value === 'IncomeSourceType_Property';
+        block.style.display = isRental ? 'block' : 'none';
+
+        const linked = isRental && propSel && propSel.value;
+        if (linked) {
+            // Derived income — freeze the manual amount (read-only still submits;
+            // ensure it has a value so the required check passes).
+            if (amount) {
+                amount.readOnly = true;
+                amount.classList.add('opacity-50');
+                if (!amount.value) amount.value = '0';
+            }
+            if (amtHint) amtHint.textContent = 'Computed from the linked property — see below';
+            const opt   = propSel.options[propSel.selectedIndex];
+            const pval  = opt ? parseFloat(opt.getAttribute('data-value')) || 0 : 0;
+            const yld   = yieldIn ? parseFloat(yieldIn.value) || 0 : 0;
+            const est   = Math.round(pval * yld / 100);
+            if (rHint) {
+                rHint.innerHTML = yld > 0
+                    ? 'First-year rent ≈ ' + BASE_SYMBOL + est.toLocaleString('en-GB') +
+                      ' (' + yld + '% of ' + BASE_SYMBOL + pval.toLocaleString('en-GB') + ')'
+                    : 'Net rent (after costs &amp; tax) as a % of the property’s value';
+            }
+        } else {
+            if (amount) { amount.readOnly = false; amount.classList.remove('opacity-50'); }
+            if (amtHint) amtHint.textContent = 'Annual take-home amount in the currency selected below';
+            if (rHint) rHint.innerHTML = 'Net rent (after costs &amp; tax) as a % of the property’s value';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', updateRentalVisibility);
+
+    // -----------------------------------------------------------------------
+    // Item 54: routing-vs-drawdown trap warning. Income routed to a non-spending
+    // account that is drawn LATER than the spending account AND at the drawn-last
+    // default (priority 999) silently compounds there while earlier accounts
+    // drain to fund spending — a divergence that can run into the millions over a
+    // long horizon. The trigger is relative to the spending account, so an
+    // all-default setup (every account 999) doesn't nag. Soft — saving is allowed.
+    // -----------------------------------------------------------------------
+    const SPENDING_LABEL      = {{ effective_spending_label | tojson }};
+    const SPENDING_PRIORITY   = {{ spending_priority | tojson }};
+    const DRAWN_LAST_PRIORITY = 999;
+    function updateDepositWarning() {
+        const sel  = document.getElementById('creditedToAccount');
+        const warn = document.getElementById('deposit-warning');
+        const txt  = document.getElementById('deposit-warning-text');
+        if (!sel || !warn || !txt) return;
+        const opt   = sel.options[sel.selectedIndex];
+        const value = sel.value;
+        const prRaw = opt ? opt.getAttribute('data-priority') : '';
+        const pr    = prRaw === '' ? NaN : parseInt(prRaw, 10);
+        const drawnAfterSpending = value && value !== SPENDING_LABEL
+            && !isNaN(pr) && pr > SPENDING_PRIORITY && pr >= DRAWN_LAST_PRIORITY;
+        if (drawnAfterSpending) {
+            const name = opt.textContent.trim();
+            txt.textContent = `“${name}” is drawn after your spending account (priority ${pr}). `
+                + `Income routed here compounds while earlier accounts drain to fund spending — `
+                + `over a long horizon the divergence can run into the millions. Consider giving it `
+                + `an earlier drawdown priority on the Accounts page, or leave the deposit account unset.`;
+            warn.style.display = 'flex';
+        } else {
+            warn.style.display = 'none';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', updateDepositWarning);
 </script>
 {% endblock %}

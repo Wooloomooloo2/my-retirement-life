@@ -673,6 +673,21 @@ function initByAccountChart() {
         };
     });
 
+    // Retirement-year ★ marker (item 56) — overlay a real data point at the top
+    // of the stack (per-year total) in its own stack group so it's off the
+    // stack, and filter it out of the tooltip so the footer isn't doubled.
+    const byAccountTotals = years.map((_, i) =>
+        sortedLabels.reduce((s, l) => s + ((accountBals[l] || [])[i] || 0), 0));
+    datasets.push({
+        label: 'Retirement', data: byAccountTotals, stack: '_marker',
+        fill: false, borderColor: 'transparent', borderWidth: 0,
+        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
+        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
+        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
+        pointBackgroundColor: '#4F46E5', pointBorderColor: '#4F46E5',
+        pointBorderWidth: 2, tension: 0.3, order: -1,
+    });
+
     byAccountChartInstance = new Chart(
         document.getElementById('byAccountChart').getContext('2d'),
         {
@@ -685,6 +700,7 @@ function initByAccountChart() {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        filter: item => item.dataset.stack !== '_marker',
                         callbacks: {
                             label: ctx => {
                                 const v = ctx.parsed.y;
@@ -914,8 +930,14 @@ const datasets = [
         backgroundColor: 'rgba(83,74,183,0.08)',
         borderWidth: 2,
         fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        // Retirement-year ★ on the balance line (item 56) — a real data point,
+        // so it survives the X-axis autoSkip that drops the tick label.
+        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
+        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 4),
+        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
+        pointBackgroundColor: '#534AB7',
+        pointBorderColor: '#534AB7',
+        pointBorderWidth:  years.map(y => y === retirementYear ? 2 : 1),
         tension: 0.3,
         yAxisID: 'yBalance',
         order: 1,
@@ -1042,7 +1064,14 @@ const mcDatasets = [
         backgroundColor: 'transparent',
         borderWidth: 2.5,
         fill: false,
-        pointRadius: 0,
+        // Retirement-year ★ on the median line (item 56) — real data point so
+        // it survives the X-axis autoSkip that drops the tick label.
+        pointRadius:      mcYears.map(y => y === retirementYear ? 7 : 0),
+        pointHoverRadius: mcYears.map(y => y === retirementYear ? 9 : 4),
+        pointStyle:       mcYears.map(y => y === retirementYear ? 'star' : 'circle'),
+        pointBackgroundColor: '#534AB7',
+        pointBorderColor: '#534AB7',
+        pointBorderWidth:  mcYears.map(y => y === retirementYear ? 2 : 1),
         tension: 0.3,
     },
 ];

@@ -178,6 +178,14 @@ def load_all_income_sources() -> list:
         credited_qs = list(store.store.quads_for_pattern(
             iri, og.NamedNode(f"{MRL}creditedToAccount"), None, DATA_GRAPH))
         deposit_account = _iri_local(str(credited_qs[0].object.value)) if credited_qs else None
+
+        # ADR-021: a rental source linked to a property derives its income from
+        # the property's projected value × yield, not the static amount.
+        rental_qs = list(store.store.quads_for_pattern(
+            iri, og.NamedNode(f"{MRL}rentalProperty"), None, DATA_GRAPH))
+        rental_property = _iri_local(str(rental_qs[0].object.value)) if rental_qs else None
+        rental_yield    = _float(iri, "rentalYieldRate")
+
         sources.append({
             "name":            _val(iri, "incomeSourceName", "Income"),
             "amount":          raw_amount * fx_rate,
@@ -185,6 +193,8 @@ def load_all_income_sources() -> list:
             "start_year":      start_year,
             "end_year":        end_year,
             "deposit_account": deposit_account,
+            "rental_property": rental_property,
+            "rental_yield":    rental_yield,
         })
     return sources
 
@@ -1099,7 +1109,18 @@ def _simulate_run(
             src_end   = src["end_year"]
             if year < src_start or (src_end is not None and year > src_end):
                 continue
-            amt = src["amount"] * ((1 + src["growth_rate"] / 100) ** years_from_start)
+            # ADR-021: a property-linked rental source derives its income from
+            # the linked asset's value at the START of this year (asset_balances
+            # before step 7b's appreciation/disposal) × the net yield, ignoring
+            # the static amount and growth rate. Once the asset is sold, step 7b
+            # has already zeroed its balance, so the rent becomes 0 with no
+            # end-date needed. A dangling/deleted link falls back to the static
+            # amount so it degrades safely.
+            rental_prop = src.get("rental_property")
+            if rental_prop and rental_prop in asset_balances and src.get("rental_yield"):
+                amt = asset_balances[rental_prop] * (src["rental_yield"] / 100)
+            else:
+                amt = src["amount"] * ((1 + src["growth_rate"] / 100) ** years_from_start)
             income_amount += amt
             deposit = src.get("deposit_account")
             if deposit and deposit in balances and deposit != effective_spending:
@@ -1591,8 +1612,8 @@ def run_monte_carlo(
     routing, and two-layer tax model (ADR-013) as the deterministic projection.
 
     Returns P10 / P50 / P90 percentiles of the total balance per year, plus
-    success_rate (% of simulations where total balance stays non-negative every
-    year).
+    success_rate (% of simulations that funded all spending every year — i.e.
+    total balance never hit zero AND no year's spending went unfunded, item 61).
     """
     import numpy as np
 
@@ -1627,6 +1648,7 @@ def run_monte_carlo(
     inflation_shocks = rng.normal(0.0, inflation_vol, (n_sims, n_years))
 
     all_balances = np.empty((n_sims, n_years), dtype=np.float64)
+    sim_unfunded = np.zeros(n_sims, dtype=bool)   # ADR-018 follow-on (item 61)
 
     for sim in range(n_sims):
         result = _simulate_run(
@@ -1643,15 +1665,23 @@ def run_monte_carlo(
             inflation_shocks = inflation_shocks[sim].tolist(),
         )
         all_balances[sim] = [y["balance"] for y in result["years"]]
+        sim_unfunded[sim] = result.get("first_unfunded_year") is not None
 
     p10 = np.percentile(all_balances, 10, axis=0).round(0).tolist()
     p50 = np.percentile(all_balances, 50, axis=0).round(0).tolist()
     p90 = np.percentile(all_balances, 90, axis=0).round(0).tolist()
-    # Success = total balance never reached zero (mirrors deterministic
-    # `runs_out_year` logic — balance <= 0 in any year counts as failure).
+    # Success = the plan funded all spending every year. Two failure modes,
+    # mirroring the deterministic confidence logic exactly:
+    #   1. total balance reached zero (runs_out) — balance <= 0 in any year;
+    #   2. spending went UNFUNDED (item 61) — eligible accounts couldn't cover
+    #      a year's spend even though total balance stayed > 0 (the locked-money
+    #      case: money compounding in an account below its access age). Without
+    #      this, MC reported a confident "success" on a run the deterministic
+    #      engine would paint red "Spending unfunded".
     # Per-account balances are floored at 0 inside _simulate_run, so the total
-    # can hit 0 but never go negative; "> 0" is the correct test.
-    success_rate = round(float(np.mean(np.all(all_balances > 0, axis=1))) * 100, 1)
+    # can hit 0 but never go negative; "> 0" is the correct balance test.
+    balance_ok   = np.all(all_balances > 0, axis=1)
+    success_rate = round(float(np.mean(balance_ok & ~sim_unfunded)) * 100, 1)
 
     has_cash = any(a["account_class"] == "CashAccount" for a in all_accounts)
 

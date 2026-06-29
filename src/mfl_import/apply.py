@@ -27,7 +27,9 @@ from typing import Optional
 import pyoxigraph as og
 
 from src.store.graph import store, MRL, DATA_GRAPH
-from src.mfl_import.mapping import ImportPlan, ProposedAccount, ProposedAsset, ProposedBudgetLine
+from src.mfl_import.mapping import (
+    ImportPlan, ProposedAccount, ProposedAsset, ProposedBudgetLine, ProposedIncome,
+)
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -88,7 +90,7 @@ def _write_provenance(local: str, source_app: str, source_ref: str, when: str) -
 
 def _entity_name(local: str) -> str:
     iri = og.NamedNode(f"{MRL}{local}")
-    for prop in ("accountName", "budgetLineName"):
+    for prop in ("accountName", "budgetLineName", "incomeSourceName"):
         for q in store.store.quads_for_pattern(
                 iri, og.NamedNode(f"{MRL}{prop}"), None, DATA_GRAPH):
             return q.object.value
@@ -112,6 +114,9 @@ def compute_diff(plan: ImportPlan) -> dict:
     for a in plan.assets:
         refs.add(a.source_ref)
         status[a.source_ref] = "update" if a.source_ref in existing else "new"
+    for inc in plan.income:
+        refs.add(inc.source_ref)
+        status[inc.source_ref] = "update" if inc.source_ref in existing else "new"
     for b in plan.budget_lines:
         refs.add(b.source_ref)
         status[b.source_ref] = "keep" if b.source_ref in existing else "new"
@@ -142,6 +147,23 @@ def _refresh_balance(local: str, balance: float, balance_date: str) -> None:
     """)
 
 
+def _refresh_income_amount(local: str, annual_amount: float) -> None:
+    """Surgically update only the income annual amount — the imported fact —
+    leaving user edits (type, growth, start/end, deposit account) untouched."""
+    iri = f"{MRL}{local}"
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{ GRAPH <{DATA_GRAPH.value}> {{
+            <{iri}> mrl:incomeAnnualAmount ?a . }} }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+            <{iri}> mrl:incomeAnnualAmount "{annual_amount}"^^xsd:decimal . }} }}
+    """)
+
+
 def apply_plan(plan: ImportPlan, imported_at: Optional[str] = None) -> ApplyResult:
     """Create or refresh MRL entities from the plan. Returns counts + details."""
     # Lazy imports — the routes modules form an import cycle; apply.py is a leaf.
@@ -151,6 +173,7 @@ def apply_plan(plan: ImportPlan, imported_at: Optional[str] = None) -> ApplyResu
     )
     from src.api.routes.investments import save_investment_account, get_all_investment_accounts
     from src.api.routes.budget import save_budget_line_segments, get_all_budget_lines
+    from src.api.routes.income import save_income_source, get_all_income_sources
 
     when = imported_at or date.today().isoformat()
     jurisdiction = _CCY_JURISDICTION.get(plan.base_currency, "Jurisdiction_GB")
@@ -172,7 +195,8 @@ def apply_plan(plan: ImportPlan, imported_at: Optional[str] = None) -> ApplyResu
             n = next_n(get_all_accounts())
             save_account(
                 n=n, name=a.name, balance=float(a.balance), balance_date=when,
-                currency_local=a.currency, interest_rate=0.0,
+                currency_local=a.currency,
+                interest_rate=float(a.interest_rate) if a.interest_rate is not None else 0.0,
                 jurisdiction_local=jurisdiction, account_type=a.account_type,
                 exchange_rate=float(a.exchange_rate), exchange_rate_date=when,
                 notes="Imported from My Financial Life",
@@ -213,6 +237,28 @@ def apply_plan(plan: ImportPlan, imported_at: Optional[str] = None) -> ApplyResu
         _write_provenance(local, asset.source_app, asset.source_ref, when)
         res.created += 1
         res.details.append(f"created asset '{asset.name}' as {local}")
+
+    # --- Income sources (from MFL budget income) ---
+    # Refresh updates only the annual amount (the imported fact), preserving any
+    # type/end-year/deposit edits the user made — mirrors the account-balance
+    # refresh, not the create-only budget-line behaviour.
+    for inc in plan.income:
+        if inc.source_ref in existing:
+            _refresh_income_amount(existing[inc.source_ref], float(inc.annual_amount))
+            _write_provenance(existing[inc.source_ref], inc.source_app, inc.source_ref, when)
+            res.refreshed += 1
+            res.details.append(f"refreshed income '{inc.name}' → {inc.annual_amount}/yr")
+            continue
+        n = next_n(get_all_income_sources())
+        save_income_source(
+            n=n, name=inc.name, income_type=inc.income_type,
+            annual_amount=float(inc.annual_amount), growth_rate=0.0,
+            is_net_of_tax=True, start_year=None, end_year=None,
+            currency_local=inc.currency)
+        local = f"IncomeSource_{n}"
+        _write_provenance(local, inc.source_app, inc.source_ref, when)
+        res.created += 1
+        res.details.append(f"created income '{inc.name}' as {local}")
 
     # --- Budget lines (loans + spending) — create-only on refresh ---
     for b in plan.budget_lines:

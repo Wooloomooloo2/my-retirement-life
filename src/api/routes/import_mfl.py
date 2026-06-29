@@ -75,9 +75,11 @@ async def import_preview(request: Request, mfl_file: UploadFile = File(...)):
             request=request, name="import_start.html",
             context=_ctx(error=f"Unexpected error reading the file: {e}"))
 
+    from src.api.routes.income import INCOME_TYPE_LABELS
     return templates.TemplateResponse(
         request=request, name="import_review.html",
         context=_ctx(plan=plan, summary=plan.summary(), diff=compute_diff(plan),
+                     income_types=INCOME_TYPE_LABELS,
                      filename=mfl_file.filename or "your MFL file"))
 
 
@@ -87,9 +89,13 @@ async def import_apply(
     acct_include: list[str] = Form(default=[]),
     acct_growth: list[str] = Form(default=[]),
     acct_dividend: list[str] = Form(default=[]),
+    acct_interest: list[str] = Form(default=[]),
     acct_fx: list[str] = Form(default=[]),
     asset_include: list[str] = Form(default=[]),
     asset_appr: list[str] = Form(default=[]),
+    inc_include: list[str] = Form(default=[]),
+    inc_amount: list[str] = Form(default=[]),
+    inc_type: list[str] = Form(default=[]),
     bl_include: list[str] = Form(default=[]),
     bl_amount: list[str] = Form(default=[]),
     bl_from: list[str] = Form(default=[]),
@@ -109,7 +115,8 @@ async def import_apply(
             request=request, name="import_start.html",
             context=_ctx(error=f"Could not re-read the staged file: {e}"))
 
-    inc_a, inc_as, inc_b = set(acct_include), set(asset_include), set(bl_include)
+    inc_a, inc_as, inc_i, inc_b = (
+        set(acct_include), set(asset_include), set(inc_include), set(bl_include))
 
     accounts = []
     for i, a in enumerate(plan.accounts):
@@ -121,6 +128,10 @@ async def import_apply(
                 a.growth_rate = g
             if d is not None:
                 a.dividend_rate = d
+        else:  # cash — interest rate (MFL has none; user sets it here)
+            ir = _f(acct_interest, i)
+            if ir is not None:
+                a.interest_rate = ir
         fx = _f(acct_fx, i)
         if fx is not None:
             a.exchange_rate = Decimal(str(fx))
@@ -136,6 +147,18 @@ async def import_apply(
             a.appreciation_rate = appr
         assets.append(a)
     plan.assets = assets
+
+    income = []
+    for i, inc in enumerate(plan.income):
+        if inc.source_ref not in inc_i:
+            continue
+        amt = _f(inc_amount, i)
+        if amt is not None:
+            inc.annual_amount = Decimal(str(amt))
+        if i < len(inc_type) and str(inc_type[i]).strip():
+            inc.income_type = inc_type[i].strip()
+        income.append(inc)
+    plan.income = income
 
     budget_lines = []
     for i, b in enumerate(plan.budget_lines):

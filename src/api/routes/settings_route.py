@@ -19,6 +19,13 @@ Changes (asset model / ADR-015 v1.1+v1.2):
   payroll/salary-sacrifice flag on contributions. Previously assets were not
   exported, so restoring a scenario/backup (which wipes the data graph first)
   silently deleted them. APP_VERSION bumped to 0.3.1.
+
+Changes (ADR-021 rental income from property yield):
+  export_all_data() / restore_all_data() now also cover the rental property link
+  (mrl:rentalProperty) and net yield (mrl:rentalYieldRate) on income sources, so
+  a property-linked rental survives a scenario/backup round-trip. Pre-0.3.2
+  backups restore cleanly (absent fields → source keeps its static amount).
+  APP_VERSION bumped to 0.3.2.
 """
 import json
 from datetime import date, datetime
@@ -37,7 +44,7 @@ RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +148,10 @@ def export_all_data() -> dict:
             # Deposit account (ADR-024 deposit-routing, CLAUDE_CONTEXT item 24) —
             # was missing from export. Stored as the local label e.g. "CashAccount_2".
             "creditedToAccount": _local(iri, "creditedToAccount"),
+            # Rental property link + net yield (ADR-021). Property is the local
+            # label e.g. "PropertyAsset_1".
+            "rentalProperty":   _local(iri, "rentalProperty"),
+            "rentalYieldRate":  _float_val(iri, "rentalYieldRate"),
         })
     income_sources.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
@@ -533,6 +544,17 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
                     PREFIX mrl: <{MRL}>
                     INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
                         <{src_iri}> mrl:creditedToAccount mrl:{src['creditedToAccount']} . }} }}
+                """)
+            # Rental property link + net yield (ADR-021). Pre-1.0.9 backups
+            # lack these — absent → the source keeps its static amount. The
+            # property IRI only needs to resolve at engine read time (assets are
+            # restored below), same as the deposit-account link above.
+            if src.get("rentalProperty"):
+                store.update(f"""
+                    PREFIX mrl: <{MRL}> PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{
+                        <{src_iri}> mrl:rentalProperty  mrl:{src['rentalProperty']} ;
+                                    mrl:rentalYieldRate "{src.get('rentalYieldRate', 0)}"^^xsd:decimal . }} }}
                 """)
 
         # --- Cash accounts ---

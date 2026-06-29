@@ -80,6 +80,9 @@ def get_all_income_sources() -> list:
             "exchangeRate":     get_val("incomeExchangeRateToBase"),
             "exchangeRateDate": get_val("incomeExchangeRateDate"),
             "creditedToAccount": credited_local,
+            # ADR-021: rental income linked to a property + net yield %.
+            "rentalProperty":   get_local("rentalProperty"),
+            "rentalYieldRate":  get_val("rentalYieldRate"),
         })
     sources.sort(key=lambda s: int(s["n"]) if s["n"].isdigit() else 0)
     return sources
@@ -93,7 +96,9 @@ def save_income_source(n: int, name: str, income_type: str,
                        currency_local: str = "",
                        exchange_rate: float = 1.0,
                        exchange_rate_date: str = "",
-                       credited_to_account: str = "") -> None:
+                       credited_to_account: str = "",
+                       rental_property: str = "",
+                       rental_yield: float = 0.0) -> None:
     """Write or overwrite an IncomeSource_N instance in the data graph.
 
     currency_local is the Currency individual local name (e.g. "GBP", "USD").
@@ -148,6 +153,16 @@ def save_income_source(n: int, name: str, income_type: str,
     if credited_to_account:
         triples += f"""
         <{source_iri}> mrl:creditedToAccount mrl:{credited_to_account} .
+        """
+
+    # ADR-021: rental property link + net yield. Only persisted when a property
+    # is actually chosen; the yield is written alongside so the engine can
+    # derive income from the property's value. A blank property leaves the
+    # source on its static amount (parity).
+    if rental_property:
+        triples += f"""
+        <{source_iri}> mrl:rentalProperty  mrl:{rental_property} ;
+                       mrl:rentalYieldRate "{rental_yield or 0.0}"^^xsd:decimal .
         """
 
     store.update(f"""
@@ -240,7 +255,37 @@ def _get_retirement_year() -> Optional[int]:
 
 def _page_context(request, sources, edit_source=None, **kwargs):
     from src.api.routes.accounts import get_all_accounts_combined
+    from src.api.routes.projection import (
+        load_all_assets, load_all_accounts, get_projection_settings,
+    )
     current_year = date.today().year
+    # ADR-021: properties the user can link a rental income source to. The
+    # picker is scoped to PropertyAsset to keep the concept clear, though the
+    # engine treats any linked PhysicalAsset uniformly.
+    properties = [
+        {"label": a["label"], "name": a["name"], "value": round(a.get("balance") or 0.0)}
+        for a in load_all_assets() if a.get("asset_subclass") == "PropertyAsset"
+    ]
+    # Item 54 routing-vs-drawdown guard. Per-account effective drawdown priority
+    # (engine truth — unset defaults to 999 = drawn last) plus the EFFECTIVE
+    # spending account (configured, else the engine's fallback). The form warns
+    # only when income is routed to an account drawn LATER than spending AND at
+    # the drawn-last default — relative, not absolute 999, so an undifferentiated
+    # all-default setup (every account 999) doesn't trigger a useless warning.
+    _accts = load_all_accounts()
+    account_priorities = {a["label"]: a["drawdown_priority"] for a in _accts}
+    _configured = get_projection_settings().get("spending_account_label") or ""
+    if _configured and _configured in account_priorities:
+        effective_spending_label = _configured
+    else:
+        effective_spending_label = (
+            next((a["label"] for a in _accts
+                  if a["account_class"] == "CashAccount"
+                  and a.get("account_type_local") == "CashAccountType_Current"), None)
+            or next((a["label"] for a in _accts if a["account_class"] == "CashAccount"), None)
+            or (_accts[0]["label"] if _accts else "")
+        )
+    spending_priority = account_priorities.get(effective_spending_label, 999)
     return {
         "app_name": settings.app_name,
         "active": "income",
@@ -253,6 +298,10 @@ def _page_context(request, sources, edit_source=None, **kwargs):
         "base_currency":   get_base_currency(),
         "today":           date.today().isoformat(),
         "all_accounts":    get_all_accounts_combined(),
+        "properties":      properties,
+        "account_priorities":       account_priorities,
+        "effective_spending_label": effective_spending_label,
+        "spending_priority":        spending_priority,
         **kwargs,
     }
 
@@ -283,6 +332,8 @@ async def add_income_source(
     incomeExchangeRateToBase: float = Form(1.0),
     incomeExchangeRateDate: str = Form(""),
     creditedToAccount: str = Form(""),
+    rentalProperty: str = Form(""),
+    rentalYieldRate: float = Form(0.0),
 ):
     existing = get_all_income_sources()
     next_n = max([int(s["n"]) for s in existing if s["n"].isdigit()], default=0) + 1
@@ -292,7 +343,9 @@ async def add_income_source(
                        currency_local=incomeCurrency,
                        exchange_rate=incomeExchangeRateToBase,
                        exchange_rate_date=incomeExchangeRateDate,
-                       credited_to_account=creditedToAccount)
+                       credited_to_account=creditedToAccount,
+                       rental_property=rentalProperty,
+                       rental_yield=rentalYieldRate)
     return RedirectResponse(url="/income?added=1", status_code=303)
 
 
@@ -322,6 +375,8 @@ async def save_edit_income(
     incomeExchangeRateToBase: float = Form(1.0),
     incomeExchangeRateDate: str = Form(""),
     creditedToAccount: str = Form(""),
+    rentalProperty: str = Form(""),
+    rentalYieldRate: float = Form(0.0),
 ):
     save_income_source(n, incomeSourceName, incomeSourceType,
                        incomeAnnualAmount, incomeGrowthRate,
@@ -329,7 +384,9 @@ async def save_edit_income(
                        currency_local=incomeCurrency,
                        exchange_rate=incomeExchangeRateToBase,
                        exchange_rate_date=incomeExchangeRateDate,
-                       credited_to_account=creditedToAccount)
+                       credited_to_account=creditedToAccount,
+                       rental_property=rentalProperty,
+                       rental_yield=rentalYieldRate)
     # Post/redirect/get back to the list with a blank add form + "saved" banner
     # (matches budget.py — supersedes the earlier stay-in-edit-mode behaviour).
     return RedirectResponse(url="/income?saved=1", status_code=303)

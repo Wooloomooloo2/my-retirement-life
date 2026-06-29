@@ -32,6 +32,7 @@
     <div class="card-body p-4 flex flex-row flex-wrap items-center gap-x-6 gap-y-2">
         <div class="text-sm"><span class="font-semibold text-primary">{{ summary.accounts }}</span> accounts</div>
         <div class="text-sm"><span class="font-semibold text-primary">{{ summary.assets }}</span> physical assets</div>
+        <div class="text-sm"><span class="font-semibold text-primary">{{ summary.income }}</span> income sources</div>
         <div class="text-sm"><span class="font-semibold text-primary">{{ summary.budget_lines }}</span> budget lines</div>
         {% if summary.skipped %}<div class="text-sm text-base-content/50">{{ summary.skipped }} skipped</div>{% endif %}
         <div class="ml-auto">
@@ -65,7 +66,7 @@
         <table class="table table-sm">
             <thead><tr class="text-xs text-base-content/50">
                 <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Balance</th>
-                <th>Growth %</th><th>Dividend %</th><th>FX → base</th>
+                <th>Growth / Interest %</th><th>Dividend %</th><th>FX → base</th>
             </tr></thead>
             <tbody>
             {% for a in plan.accounts %}
@@ -76,10 +77,16 @@
                     <td><span class="badge badge-ghost badge-sm">{{ a.account_type.split('_')[-1] }}</span></td>
                     <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
                     {% if a.kind == 'investment' %}
-                    <td><input type="number" step="0.1" name="acct_growth" placeholder="e.g. 5" class="input input-bordered input-xs w-20 {% if a.needs_rate %}input-warning{% endif %}" /></td>
+                    <td>
+                        <input type="number" step="0.1" name="acct_growth" placeholder="e.g. 5" class="input input-bordered input-xs w-20 {% if a.needs_rate %}input-warning{% endif %}" title="Annual growth %" />
+                        <input type="hidden" name="acct_interest" value="" />
+                    </td>
                     <td><input type="number" step="0.1" name="acct_dividend" placeholder="0" class="input input-bordered input-xs w-20" /></td>
                     {% else %}
-                    <td><input type="hidden" name="acct_growth" value="" />—</td>
+                    <td>
+                        <input type="number" step="0.1" name="acct_interest" value="{{ a.interest_rate if a.interest_rate is not none else '' }}" placeholder="e.g. 2" class="input input-bordered input-xs w-20" title="Annual interest % on this cash account" />
+                        <input type="hidden" name="acct_growth" value="" />
+                    </td>
                     <td><input type="hidden" name="acct_dividend" value="" />—</td>
                     {% endif %}
                     <td>
@@ -116,6 +123,40 @@
                     <td><span class="badge badge-ghost badge-sm">{{ a.subclass.replace('Asset','') }}</span></td>
                     <td class="text-right">{{ a.currency }} {{ "{:,.2f}".format(a.balance) }}</td>
                     <td><input type="number" step="0.1" name="asset_appr" placeholder="0" class="input input-bordered input-xs w-20" /></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Income sources (from MFL budget income) -->
+{% if plan.income %}
+<div class="card bg-base-100 shadow-sm mb-5">
+    <div class="card-body p-5">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-1 border-b border-base-200">
+            <i class="ti ti-cash text-base-content/40"></i> Income sources
+        </h3>
+        <p class="text-xs text-base-content/40 mb-2">Amounts are annual and treated as net (take-home). They start active with no end year — set an end year (e.g. employment stopping at retirement) on the Income page after importing.</p>
+        <table class="table table-sm">
+            <thead><tr class="text-xs text-base-content/50">
+                <th>Import</th><th>Status</th><th>Name</th><th>Type</th><th class="text-right">Annual</th>
+            </tr></thead>
+            <tbody>
+            {% for inc in plan.income %}
+                <tr>
+                    <td><input type="checkbox" name="inc_include" value="{{ inc.source_ref }}" checked class="checkbox checkbox-sm" /></td>
+                    <td>{{ status_badge(diff.status.get(inc.source_ref)) }}</td>
+                    <td class="font-medium">{{ inc.name }}</td>
+                    <td>
+                        <select name="inc_type" class="select select-bordered select-xs">
+                            {% for key, label in income_types.items() %}
+                            <option value="{{ key }}" {% if inc.income_type == key %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="text-right"><input type="number" step="0.01" name="inc_amount" value="{{ "%.2f"|format(inc.annual_amount) }}" class="input input-bordered input-xs w-28 text-right" /></td>
                 </tr>
             {% endfor %}
             </tbody>

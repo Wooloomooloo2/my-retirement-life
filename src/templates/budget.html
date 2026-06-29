@@ -629,7 +629,7 @@
     }
 
     function datasetsFor(payload) {
-        return payload.groups.map((g, idx) => ({
+        const sets = payload.groups.map((g, idx) => ({
             label:           g.name,
             data:            g.values,
             borderColor:     g.border,
@@ -639,6 +639,22 @@
             pointRadius:     0,
             stack:           'spend',
         }));
+        // Retirement-year ★ marker (item 56) — overlay a real data point at the
+        // top of the spending stack (per-year total) in its own stack group so
+        // it's off the stack, and filter it from the tooltip footer. Rebuilt on
+        // every grouping/inflation toggle since the totals can change.
+        const totals = years.map((_, i) =>
+            payload.groups.reduce((s, g) => s + ((g.values || [])[i] || 0), 0));
+        sets.push({
+            label: 'Retirement', data: totals, stack: '_marker',
+            fill: false, borderColor: 'transparent', borderWidth: 0,
+            pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
+            pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
+            pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
+            pointBackgroundColor: '#4F46E5', pointBorderColor: '#4F46E5',
+            pointBorderWidth: 2, tension: 0.15, order: -1,
+        });
+        return sets;
     }
 
     function yAxisTitle() {
@@ -666,8 +682,17 @@
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        font: { size: 11 }, boxWidth: 12,
+                        // Hide the ★ marker dataset from the legend.
+                        filter: (item, data) => data.datasets[item.datasetIndex].stack !== '_marker',
+                    },
+                },
                 tooltip: {
+                    // Drop the ★ marker so it neither shows a row nor doubles the footer Total.
+                    filter: item => item.dataset.stack !== '_marker',
                     callbacks: {
                         title: items => `${items[0].label}${retirementYear && Number(items[0].label) === retirementYear ? ' ★ retirement' : ''}`,
                         label: ctx => ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.round(ctx.parsed.y).toLocaleString('en-GB')}`,

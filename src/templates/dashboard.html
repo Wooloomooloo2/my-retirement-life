@@ -219,7 +219,7 @@
 </div>
 {% endif %}
 
-<!-- Net-worth snapshot cards: today / retirement / final / years to retirement -->
+<!-- Net-worth: estate hero + today / years-to-retirement / at-retirement cards -->
 {% if snapshots %}
 {% macro nw_breakdown(snap) -%}
   <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></span>{{ base_currency_symbol() }}{{ "{:,.0f}".format(snap.cash) }}</span>
@@ -229,7 +229,27 @@
   {% endif %}
 {%- endmacro %}
 
-<div class="grid grid-cols-4 gap-4 mb-5">
+<!-- Hero: Expected Estate Value at Life Expectancy (snapshots.final = net worth
+     incl. physical assets at the end of the projection horizon) -->
+{% if snapshots.final %}
+<div class="card bg-base-100 shadow-sm mb-4 border-l-4 border-amber-500">
+    <div class="card-body p-5">
+        <div class="flex items-center gap-2">
+            <i class="ti ti-building-estate text-amber-500 text-xl" aria-hidden="true"></i>
+            <p class="text-sm text-base-content/60 uppercase tracking-wide">Expected Estate Value at Life Expectancy</p>
+        </div>
+        <p class="text-4xl font-bold mt-1 {% if snapshots.final.total < 0 %}text-error{% endif %}">
+            {% if snapshots.final.total >= 0 %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total) }}{% else %}−{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total | abs) }}{% endif %}
+        </p>
+        <p class="text-xs text-base-content/40 mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            {% if projection and projection.end_year %}<span class="text-base-content/50">in {{ projection.end_year }}</span>{% endif %}
+            {{ nw_breakdown(snapshots.final) }}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-3 gap-4 mb-5">
 
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
@@ -265,18 +285,6 @@
             </p>
             <p class="text-xs text-base-content/40 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                 {% if snapshots.retirement %}{{ nw_breakdown(snapshots.retirement) }}{% endif %}
-            </p>
-        </div>
-    </div>
-
-    <div class="card bg-base-100 shadow-sm">
-        <div class="card-body p-4">
-            <p class="text-xs text-base-content/50 uppercase tracking-wide">At life expectancy</p>
-            <p class="text-xl font-semibold mt-1 {% if snapshots.final.total < 0 %}text-error{% endif %}">
-                {% if snapshots.final.total >= 0 %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total) }}{% else %}−{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total | abs) }}{% endif %}
-            </p>
-            <p class="text-xs text-base-content/40 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                {{ nw_breakdown(snapshots.final) }}
             </p>
         </div>
     </div>
@@ -438,6 +446,33 @@ function initNetworthChart() {
         });
     });
 
+    // Retirement-year ★ marker (item 56). The X-axis tick label can't be
+    // trusted — Chart.js autoSkip thins ticks by position, so the retirement
+    // year vanishes when it doesn't survive the cull. Instead overlay a real
+    // data point at the TOP of the stack (the per-year net-worth total) in its
+    // OWN stack group so it isn't added to the stack, and filter it out of the
+    // tooltip so the "Net worth" footer doesn't double-count it.
+    const networthTotals = years.map((_, i) =>
+        [...cashLabels, ...invLabels].reduce((s, l) => s + ((accountBalances[l] || [])[i] || 0), 0)
+        + astLabels.reduce((s, l) => s + ((assetBalances[l] || [])[i] || 0), 0)
+    );
+    datasets.push({
+        label:            'Retirement',
+        data:             networthTotals,
+        stack:            '_marker',
+        fill:             false,
+        borderColor:      'transparent',
+        borderWidth:      0,
+        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
+        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
+        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
+        pointBackgroundColor: '#4F46E5',
+        pointBorderColor: '#4F46E5',
+        pointBorderWidth: 2,
+        tension:          0.3,
+        order:            -1,
+    });
+
     networthChartInstance = new Chart(
         document.getElementById('networthChart').getContext('2d'),
         {
@@ -450,6 +485,9 @@ function initNetworthChart() {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        // Drop the ★ marker dataset so it neither shows a row nor
+                        // double-counts in the net-worth footer sum.
+                        filter: item => item.dataset.stack !== '_marker',
                         callbacks: {
                             label: ctx => {
                                 const v = ctx.parsed.y;
