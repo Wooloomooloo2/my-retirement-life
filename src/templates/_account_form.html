@@ -257,7 +257,8 @@
                         {% for c in currencies %}
                         <option value="{{ c.local }}"
                             {% if edit_account and edit_account.currency == c.local %}selected
-                            {% elif not edit_account and c.code == 'GBP' %}selected{% endif %}>
+                            {% elif not edit_account and person_currency and c.local == person_currency %}selected
+                            {% elif not edit_account and not person_currency and c.code == 'GBP' %}selected{% endif %}>
                             {{ c.code }} — {{ c.name }}
                         </option>
                         {% endfor %}
@@ -411,7 +412,8 @@
                         {% for j in jurisdictions %}
                         <option value="{{ j.local }}"
                             {% if edit_account and edit_account.jurisdiction == j.local %}selected
-                            {% elif not edit_account and j.code == 'GB' %}selected{% endif %}>
+                            {% elif not edit_account and person_jurisdiction and j.local == person_jurisdiction %}selected
+                            {% elif not edit_account and not person_jurisdiction and j.code == 'GB' %}selected{% endif %}>
                             {{ j.name }}
                         </option>
                         {% endfor %}

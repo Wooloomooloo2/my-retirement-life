@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
 from typing import Optional
+import calendar
 import pyoxigraph as og
 
 from src.config import settings
@@ -168,7 +169,9 @@ async def save_profile(
     request: Request,
     firstName: str = Form(...),
     lastName: str = Form(...),
-    dateOfBirth: str = Form(...),
+    dobDay: int = Form(...),
+    dobMonth: int = Form(...),
+    dobYear: int = Form(...),
     employmentStatus: str = Form(...),
     targetRetirementAge: int = Form(...),
     lifeExpectancy: int = Form(...),
@@ -177,6 +180,16 @@ async def save_profile(
     plansToRetireIn: Optional[str] = Form(None),
 ):
     person_iri = f"{MRL}Person_1"
+
+    # Assemble an unambiguous ISO date of birth from the explicit day / month /
+    # year fields. The form spells the month out (January…December) so there is
+    # no dd/mm vs mm/dd ambiguity; here we just clamp to valid ranges (the day to
+    # the selected month's length — belt-and-braces alongside the client guard)
+    # and store as yyyy-mm-dd for xsd:date.
+    month = min(max(dobMonth, 1), 12)
+    last_day = calendar.monthrange(dobYear, month)[1]
+    day = min(max(dobDay, 1), last_day)
+    dateOfBirth = f"{dobYear:04d}-{month:02d}-{day:02d}"
 
     # Detect first-run BEFORE we overwrite: if there was no profile yet, this
     # POST is the very first step of onboarding. After saving we offer the MFL

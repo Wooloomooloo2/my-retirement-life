@@ -48,10 +48,30 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Date of birth</span>
                     </label>
-                    <input type="date" name="dateOfBirth" required
-                        value="{{ profile.dateOfBirth if profile else '' }}"
-                        class="input input-bordered input-sm w-full"
-                        id="dob" />
+                    {# Explicit day / spelled-out month / year — unambiguous in any
+                       locale (no dd/mm vs mm/dd confusion). Reassembled into an
+                       ISO date server-side. #}
+                    {% set _dob = profile.dateOfBirth.split('-') if (profile and profile.dateOfBirth) else ['', '', ''] %}
+                    <div class="grid grid-cols-[4.5rem_1fr_5.5rem] gap-2">
+                        <input type="number" name="dobDay" id="dob-day" required min="1" max="31"
+                            value="{{ _dob[2]|int if _dob[2] else '' }}"
+                            placeholder="Day" aria-label="Day of birth"
+                            class="input input-bordered input-sm w-full" />
+                        <select name="dobMonth" id="dob-month" required aria-label="Month of birth"
+                                class="select select-bordered select-sm w-full">
+                            <option value="" disabled {% if not _dob[1] %}selected{% endif %}>Month</option>
+                            {% for mnum, mname in [
+                                ('01','January'), ('02','February'), ('03','March'), ('04','April'),
+                                ('05','May'), ('06','June'), ('07','July'), ('08','August'),
+                                ('09','September'), ('10','October'), ('11','November'), ('12','December')] %}
+                            <option value="{{ mnum }}" {% if _dob[1] == mnum %}selected{% endif %}>{{ mname }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="number" name="dobYear" id="dob-year" required min="1900" max="2100"
+                            value="{{ _dob[0] }}"
+                            placeholder="Year" aria-label="Year of birth"
+                            class="input input-bordered input-sm w-full" />
+                    </div>
                     <label class="label py-0.5">
                         <span class="label-text-alt text-base-content/40" id="age-display"></span>
                     </label>
@@ -211,15 +231,45 @@
 
 {% block scripts %}
 <script>
+    const MONTH_NAMES = ['January','February','March','April','May','June',
+                         'July','August','September','October','November','December'];
+    const dobDay   = document.getElementById('dob-day');
+    const dobMonth = document.getElementById('dob-month');
+    const dobYear  = document.getElementById('dob-year');
+
+    function currentDob() {
+        const d = parseInt(dobDay.value, 10);
+        const m = parseInt(dobMonth.value, 10);
+        const y = parseInt(dobYear.value, 10);
+        if (!d || !m || !y) return null;
+        const last = new Date(y, m, 0).getDate();   // days in month m of year y
+        return { y, m, day: Math.min(d, last) };
+    }
+
+    // Constrain the day field to the selected month/year (prevents e.g. 31 Feb).
+    function syncDayMax() {
+        const m = parseInt(dobMonth.value, 10);
+        const y = parseInt(dobYear.value, 10);
+        if (m && y) {
+            const last = new Date(y, m, 0).getDate();
+            dobDay.max = last;
+            if (parseInt(dobDay.value, 10) > last) dobDay.value = last;
+        }
+    }
+
     function updateAgeDisplay() {
-        const dob = document.getElementById('dob').value;
-        const retAge = parseInt(document.getElementById('retirement-age').value);
-        if (!dob) return;
+        syncDayMax();
+        const dob = currentDob();
+        const ageEl = document.getElementById('age-display');
+        if (!dob) { ageEl.textContent = ''; return; }
         const today = new Date();
-        const birth = new Date(dob);
-        const age = Math.floor((today - birth) / (365.25 * 24 * 60 * 60 * 1000));
-        document.getElementById('age-display').textContent = `Current age: ${age}`;
-        if (retAge && age) {
+        let age = today.getFullYear() - dob.y;
+        if (today.getMonth() + 1 < dob.m ||
+            (today.getMonth() + 1 === dob.m && today.getDate() < dob.day)) age--;
+        // Unambiguous confirmation, e.g. "3 April 1970 · age 56".
+        ageEl.textContent = `${dob.day} ${MONTH_NAMES[dob.m - 1]} ${dob.y} · age ${age}`;
+        const retAge = parseInt(document.getElementById('retirement-age').value, 10);
+        if (retAge && !isNaN(age)) {
             const years = retAge - age;
             document.getElementById('years-to-retirement').textContent =
                 years > 0 ? `${years} years to retirement`
@@ -227,8 +277,13 @@
                 : 'Already retired';
         }
     }
-    document.getElementById('dob').addEventListener('change', updateAgeDisplay);
+
+    [dobDay, dobMonth, dobYear].forEach(el => {
+        el.addEventListener('input', updateAgeDisplay);
+        el.addEventListener('change', updateAgeDisplay);
+    });
     document.getElementById('retirement-age').addEventListener('input', updateAgeDisplay);
+    dobYear.max = new Date().getFullYear();   // can't be born in the future
     updateAgeDisplay();
 </script>
 {% endblock %}

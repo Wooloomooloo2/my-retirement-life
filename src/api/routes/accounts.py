@@ -967,12 +967,20 @@ def _render_accounts(request: Request, template: str | None = None, **extra) -> 
         if a["account_class"] in ("CashAccount", "InvestmentAccount")
     ]
 
+    # Person's home jurisdiction + base currency, so a NEW account defaults to
+    # them instead of a hardcoded GB/GBP (less setup friction — the account is
+    # almost always in the user's own country/currency).
+    from src.api.routes.profile import get_profile
+    prof = get_profile() or {}
+
     context = {
         "app_name":            settings.app_name,
         "active":              "accounts",
         "accounts":            accounts,
         "currencies":          get_currencies(),
         "jurisdictions":       get_jurisdictions(),
+        "person_jurisdiction": prof.get("jurisdiction", ""),
+        "person_currency":     prof.get("baseCurrency", ""),
         "today":               date.today().isoformat(),
         "edit_account":        None,
         "cash_account_types":  CASH_ACCOUNT_TYPES,
