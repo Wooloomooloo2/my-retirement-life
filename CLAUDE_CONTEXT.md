@@ -8,7 +8,7 @@
 
 ## ▶ Next session — resume here (session 16 done 2026-07-01)
 
-**Commit state:** first batch is **committed + pushed** — `7fb95fd` (onboarding MFL offer, dedicated account Add/Edit pages, per-account drawdown tax, MFL v32). **Second batch is uncommitted on `main`:** budget dedicated Add/Edit pages, date-of-birth day/month/year fields, setup-checklist reorder, new-account jurisdiction/currency defaults, plus these doc updates (CLAUDE_CONTEXT + CHANGELOG). Offer to commit + push next.
+**Commit state:** all session-16 work is **committed + pushed to `main`** — `7fb95fd` (onboarding MFL offer, dedicated account Add/Edit pages, per-account drawdown tax, MFL v32), `9a2f722` (budget dedicated Add/Edit pages, DOB day/month/year, setup-checklist reorder, account jurisdiction/currency defaults, CLAUDE_CONTEXT + CHANGELOG), `333d18a` (macOS app icon).
 
 **Live store untouched this session** — everything verified headlessly against isolated `DATA_DIR` copies + the committed demo backup (`sample-data/demo-backup-alex-sterling.json`) via FastAPI `TestClient` (`httpx` pip-installed then uninstalled each time, item-50 convention). Live store is still **1.0.9 / `Mark Baseline 2026-06`** (session 15). **No ontology/schema change this session.**
 
@@ -39,6 +39,8 @@ _UI/UX plus one engine-reporting change. No ontology/schema change (still 1.0.9 
 **New accounts default to the person's jurisdiction + base currency.** `_render_accounts` passes `person_jurisdiction` / `person_currency` (from the profile); `_account_form.html` uses them as the new-account default instead of hardcoded GB/GBP (edit unchanged; GB/GBP fallback when no profile yet).
 
 **MFL reader — schema ceiling 31 → 32.** `mfl_import/reader.py` `KNOWN_SCHEMA_VERSION` 31 → 32. MFL migration `0032_category_import_map` (a `category_import_map` table + a "Needs Review" holding category) is additive to MFL's own internals and touches none of the tables the reader consumes, so v32 files no longer surface the "newer than built for" warning.
+
+**macOS app icon (dock).** The PyInstaller `BUNDLE` had `icon=None` (generic dock icon). Added `tools/appicon/AppIcon.icns` (16–1024px) from the MRL hex badge and set `icon=…AppIcon.icns` in `tools/MyRetirementLife.spec`. **Removed the badge's light "sticker" outline** so the icon has no background: a flood-fill from the already-transparent exterior erases the ~2px near-white ring, stopping at the teal edge (interior sun/sailboat untouched — they're enclosed by teal). Cleaned master kept at `tools/appicon/mrl-icon-clean.png`. Built via `VERSION=0.2.0 ./tools/build_mac.sh` → `dist/My Retirement Life.app` + `dist/MyRetirementLife-0.2.0.dmg`; verified the bundle embeds `AppIcon.icns` (1024px) with `Info.plist CFBundleIconFile = AppIcon.icns`. (Icon-processing used a throwaway Pillow install, uninstalled after — `iconutil`/`sips` are macOS built-ins.) **NB:** if a stale generic icon lingers in the dock after opening the rebuilt app, it's macOS icon-cache; moving the `.app` to `/Applications` (or `killall Dock`) refreshes it. The in-app web logo `src/static/img/mrl-icon.png` still has its outline — offer to apply the same clean version there if Mark wants visual consistency.
 
 ---
 
