@@ -201,6 +201,7 @@ async def drawdown_preview(request: Request):
         "ok":                  True,
         "years":               years,
         "account_withdrawals": projection["account_withdrawals"],
+        "account_tax":         projection["account_tax"],
         "account_names":       projection["account_names"],
         "account_classes":     projection["account_classes"],
         "tax_per_year":        [y["tax_paid"] for y in projection["years"]],

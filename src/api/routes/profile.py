@@ -7,7 +7,7 @@ POST /profile  — save profile data to the triple store
 Income is managed separately on the /income screen.
 """
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from src.api.templates import templates
 from typing import Optional
 import pyoxigraph as og
@@ -178,6 +178,12 @@ async def save_profile(
 ):
     person_iri = f"{MRL}Person_1"
 
+    # Detect first-run BEFORE we overwrite: if there was no profile yet, this
+    # POST is the very first step of onboarding. After saving we offer the MFL
+    # import as the next step (decision-cards onboarding flow) rather than just
+    # re-rendering the populated profile form.
+    is_first_run = get_profile() is None
+
     # Clear existing person triples
     store.update(f"""
         DELETE WHERE {{
@@ -219,6 +225,11 @@ async def save_profile(
             }}
         """)
 
+    # First-run onboarding: send the user to the "import from MFL?" decision
+    # step. Returning users who edit their profile stay on the profile page.
+    if is_first_run:
+        return RedirectResponse(url="/welcome/import", status_code=303)
+
     profile = get_profile()
     currencies = get_currencies()
     jurisdictions = get_jurisdictions()
@@ -235,4 +246,20 @@ async def save_profile(
             "is_new": False,
             "saved": True,
         }
+    )
+
+
+@router.get("/welcome/import", response_class=HTMLResponse)
+async def welcome_import(request: Request):
+    """Onboarding decision step, shown right after the profile is first saved:
+    offer to seed the plan from My Financial Life, or continue entering data
+    manually via the setup checklist."""
+    return templates.TemplateResponse(
+        request=request,
+        name="welcome_import.html",
+        context={
+            "app_name": settings.app_name,
+            "profile": get_profile(),
+            "active": "",
+        },
     )

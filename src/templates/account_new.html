@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{# ===========================================================================
+   Dedicated add-account page. Rendered by GET /accounts/new via
+   _render_accounts(template="account_new.html"). The shared form lives in
+   _account_form.html; here it runs in add mode (edit_account None) with the
+   class tabs enabled so the user picks cash / investment / physical asset.
+   =========================================================================== #}
+
+{% block title %}Add account — {{ app_name }}{% endblock %}
+{% block page_title %}Add account{% endblock %}
+{% block page_subtitle %}Cash, investment or physical asset{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl">
+    <a href="/accounts" class="btn btn-ghost btn-sm gap-1 mb-4">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        Back to accounts
+    </a>
+
+    {% set compact = False %}
+    {% set edit_account = None %}
+    {% include "_account_form.html" %}
+</div>
+
+{% endblock %}
