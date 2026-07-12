@@ -78,16 +78,10 @@
                     <i class="ti ti-file-import text-base" aria-hidden="true"></i> Import from MFL
                 </a>
 
-                <p class="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-widest text-base-content/40">Coming soon</p>
-                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
-                    <i class="ti ti-home text-base" aria-hidden="true"></i> Housing
-                </span>
-                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
-                    <i class="ti ti-heart text-base" aria-hidden="true"></i> Health
-                </span>
-                <span class="flex items-center gap-3 px-4 py-2 text-sm text-base-content/30 cursor-not-allowed">
-                    <i class="ti ti-plane text-base" aria-hidden="true"></i> Lifestyle
-                </span>
+                {# The "Coming soon" group (Housing / Health / Lifestyle) was removed in
+                   ADR-022 commit 2: three permanently-disabled rows on every page, costing
+                   sidebar space and teaching the user that a third of the nav does nothing.
+                   The roadmap belongs on a website, not in the product's navigation. #}
 
             </nav>
             <div class="p-4 border-t border-base-300 space-y-3">
@@ -164,7 +158,11 @@
                 </div>
             </header>
 
+            {# max-w-7xl keeps cards and tables readable on a wide monitor instead of
+               stretching to the full window (ADR-022). At a 1440px window the content
+               column is already narrower than the cap, so nothing moves there. #}
             <div class="flex-1 overflow-y-auto p-6">
+              <div class="max-w-7xl mx-auto">
 
                 {% set s = setup_state() %}
                 {% if not s.setup_all_done %}
@@ -190,6 +188,7 @@
                 {% endif %}
 
                 {% block content %}{% endblock %}
+              </div>
             </div>
         </main>
 

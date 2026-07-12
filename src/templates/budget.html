@@ -89,12 +89,12 @@
                 </p>
                 {% if m %}
                 <p class="text-lg font-semibold mt-0.5">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(m.total) }}
+                    {{ m.total | money }}
                 </p>
                 <p class="text-xs text-base-content/50 mt-0.5">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(m.spending) }} spending
+                    {{ m.spending | money }} spending
                     {% if m.contributions > 0 %}
-                    · <span class="text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(m.contributions) }} contributions</span>
+                    · <span class="text-info">{{ m.contributions | money }} contributions</span>
                     {% endif %}
                 </p>
                 {% else %}
@@ -103,7 +103,7 @@
             </div>
         {% endmacro %}
 
-        <div class="grid grid-cols-3 gap-4 mb-4 text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 text-sm">
             {{ snapshot_card('Today',         metrics.today) }}
             {{ snapshot_card('At retirement', metrics.retirement) }}
             {{ snapshot_card('Peak',          metrics.peak) }}
@@ -200,7 +200,7 @@
                                 <div class="text-xs text-base-content/40 font-normal">
                                     {{ line.currencyCode }} @ {{ line.exchangeRate if line.exchangeRate else '1.0' }}
                                     {% if line.exchangeRate %}
-                                    → {{ base_currency_symbol() }}{{ "{:,.0f}".format(line.annualAmount | float * (line.exchangeRate | float)) }}
+                                    → {{ ((line.annualAmount | float) * (line.exchangeRate | float)) | money }}
                                     {% endif %}
                                 </div>
                                 {% endif %}
@@ -275,19 +275,19 @@
                     <tr>
                         <td class="font-medium">{{ c.accountName }}</td>
                         <td>
-                            {{ base_currency_symbol() }}{{ "{:,.2f}".format(c.amount | float) }}
+                            {{ c.amount | float | money(2) }}
                             {% if c.employerAnnual and c.employerAnnual > 0 %}
-                                <div class="text-xs text-base-content/50">+ {{ base_currency_symbol() }}{{ "{:,.2f}".format(c.employerAmount | float) }} employer</div>
+                                <div class="text-xs text-base-content/50">+ {{ c.employerAmount | float | money(2) }} employer</div>
                             {% endif %}
                         </td>
                         <td class="text-base-content/60 text-xs">{{ c.frequencyLabel }}</td>
                         <td class="font-medium {% if c.fromPayroll %}text-base-content/50{% else %}text-info{% endif %}">
-                            {{ base_currency_symbol() }}{{ "{:,.0f}".format(c.annualAmount) }}
+                            {{ c.annualAmount | money }}
                             {% if c.fromPayroll %}
                                 <div class="text-xs text-base-content/40 font-normal">from payroll (pre-tax — not from net income)</div>
                             {% endif %}
                             {% if c.employerAnnual and c.employerAnnual > 0 %}
-                                <div class="text-xs text-base-content/50 font-normal">+ {{ base_currency_symbol() }}{{ "{:,.0f}".format(c.employerAnnual) }} employer</div>
+                                <div class="text-xs text-base-content/50 font-normal">+ {{ c.employerAnnual | money }} employer</div>
                             {% endif %}
                         </td>
                         <td class="text-xs text-base-content/50">
@@ -307,20 +307,20 @@
                     {% set cashflow_total = contributions | rejectattr('fromPayroll') | sum(attribute='annualAmount') %}
                     <tr class="font-medium border-t border-base-200">
                         <td colspan="3">Total annual contributions <span class="font-normal text-base-content/40 text-xs">(your portion — counted in cashflow)</span></td>
-                        <td class="text-info">{{ base_currency_symbol() }}{{ "{:,.0f}".format(cashflow_total) }}</td>
+                        <td class="text-info">{{ cashflow_total | money }}</td>
                         <td colspan="2"></td>
                     </tr>
                     {% if payroll_total > 0 %}
                     <tr class="text-xs text-base-content/50">
                         <td colspan="3">Payroll / salary-sacrifice portion <span class="text-base-content/40">(pre-tax — credits balances, not from your net income)</span></td>
-                        <td>+ {{ base_currency_symbol() }}{{ "{:,.0f}".format(payroll_total) }}</td>
+                        <td>+ {{ payroll_total | money }}</td>
                         <td colspan="2"></td>
                     </tr>
                     {% endif %}
                     {% if employer_total > 0 %}
                     <tr class="text-xs text-base-content/50">
                         <td colspan="3">Employer portion <span class="text-base-content/40">(credits balances, not your cashflow)</span></td>
-                        <td>+ {{ base_currency_symbol() }}{{ "{:,.0f}".format(employer_total) }}</td>
+                        <td>+ {{ employer_total | money }}</td>
                         <td colspan="2"></td>
                     </tr>
                     {% endif %}

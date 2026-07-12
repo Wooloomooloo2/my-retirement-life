@@ -222,10 +222,10 @@
 <!-- Net-worth: estate hero + today / years-to-retirement / at-retirement cards -->
 {% if snapshots %}
 {% macro nw_breakdown(snap) -%}
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></span>{{ base_currency_symbol() }}{{ "{:,.0f}".format(snap.cash) }}</span>
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1"></span>{{ base_currency_symbol() }}{{ "{:,.0f}".format(snap.invest) }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></span>{{ snap.cash | money }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1"></span>{{ snap.invest | money }}</span>
   {% if snap.assets %}
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>{{ base_currency_symbol() }}{{ "{:,.0f}".format(snap.assets) }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>{{ snap.assets | money }}</span>
   {% endif %}
 {%- endmacro %}
 
@@ -238,8 +238,8 @@
             <i class="ti ti-building-estate text-amber-500 text-xl" aria-hidden="true"></i>
             <p class="text-sm text-base-content/60 uppercase tracking-wide">Expected Estate Value at Life Expectancy</p>
         </div>
-        <p class="text-4xl font-bold mt-1 {% if snapshots.final.total < 0 %}text-error{% endif %}">
-            {% if snapshots.final.total >= 0 %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total) }}{% else %}−{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.final.total | abs) }}{% endif %}
+        <p class="text-4xl font-bold mt-1 tabular-nums {% if snapshots.final.total < 0 %}text-error{% endif %}">
+            {{ snapshots.final.total | money }}
         </p>
         <p class="text-xs text-base-content/40 mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5">
             {% if projection and projection.end_year %}<span class="text-base-content/50">in {{ projection.end_year }}</span>{% endif %}
@@ -249,13 +249,13 @@
 </div>
 {% endif %}
 
-<div class="grid grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
 
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Today's net worth</p>
-            <p class="text-xl font-semibold mt-1">
-                {{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.today.total) }}
+            <p class="text-xl font-semibold mt-1 tabular-nums">
+                {{ snapshots.today.total | money }}
             </p>
             <p class="text-xs text-base-content/40 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                 {{ nw_breakdown(snapshots.today) }}
@@ -266,7 +266,7 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Years to retirement</p>
-            <p class="text-xl font-semibold mt-1">
+            <p class="text-xl font-semibold mt-1 tabular-nums">
                 {% if years_to_retirement is not none %}
                     {% if years_to_retirement > 0 %}{{ years_to_retirement }}{% else %}Retired{% endif %}
                 {% else %}—{% endif %}
@@ -280,8 +280,8 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">At retirement</p>
-            <p class="text-xl font-semibold mt-1">
-                {% if snapshots.retirement %}{{ base_currency_symbol() }}{{ "{:,.0f}".format(snapshots.retirement.total) }}{% else %}—{% endif %}
+            <p class="text-xl font-semibold mt-1 tabular-nums">
+                {% if snapshots.retirement %}{{ snapshots.retirement.total | money }}{% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                 {% if snapshots.retirement %}{{ nw_breakdown(snapshots.retirement) }}{% endif %}
@@ -325,7 +325,7 @@
 {% endif %}
 
 <!-- Setup at a glance — five compact clickable count cards -->
-<div class="grid grid-cols-5 gap-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
     <a href="/accounts" class="card bg-base-100 shadow-sm hover:shadow transition-shadow">
         <div class="card-body p-3 text-center">
             <i class="ti ti-wallet text-blue-500 text-lg" aria-hidden="true"></i>

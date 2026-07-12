@@ -78,9 +78,9 @@
                         </td>
                         <td class="{% if event.amount | float < 0 %}text-success{% else %}text-error{% endif %} font-medium">
                             {% if event.amount | float < 0 %}
-                                +{{ base_currency_symbol() }}{{ "{:,.0f}".format(event.amount | float | abs) }}
+                                +{{ event.amount | float | abs | money }}
                             {% else %}
-                                −{{ base_currency_symbol() }}{{ "{:,.0f}".format(event.amount | float) }}
+                                −{{ event.amount | float | money }}
                             {% endif %}
                         </td>
                         <td class="text-xs text-base-content/50">{{ event.notes if event.notes else '—' }}</td>

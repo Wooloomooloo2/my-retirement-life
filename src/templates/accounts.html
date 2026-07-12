@@ -208,10 +208,10 @@
                 <i class="ti ti-wallet text-base-content/40" aria-hidden="true"></i>
                 Your accounts
                 <span class="text-xs font-normal text-base-content/40 ml-2">
-                    Cash: {{ base_currency_symbol() }}{{ "{:,.0f}".format(cash_total_balance) }}
-                    · Investments: {{ base_currency_symbol() }}{{ "{:,.0f}".format(invest_total_balance) }}
+                    Cash: {{ cash_total_balance | money }}
+                    · Investments: {{ invest_total_balance | money }}
                     {% if asset_total_balance %}
-                    · Assets: {{ base_currency_symbol() }}{{ "{:,.0f}".format(asset_total_balance) }}
+                    · Assets: {{ asset_total_balance | money }}
                     {% endif %}
                 </span>
             </h3>
@@ -331,8 +331,8 @@
                             {% if is_asset %}<span class="text-base-content/30">—</span>
                             {% elif account.contribution %}
                                 {% set _emp = account.contribution.employerAnnual or 0 %}
-                                <span class="badge badge-info badge-sm badge-outline" {% if _emp > 0 %}title="{{ base_currency_symbol() }}{{ '{:,.0f}'.format(account.contribution.annualAmount) }} you + {{ base_currency_symbol() }}{{ '{:,.0f}'.format(_emp) }} employer"{% endif %}>
-                                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(account.contribution.annualAmount + _emp) }}/yr{% if _emp > 0 %}<span class="opacity-60 ml-0.5">*</span>{% endif %}
+                                <span class="badge badge-info badge-sm badge-outline" {% if _emp > 0 %}title="{{ account.contribution.annualAmount | money }} you + {{ _emp | money }} employer"{% endif %}>
+                                    {{ (account.contribution.annualAmount + _emp) | money }}/yr{% if _emp > 0 %}<span class="opacity-60 ml-0.5">*</span>{% endif %}
                                 </span>
                             {% else %}
                                 <a href="{{ edit_url }}" class="text-xs text-base-content/40 hover:text-info">+ Add</a>
@@ -996,9 +996,9 @@
                 <span class="text-xs font-normal text-base-content/40">(optional — credits this account; your portion also deducts from cashflow)</span>
                 {% if contrib %}
                 <span class="badge badge-info badge-sm ml-auto">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount + (contrib.employerAnnual or 0)) }}/yr
+                    {{ (contrib.annualAmount + (contrib.employerAnnual or 0)) | money }}/yr
                     {% if contrib.employerAnnual and contrib.employerAnnual > 0 %}
-                        <span class="font-normal opacity-75 ml-1">({{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.annualAmount) }} you + {{ base_currency_symbol() }}{{ "{:,.0f}".format(contrib.employerAnnual) }} employer)</span>
+                        <span class="font-normal opacity-75 ml-1">({{ contrib.annualAmount | money }} you + {{ contrib.employerAnnual | money }} employer)</span>
                     {% endif %}
                 </span>
                 {% endif %}

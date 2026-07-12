@@ -52,33 +52,33 @@
 {% endif %}
 
 <!-- Summary metrics -->
-<div class="grid grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Opening balance</p>
-            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(opening_balance) }}</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums">{{ opening_balance | money }}</p>
             <p class="text-xs text-base-content/40 mt-1">Today's value</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Peak balance</p>
-            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(peak_balance) }}</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums">{{ peak_balance | money }}</p>
             <p class="text-xs text-base-content/40 mt-1">Highest projected value</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total growth earned</p>
-            <p class="text-xl font-semibold mt-1 text-success">{{ base_currency_symbol() }}{{ "{:,.0f}".format(total_return) }}</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums text-success">{{ total_return | money }}</p>
             <p class="text-xs text-base-content/40 mt-1">Cumulative over projection</p>
         </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Total drawn</p>
-            <p class="text-xl font-semibold mt-1 {% if total_withdrawn > 0 %}text-warning{% else %}text-base-content/50{% endif %}">
-                {{ base_currency_symbol() }}{{ "{:,.0f}".format(total_withdrawn) }}
+            <p class="text-xl font-semibold mt-1 tabular-nums {% if total_withdrawn > 0 %}text-warning{% else %}text-base-content/50{% endif %}">
+                {{ total_withdrawn | money }}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Cumulative withdrawals</p>
         </div>

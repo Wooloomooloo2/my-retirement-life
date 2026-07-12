@@ -55,11 +55,11 @@
 </div>
 
 <!-- Summary metrics -->
-<div class="grid grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Opening balance</p>
-            <p class="text-xl font-semibold mt-1">{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.opening_balance) }}</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums">{{ projection.opening_balance | money }}</p>
             <p class="text-xs text-base-content/40 mt-1">Today's total savings</p>
         </div>
     </div>
@@ -67,9 +67,9 @@
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">At retirement</p>
             {% set retirement_balance = projection.years | selectattr('is_retirement_year') | list %}
-            <p class="text-xl font-semibold mt-1">
+            <p class="text-xl font-semibold mt-1 tabular-nums">
                 {% if retirement_balance %}
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(retirement_balance[0].balance) }}
+                    {{ retirement_balance[0].balance | money }}
                 {% else %}—{% endif %}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.retirement_year }}</p>
@@ -78,13 +78,9 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Final balance</p>
-            <p class="text-xl font-semibold mt-1
+            <p class="text-xl font-semibold mt-1 tabular-nums
                 {% if projection.final_balance >= 0 %}text-success{% else %}text-error{% endif %}">
-                {% if projection.final_balance >= 0 %}
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.final_balance) }}
-                {% else %}
-                    −{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.final_balance | abs) }}
-                {% endif %}
+                {{ projection.final_balance | money }}
             </p>
             <p class="text-xs text-base-content/40 mt-1">Balance in {{ projection.end_year }}</p>
         </div>
@@ -92,7 +88,7 @@
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Runs out</p>
-            <p class="text-xl font-semibold mt-1
+            <p class="text-xl font-semibold mt-1 tabular-nums
                 {% if not projection.runs_out_year %}text-success{% else %}text-error{% endif %}">
                 {% if projection.runs_out_year %}{{ projection.runs_out_year }}{% else %}Never{% endif %}
             </p>
@@ -180,14 +176,14 @@
                         {% set i = loop.index0 %}
                         <tr class="{% if y.unfunded > 0 %}bg-error/10{% elif y.year == projection.retirement_year %}bg-primary/5 font-medium{% endif %}">
                             <td>{{ y.year }}{% if y.year == projection.retirement_year %} ★{% endif %}</td>
-                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.income) }}</td>
-                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.mandatory + y.discretionary + y.loans) }}</td>
-                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.interest) }}</td>
-                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.tax_paid) }}</td>
-                            {% if projection.first_unfunded_year %}<td class="text-right {% if y.unfunded > 0 %}text-error font-medium{% endif %}">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.unfunded) }}</td>{% endif %}
-                            <td class="text-right font-medium">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(y.balance) }}</td>
+                            <td class="text-right">{{ y.income | money }}</td>
+                            <td class="text-right">{{ (y.mandatory + y.discretionary + y.loans) | money }}</td>
+                            <td class="text-right">{{ y.interest | money }}</td>
+                            <td class="text-right">{{ y.tax_paid | money }}</td>
+                            {% if projection.first_unfunded_year %}<td class="text-right {% if y.unfunded > 0 %}text-error font-medium{% endif %}">{{ y.unfunded | money }}</td>{% endif %}
+                            <td class="text-right font-medium">{{ y.balance | money }}</td>
                             {% for label in labels %}
-                            <td class="text-right">{{ base_currency_symbol() }}{{ '{:,.0f}'.format(projection.account_balances[label][i]) }}</td>
+                            <td class="text-right">{{ projection.account_balances[label][i] | money }}</td>
                             {% endfor %}
                         </tr>
                         {% endfor %}
@@ -310,14 +306,14 @@
             {% if projection.total_tax_paid and projection.total_tax_paid > 0 %}
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Total tax (est.)</p>
-                <p class="font-medium text-warning">{{ base_currency_symbol() }}{{ "{:,.0f}".format(projection.total_tax_paid) }}</p>
+                <p class="font-medium text-warning">{{ projection.total_tax_paid | money }}</p>
                 <p class="text-xs text-base-content/40 mt-0.5">Cumulative over projection — estimate only</p>
             </div>
             {% endif %}
             {% if proj_settings.annual_personal_allowance and proj_settings.annual_personal_allowance > 0 %}
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Personal allowance</p>
-                <p class="font-medium">{{ base_currency_symbol() }}{{ "{:,.0f}".format(proj_settings.annual_personal_allowance) }}</p>
+                <p class="font-medium">{{ proj_settings.annual_personal_allowance | money }}</p>
                 <p class="text-xs text-base-content/40 mt-0.5">
                     Marginal rate above: {{ (proj_settings.residence_income_tax_rate * 100) | round(1) }}%
                 </p>
@@ -350,18 +346,18 @@
             <span class="badge badge-ghost badge-xs">ADR-013 two-layer model</span>
         </h3>
 
-        <div class="grid grid-cols-3 gap-4 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Personal allowance</p>
                 <p class="text-lg font-semibold">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.personal_allowance) }}
+                    {{ tax_shield_summary.personal_allowance | money }}
                 </p>
                 <p class="text-xs text-base-content/40 mt-0.5">Residence-level — applies to aggregate taxable income</p>
             </div>
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Account allowances</p>
                 <p class="text-lg font-semibold">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.accounts_total) }}
+                    {{ tax_shield_summary.accounts_total | money }}
                 </p>
                 <p class="text-xs text-base-content/40 mt-0.5">
                     {% if tax_shield_summary.accounts %}
@@ -375,7 +371,7 @@
             <div>
                 <p class="text-xs text-base-content/40 uppercase tracking-wide mb-1">Combined annual shield</p>
                 <p class="text-lg font-semibold text-primary">
-                    {{ base_currency_symbol() }}{{ "{:,.0f}".format(tax_shield_summary.combined) }}
+                    {{ tax_shield_summary.combined | money }}
                 </p>
                 <p class="text-xs text-base-content/40 mt-0.5">Max tax-free withdrawal per year if all allowances are used</p>
             </div>
@@ -389,7 +385,7 @@
                 <div class="badge badge-outline gap-1.5 py-3">
                     <span class="inline-block w-2 h-2 rounded-full {% if acc.account_class == 'CashAccount' %}bg-blue-500{% else %}bg-emerald-500{% endif %}"></span>
                     <span class="font-medium">{{ acc.name }}</span>
-                    <span class="text-base-content/60">{{ base_currency_symbol() }}{{ "{:,.0f}".format(acc.amount) }}</span>
+                    <span class="text-base-content/60">{{ acc.amount | money }}</span>
                 </div>
                 {% endfor %}
             </div>

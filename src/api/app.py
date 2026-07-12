@@ -169,11 +169,47 @@ def get_base_currency_code() -> str:
         return "GBP"
 
 
+def money(value, dp: int = 0) -> str:
+    """
+    Format a number as base-currency money: `£1,234` (ADR-022).
+
+    Replaces the `base_currency_symbol() ~ "{:,.0f}".format(x)` idiom that was
+    repeated ~54 times across 10 templates. A negative renders with a real minus
+    sign (U+2212, −) rather than a hyphen: previously each template chose for
+    itself, so nothing stopped one page showing -£5 and another −£5.
+
+        {{ total | money }}          ->  £1,234
+        {{ amount | money(2) }}      ->  £1,234.56
+        {{ -5 | money }}             ->  −£5
+    """
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return ""
+    sign = "−" if n < 0 else ""
+    return f"{sign}{get_base_currency_symbol()}{abs(n):,.{dp}f}"
+
+
+def money_signed(value, dp: int = 0) -> str:
+    """
+    As `money`, but positives carry an explicit `+`. For deltas and changes,
+    where the direction matters as much as the magnitude.
+    """
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return ""
+    return ("+" if n > 0 else "") + money(n, dp)
+
+
 _shared_templates.env.globals["user_initials"]        = get_user_initials
 _shared_templates.env.globals["active_scenario"]      = get_active_scenario
 _shared_templates.env.globals["setup_state"]          = get_setup_state
 _shared_templates.env.globals["base_currency_symbol"] = get_base_currency_symbol
 _shared_templates.env.globals["base_currency_code"]   = get_base_currency_code
+
+_shared_templates.env.filters["money"]        = money
+_shared_templates.env.filters["money_signed"] = money_signed
 
 
 # ---------------------------------------------------------------------------

@@ -10,3 +10,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    /*
+     * Tabular figures in every table (ADR-022). This is a financial app: money
+     * columns must line up. Proportional digits made the Projection and Budget
+     * tables ragged down the right-hand edge.
+     *
+     * Applied to the whole table rather than per-cell — `tabular-nums` only
+     * changes the advance width of DIGIT glyphs, so account names, categories
+     * and headers are untouched. Figures rendered outside a table (the hero,
+     * the stat cards) carry the `tabular-nums` utility class directly.
+     */
+    table {
+        font-variant-numeric: tabular-nums;
+    }
+}
