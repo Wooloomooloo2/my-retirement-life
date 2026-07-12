@@ -2,21 +2,88 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-07-01 (session 16 — onboarding offers MFL import after the first profile save (`/welcome/import`); Accounts + Budget rebuilt as full-width lists with dedicated Add/Edit pages (shared `_account_form.html` / `_budget_form.html` partials); per-account drawdown "tax paid" filtering (engine change); internationally-unambiguous date of birth (day / month-name / year); setup checklist reordered accounts-before-income; new accounts default to the person's jurisdiction + currency; MFL reader schema ceiling → v32. No ontology/schema change (still 1.0.9). First batch committed + pushed (`7fb95fd`); second batch (budget / DOB / checklist / account-defaults + these docs) pending commit.)
+> Last updated: 2026-07-12 (session 17 — **front-end overhaul: ADR-022** (real Tailwind build → 3.3 MB of runtime-compiled CSS becomes ~108 KB static; MRL brand theme; dark mode; shared chart module; `money` filter; tabular figures), budget workflow + notes + rebuilt chart (**ontology 1.0.10**), life events Buy/Sell asset (**ontology 1.0.11**), dashboard "at retirement" duplicate fixed. **All committed + pushed; live store reloaded to 1.0.11.**)
 
 ---
 
-## ▶ Next session — resume here (session 16 done 2026-07-01)
+## ▶ Next session — resume here (session 17 done 2026-07-12, on Windows)
 
-**Commit state:** all session-16 work is **committed + pushed to `main`** — `7fb95fd` (onboarding MFL offer, dedicated account Add/Edit pages, per-account drawdown tax, MFL v32), `9a2f722` (budget dedicated Add/Edit pages, DOB day/month/year, setup-checklist reorder, account jurisdiction/currency defaults, CLAUDE_CONTEXT + CHANGELOG), `333d18a` (macOS app icon).
+**Commit state: everything is committed AND pushed. `main` == `origin/main` == `3504bdf`.**
 
-**Live store untouched this session** — everything verified headlessly against isolated `DATA_DIR` copies + the committed demo backup (`sample-data/demo-backup-alex-sterling.json`) via FastAPI `TestClient` (`httpx` pip-installed then uninstalled each time, item-50 convention). Live store is still **1.0.9 / `Mark Baseline 2026-06`** (session 15). **No ontology/schema change this session.**
+**⚠ READ THIS FIRST — the session-17 lesson.** This machine's `main` was **4 commits behind `origin/main`** for the whole first half of the session, and nobody noticed. Session 16 was done on the **Mac**, pushed, and this Windows box never pulled. Consequence: ADR-022 was built on a stale base and had to be merged afterwards (`7134b64`), with real conflicts. **`git fetch && git status` BEFORE starting work.** The Mac is now the machine that is behind.
 
-**Built this session (detail under "Changes in session 16" below):** onboarding now offers MFL import right after the first profile save; Accounts + Budget rebuilt with full-width lists + dedicated Add/Edit pages (shared partials); drawdown "tax paid" now respects the account filter (engine change); date of birth is day / spelled-out-month / year; setup checklist reordered Profile → Accounts → Investments → Income → Budget; new accounts default to the person's jurisdiction + base currency; MFL reader schema ceiling 31 → 32.
+**Live store: reloaded to ontology 1.0.11** (1360 → 1370 triples, verified). Data graph untouched and confirmed intact afterwards (1 Person / 8 cash / 6 investment / 2 property / 1 income / 11 budget lines / 5 life events / 1 contribution — 473 triples). A safety copy was taken at `%LOCALAPPDATA%\MyRetirementLife\store-backup-20260712-202648` — **Mark can delete it once he's happy.** Active scenario still `Mark Baseline 2026-06`.
 
-**STILL OPEN — MFL import live smoke-test:** Mark ran the import in the live app this session (that surfaced the v32 warning, now fixed) and onboarding now routes into it. A full re-import → diff pass (New/Update/Keep, no duplicates), exercising the income + cash-interest mappings (items 73–74), is still worth confirming formally in the live app.
+**Everything else was verified on isolated `DATA_DIR` copies** + the committed demo backup (`sample-data/demo-backup-alex-sterling.json`), via FastAPI `TestClient` and a headless-Edge screenshot harness. `httpx` + `pillow` pip-installed then uninstalled (item-50 convention); `requirements.txt` unchanged.
 
-**Backlog / still-open (carried from session 15):** session-9 browser-only UX (drag-reorder `/drawdown-strategy`, withdrawals Total/Per-account toggle, Table CSV download); optional `.icns`/`.ico` branding + dark-mode/red-state screenshots; `verify_mfl_mapping.py` + `verify_mfl_diff.py` print a `→` that crashes the default Windows console (swap `→`→`->`, or run with `PYTHONIOENCODING=utf-8`).
+**Built this session (detail under "Changes in session 17"):** ADR-022 front-end overhaul in 5 commits (build step / presentation primitives / shared chart module / brand theme / dark mode); budget onward-CTA + "Save & add another" + line notes + rebuilt chart + minimal starter categories; life events Buy asset / Sell asset replacing "Property transaction"; dashboard no longer shows "At retirement" twice for a retired user.
+
+**⚠ NEW DEV DEPENDENCY — Node/npm.** The CSS is now **compiled**, not runtime-JIT'd. `src/static/css/app.css` is **committed**, so *running or packaging the app still needs no Node*. But **after adding a Tailwind/DaisyUI class that no template used before, run `npm run build:css`** — a stale build shows up as an *unstyled element*, and there is no longer a console warning to catch it (the Play CDN used to emit one). `npm install` once first.
+
+**⚠ TWO LOAD-BEARING ORDERING RULES in `base.html`** (both commented in place — don't "tidy" them):
+1. `app.css` must be the **LAST stylesheet**. The Play CDN injected its `<style>` at runtime into the end of `<head>`, so Tailwind's utilities have always won same-specificity ties against `tabler-icons.min.css`. Link it earlier and Tabler's `line-height: 1` beats `text-base`, changing every icon's box height and shifting the whole sidebar. (This actually happened; caught only by the pixel diff.)
+2. `mrl-charts.js` must load **AFTER `app.css`** — it reads the palette via `getComputedStyle`, and a script following a stylesheet link waits for it. Load it earlier and every chart silently gets the fallback colours.
+
+**STILL OPEN — MFL import live smoke-test:** unchanged from session 16. A full re-import → diff pass (New/Update/Keep, no duplicates) exercising the income + cash-interest mappings (items 73–74) is still worth confirming formally in the live app.
+
+**Backlog / still-open:**
+- **`MRL_screenshots/` is now stale** — all 9 captures predate the brand theme, so they show the old DaisyUI indigo. The session-17 harness produces both light and dark across 17 routes, so recapturing is cheap. (Dark-mode screenshots for the website were already wanted.)
+- **Accounts table "Type" column badges overflow their pill** (long labels like "Tax-advantaged account"). Pre-existing in session-16's upstream markup, flagged but not fixed.
+- **`BuyAsset` records the OUTLAY only** — it does not create a `PhysicalAsset` on the purchase year, so a bought asset doesn't hit the balance sheet until added on Accounts. Stated in the ontology; natural follow-on, ties into the planned net-worth/asset work.
+- Session-9 browser-only UX (drag-reorder `/drawdown-strategy`, withdrawals Total/Per-account toggle, Table CSV download).
+- Optional `.icns`/`.ico` branding.
+- `verify_mfl_mapping.py` + `verify_mfl_diff.py` print a `→` that crashes the default Windows console (swap `→`→`->`, or run with `PYTHONIOENCODING=utf-8`).
+- **`/projection` is not a reliable pixel-diff target** — the unseeded Monte Carlo band moves ~0.3% between any two runs, and occasionally ~5% (when the random band shifts the y-axis max, the tick-label width changes and the whole plot area moves). Seed the simulation if a strict visual gate is ever wanted there.
+
+---
+
+## Changes in session 17 (2026-07-12, Windows)
+
+_Front-end overhaul (ADR-022) + three feature/UX changes. **Ontology 1.0.9 → 1.0.11; export schema 0.3.2 → 0.3.3.** Projection engine untouched throughout — every change is presentation, persistence, or vocabulary. All verified on isolated `DATA_DIR` copies; the live store was only opened at the end, for the ontology reload._
+
+**Commits (all pushed):** `3dac367` `93ef52a` `6f8c2e3` `d449db8` `f4c8b8a` (ADR-022 1–5) · `c690e38` (placeholders) · `7134b64` (merge origin/main) · `ace12f0` (budget) · `6963143` (buy/sell asset) · `3504bdf` (dashboard).
+
+### ADR-022 — Frontend build step and design system (Accepted → **Implemented**)
+
+Amends **ADR-003**, which deferred the Tailwind build as a mere "production optimisation". It was in fact the blocker under most of the front end's remaining problems. Delivered as **5 independently revertable commits, ordered so each has an explicit correctness oracle and the riskiest change gets the strictest one.**
+
+1. **`3dac367` — real CSS build, gated on PIXEL-IDENTICAL output.** Killed `tailwind.play.min.js` (the Play CDN — a **runtime in-browser compiler**, which also emitted the "should not be used in production" console warning) and `daisyui.full.min.css` (**2.9 MB**, all 32 themes for the one used). **3.3 MB of runtime-compiled CSS/JS → ~108 KB static `src/static/css/app.css`**, and the flash of unstyled content is gone. Pinned to the exact versions the CDN served (**Tailwind 3.4.17 / DaisyUI 4.12.24**) so output reproduced current rendering rather than silently upgrading. Node is **dev-time only**; the artifact is committed, so ADR-003's real goal (user + packaging never meet a JS toolchain) survives. `MyRetirementLife.spec` already bundles all of `src/static`, so packaging needed no change. `tools/vendor_assets.py` no longer downloads Tailwind/DaisyUI — left alone, its next run would have resurrected the Play CDN.
+2. **`93ef52a` — presentation primitives.** Jinja **`money` / `money_signed`** filters replace the `base_currency_symbol() ~ "{:,.0f}".format(x)` idiom (52 sites / 8 templates); negatives now use a real U+2212 minus from one place. **`tabular-nums`** on every table (one base rule — it only changes DIGIT advance widths, so names are untouched) + on stat/hero figures. `max-w-7xl` content cap; responsive breakpoints on the 8 top-level card grids. Retired the three permanently-disabled "Coming soon" nav items.
+3. **`6f8c2e3` — shared `src/static/js/mrl-charts.js`.** 18 hardcoded hexes across 5 templates → CSS custom properties read back via `getComputedStyle`. The palettes had been **copy-pasted verbatim into three templates**; four near-identical indigos (`#4F46E5`, `#534AB7`, `#6366F1`×2) were doing the same accent job **by accident** and collapse to one. The session-15 disappearing-★ bug needed five fixes because the marker was implemented five times — now `MRL.starPoints()` (line series) + `MRL.markerDataset()` (stacked, where the star must ride the stack total).
+4. **`d449db8` — MRL brand theme.** The app rendered on DaisyUI's stock `light`, whose primary is an indigo-violet (`#570df8`) appearing **nowhere in MRL's branding**. Tokens now come from `docs/MRL_WEBSITE_BRIEF.md`: primary **teal `#1f6e78`**, secondary **gold `#c9a23a`**, accent **sunset `#e08a3c`** (MRL's signature — MFL leans on plain teal). `data-theme="light"` → `"mrl"`. Assets re-tinted amber → **gold**; the retirement ★ + balance lines took the sunset.
+5. **`f4c8b8a` — dark mode.** Second DaisyUI theme + a `[data-theme='mrl-dark']` token block, from the brief's dark column. Header toggle, `localStorage`, OS default on first run. **No chart template was edited for the theme itself** — which was the point of the sequencing.
+
+**Three defects the gates caught that review would not have:**
+- **Cascade order** (commit 1) — see the ordering rules in the resume block. Every page differed; the sidebar rows had drifted.
+- **Jinja `|` binds TIGHTER than arithmetic** (commit 2) — the `money` migration turned `{{ a + b + c | money }}` into `a + b + (c | money)`, a 500 on `/projection`. Four sites; one unreachable with demo data, so it would have shipped silently. **This trap recurs every time the migration touches a new template — always parenthesise.**
+- **A contrast regression** (commit 5) — `Chart.defaults.color` drives tick **and legend** text (Chart.js default `#666`), but it was pointed at the faint axis-*title* token (`rgba(0,0,0,0.4)` ≈ `#999`), dropping every chart legend to ~2.8:1. Two jobs, one token. Split into `--mrl-chart-label` (must hold contrast) and `--mrl-chart-title` (faint by design).
+
+**Verification harness (reusable, worth keeping):** isolated store + demo backup → `uvicorn` on a non-default port → headless Edge (`--headless=new --virtual-time-budget=10000 --force-device-scale-factor=2`) across **17 routes**, plus a Pillow pixel-diff. Two control runs of identical code established the noise floor.
+
+### `c690e38` — real personal data removed from the app
+
+The profile wizard's name placeholders were **"e.g. Mark" / "e.g. Hall"** — Mark's own name, shipped to every user. Now "e.g. Alex" / "e.g. Sterling", matching the fictional persona in `sample-data/`. Also degendered a life-event example ("daughter's" → "a child's"). Swept the rest: no other real names, no email, no seeded profile defaults.
+
+### `7134b64` — merge `origin/main` (see the ⚠ in the resume block)
+
+Local `main` was 4 behind. Brought in session 16. **The accounts-first setup Mark asked about was already implemented there** (`9a2f722`) — nothing to reimplement. Conflicts: `accounts.html` (upstream restructured it wholesale, 1,100 → 262 lines; took theirs entire and re-applied ADR-022 — a first hunk-level attempt left the old inline form behind and 500'd on `contrib_fields is undefined`) and `drawdown_strategy.html` (a genuine both-sides change: upstream's tax data source + ADR-022's colour token — combined). **`app.css` had to be REBUILT: +1,085 bytes of classes from the 5 new upstream templates** — without it those pages render partly unstyled. Exactly the new failure mode ADR-022 introduced.
+
+### `ace12f0` — Budget: onward CTA, save-and-add-another, notes, rebuilt chart (**ontology 1.0.10**)
+
+- **Root cause of "no way to move on":** the budget is the **LAST setup step**, so the moment the first line is saved `setup_all_done` flips true and `base.html`'s setup banner — which carried the **only "next step" button in the app** — disappears. You finish your budget and the app goes silent. Fixed with a permanent **"Continue to projection"** CTA on `/budget`, plus **"Save & add another"** on the form (a `submitAction` field picks the redirect) returning to a blank form with a confirmation + "Done adding".
+- **Chart was the weakest in the app because colour was decided in PYTHON** — `_category_palette()` **MD5-hashed the category name into a random HSL hue**. Hence the pink/purple/olive: colours nobody chose, in no palette, unthemeable (they arrived as literals in a JSON payload, invisible to dark mode). This was the **last place computing colour outside the design tokens**. `budget.py` now emits only a `role`; `MRL.categorical(index, role)` + a `--mrl-cat-1..8` ramp does the rest. The ramp **excludes both reserved colours** (sunset accent, brand teal) — the first cut collided, and "Bills & Utilities" came out the same teal as "Account contributions". Stacked **area → bars** (the smoothing hid step-changes like a mortgage ending), **+ a total-spending line** carrying the ★, tooltips showing each category's **share**, canvas 240 → 320px.
+- **`mrl:budgetLineNotes`** (1.0.10; named for the existing `accountNotes`/`lifeEventNotes` convention). Free text, engine never reads it. **Export/restore carries it — schema 0.3.3.** NOT optional: `restore_all_data` wipes the data graph first, so anything export omits is silently **DESTROYED** on the next scenario load (ADR-014). Verified a note with embedded quotes survives a round-trip; pre-0.3.3 backups restore cleanly.
+- **Starter categories cut to six:** Housing, Bills, Taxes, Food, Loans, Transportation. ("Loans" sits slightly against ADR-017's grain — that ADR made loans take a normal user category — but it's a suggestion, not a constraint.)
+
+### `6963143` — Life events: Buy asset / Sell asset (**ontology 1.0.11**)
+
+**"Property transaction" only ever modelled a purchase** — it wasn't in `RECEIPT_EVENT_TYPES`, so it always stored a **positive** amount (= a cost), whatever its name implied; and it was property-only when the asset model covers vehicles and collectibles too. Deprecated-in-place and **migrated to `BuyAsset` on load** (idempotent, projection-neutral — same sign, same amount).
+
+**Key design point: "Sell asset" is a FRONT DOOR, not a second mechanism.** The sale machinery already existed and worked — an asset's `mrl:assetSaleYear` makes the engine **zero its value from that year on**, and `accounts.py` derives a managed `AssetSale` event for the proceeds. It just wasn't reachable from Life Events. So picking an asset **writes through to the asset** (new `accounts.set_asset_sale()`); the asset stays the single source of truth. **A "Sell asset" event holding its own copy would double-count the proceeds** — the exact trap the session-12 notes flagged. Re-selling the same asset therefore *changes* the existing sale rather than adding a second. Verified 24/24, including "asset value is ZERO from the sale year onward" and "exactly ONE sale event exists".
+
+### `3504bdf` — Dashboard: "at retirement" no longer repeats "today"
+
+**Mark is retired** (target year 2026 = current year). The projection starts at the current year, so `snapshots["today"] = _snapshot_at(0)` and `snapshots["retirement"] = _snapshot_at(years.index(2026))` are the **same index** — identical by construction. The maths was right; two identical cards with no explanation just *looked* broken. The third card now adapts: **Peak net worth** (+ year) when the plan rises then turns over; **Spendable savings today** (cash + investments, excludes assets) when the peak is the final year or today — because a Peak card would then duplicate the estate hero or "Today's net worth". **The first version shipped exactly that duplication** (the demo plan grows forever, so its peak IS the final year) — caught in the rendered screenshot, not by the passing tests.
 
 ---
 
@@ -101,11 +168,12 @@ Watch store-lock contention (session 6) if a dev server + packaged app run at on
 The user is a business architect and data modeller — Claude does all coding.
 
 - **GitHub:** `Wooloomooloo2/my-retirement-life`
-- **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy
+- **Stack:** Python 3.13 + FastAPI, pyoxigraph (Oxigraph triple store), HTMX + Tailwind + DaisyUI, Chart.js, NumPy.
+  **Since ADR-022 (session 17) the CSS is COMPILED, not runtime-JIT'd** — Tailwind 3.4.17 + DaisyUI 4.12.24 build to `src/static/css/app.css`, which is **committed**. Running or packaging the app still needs no Node; but after adding a utility class no template used before, run **`npm run build:css`** (a stale build shows as an unstyled element, with no console warning to catch it). Themes: `mrl` (light) / `mrl-dark`. Shared chart palette + helpers in `src/static/js/mrl-charts.js`; all chart colour lives in CSS custom properties in `src/styles/app.css`.
 - **Platform:** Windows (VS Code), repo at `C:\Users\hallm\Documents\GitHub\my-retirement-life`, `.venv` present. Also runs on macOS (Apple Silicon) at `/Users/markhall/Projects/my-retirement-life` — session 6 added macOS packaging + native window support. Linux deferred.
 - **Windows venv setup:** `main.py` opens the app in a native pywebview window, so a fresh venv on Windows must install pywebview + its Win32 backend before `python main.py` will start (otherwise `ModuleNotFoundError: No module named 'webview'`). `requirements.txt` already lists `pywebview>=5.4` and `pythonnet>=3.0; sys_platform == "win32"` — just run `.venv\Scripts\python.exe -m pip install -r requirements.txt` (the `pyobjc-*` lines are macOS-only via markers and are skipped). Currently installed here: pywebview 6.2.1 + pythonnet 3.1.0. WebView2 runtime ships preinstalled on Win10/11, so no separate runtime install is needed. (Session 6 only set this up on the macOS box; first encountered + fixed on this Windows machine 2026-06-07.)
 - **Data storage:** Oxigraph RDF triple store at `AppData/Local/MyRetirementLife/store` (via `platformdirs`)
-- **Ontology:** `mrl-ontology.ttl`, version **1.0.9** (ADR-021 — `mrl:rentalProperty`/`mrl:rentalYieldRate` on `mrl:IncomeSource`; 1.0.8 added ADR-020 `mrl:importSourceApp`/`importSourceRef`/`importedAt` import-provenance props; 1.0.7 the ADR-019 emergency fund on `mrl:ProjectionSettings`; 1.0.6 the ADR-018 mandatory-withdrawal pair on `mrl:Account`). 17 `Currency` individuals total. The authoritative TTL is `docs/ontology/mrl-ontology.ttl` (loaded via `settings.ontology_ttl`); `src/store/mrl-ontology.ttl` is a stale 1.0.1 copy that is never loaded. **✓ Live store reloaded to 1.0.9 on 2026-06-28** (1296→1360 triples; new rental + import-provenance props verified present).
+- **Ontology:** `mrl-ontology.ttl`, version **1.0.11** (1.0.11 — `mrlx:LifeEventType_BuyAsset`; `LifeEventType_PropertyTransaction` **deprecated-in-place** and migrated to BuyAsset on load; `LifeEventType_AssetSale` relabelled "Sell asset". 1.0.10 — `mrl:budgetLineNotes`. 1.0.9 — ADR-021 `mrl:rentalProperty`/`mrl:rentalYieldRate` on `mrl:IncomeSource`; 1.0.8 — ADR-020 import-provenance props; 1.0.7 — ADR-019 emergency fund; 1.0.6 — ADR-018 mandatory-withdrawal pair). **Export schema 0.3.3.** 17 `Currency` individuals. The authoritative TTL is `docs/ontology/mrl-ontology.ttl` (loaded via `settings.ontology_ttl`); `src/store/mrl-ontology.ttl` is a stale 1.0.1 copy that is never loaded. **✓ Live store reloaded to 1.0.11 on 2026-07-12** (1360→1370 triples; new props verified present, data graph confirmed intact — 473 triples).
 
 ---
 
@@ -671,6 +739,11 @@ my-retirement-life/
 | 015 | Account contributions | Implemented |
 | 016 | Live exchange rates (open.er-api.com) | Accepted |
 | 017 | Budget line segments and user-defined categories | Accepted |
+| 018 | Mandatory (RMD-style) withdrawal age; retires the drawdown cutoff | Accepted |
+| 019 | Emergency fund — fill-first on surplus, draw-first on shortfall | Accepted |
+| 020 | Import from My Financial Life (MFL) | Accepted |
+| 021 | Rental income as a yield on a linked property's value | Accepted |
+| 022 | Frontend build step and design system (amends ADR-003) | **Implemented** |
 
 ---
 
