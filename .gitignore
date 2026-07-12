@@ -33,12 +33,15 @@ data/
 .DS_Store
 Thumbs.db
 
+# CSS build (ADR-022) — dev-time only.
+# node_modules is NOT committed; the BUILT stylesheet src/static/css/app.css IS,
+# so running or packaging the app never needs Node.
+node_modules/
+
 # Test cache
 .pytest_cache/
 .coverage
 htmlcov/
-# VS Code personal settings
-.vscode/
 
 # Claude Code per-user settings (project-level settings.json is committed)
 .claude/settings.local.json

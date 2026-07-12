@@ -1,0 +1,13 @@
+{
+  "name": "my-retirement-life-css",
+  "private": true,
+  "description": "Dev-time-only CSS build for My Retirement Life (ADR-022). Not a runtime dependency: the built stylesheet at src/static/css/app.css is committed, so running or packaging the app needs no Node.",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/styles/app.css -o ./src/static/css/app.css --minify",
+    "watch:css": "tailwindcss -i ./src/styles/app.css -o ./src/static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "daisyui": "4.12.24",
+    "tailwindcss": "3.4.17"
+  }
+}

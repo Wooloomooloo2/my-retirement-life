@@ -5,10 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
 
-    <!-- DaisyUI + Tailwind (vendored locally for offline use) -->
-    <link href="/static/vendor/daisyui.full.min.css" rel="stylesheet" />
-    <script src="/static/vendor/tailwind.play.min.js"></script>
-
     <!-- HTMX -->
     <script src="/static/vendor/htmx.min.js"></script>
 
@@ -17,6 +13,17 @@
 
     <!-- Tabler Icons -->
     <link rel="stylesheet" href="/static/vendor/tabler/tabler-icons.min.css" />
+
+    <!-- Tailwind + DaisyUI, compiled at build time (ADR-022).
+         Rebuild with `npm run build:css` after adding a new utility class.
+
+         MUST stay LAST of the stylesheets. It replaced the Tailwind Play CDN,
+         which injected its <style> at runtime into the end of <head> — so
+         Tailwind's utilities have always won same-specificity ties against
+         Tabler's `.ti` rules. Linking this any earlier hands those ties to
+         Tabler (its `line-height: 1` then beats `text-base`), which changes
+         every icon's box height and shifts the sidebar rows. -->
+    <link href="/static/css/app.css" rel="stylesheet" />
 
     <!-- App icon / favicon (My Retirement Life hex mark) -->
     <link rel="icon" type="image/png" href="/static/img/favicon.png" />

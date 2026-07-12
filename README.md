@@ -84,6 +84,20 @@ python main.py
 
 The app will start and open in your default browser at `http://127.0.0.1:8000`.
 
+**Note:** running the app needs no Node.js. The stylesheet is prebuilt and committed.
+
+### Editing the CSS (only if you add a new Tailwind/DaisyUI class)
+
+The stylesheet is compiled at build time and **committed** as `src/static/css/app.css` (ADR-022), so neither running nor packaging the app requires Node. You only need the toolchain below if you add a utility class to a template that no template used before — otherwise a stale build shows up as an unstyled element.
+
+```bash
+npm install        # once — Tailwind + DaisyUI, devDependencies only
+npm run build:css  # rebuild src/static/css/app.css
+npm run watch:css  # or rebuild on save while editing templates
+```
+
+`src/static/css/app.css` must stay the **last** stylesheet in `base.html` — see the comment there.
+
 ---
 
 ## Building a macOS distributable

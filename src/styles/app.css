@@ -1,0 +1,12 @@
+/*
+ * Tailwind entry point (ADR-022). Built to src/static/css/app.css.
+ *
+ * Rebuild after adding a utility class that no template used before:
+ *     npm run build:css
+ *
+ * A stale build shows up as an unstyled element in the app — there is no
+ * longer a console warning to catch it (the Play CDN used to emit one).
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

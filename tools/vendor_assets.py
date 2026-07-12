@@ -7,11 +7,16 @@ HOW TO RUN (from the repo root, with internet available):
 
     python tools/vendor_assets.py
 
+NOT HANDLED HERE (ADR-022): Tailwind and DaisyUI. They used to be vendored as
+`tailwind.play.min.js` (the Play CDN — a runtime in-browser compiler) and
+`daisyui.full.min.css` (2.9 MB, all 32 themes). They are now compiled at build
+time into src/static/css/app.css by `npm run build:css`. Do not re-add them
+here: doing so would reintroduce the runtime compile and its flash of unstyled
+content.
+
 WHAT IT CREATES (relative to the repo root):
 
     src/static/vendor/
-        daisyui.full.min.css
-        tailwind.play.min.js
         htmx.min.js
         chart.umd.min.js
         tabler/
@@ -53,11 +58,11 @@ TABLER_FONTS_DIR = TABLER_DIR / "fonts"
 
 # (source URL, output path relative to VENDOR_DIR)
 # These mirror base.html exactly.
+# Tailwind + DaisyUI are deliberately absent — they are a build-time step now
+# (ADR-022). See the module docstring.
 SIMPLE_ASSETS = [
-    ("https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css", "daisyui.full.min.css"),
-    ("https://cdn.tailwindcss.com",                              "tailwind.play.min.js"),
-    ("https://unpkg.com/htmx.org@1.9.12",                        "htmx.min.js"),
-    ("https://cdn.jsdelivr.net/npm/chart.js",                    "chart.umd.min.js"),
+    ("https://unpkg.com/htmx.org@1.9.12",     "htmx.min.js"),
+    ("https://cdn.jsdelivr.net/npm/chart.js", "chart.umd.min.js"),
 ]
 
 TABLER_CSS_URL = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
