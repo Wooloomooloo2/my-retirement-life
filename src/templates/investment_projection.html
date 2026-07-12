@@ -153,7 +153,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 label: 'Annual growth earned',
                 data: returnsData,
                 backgroundColor: 'rgba(5,150,105,0.55)',
-                borderColor: '#059669',
+                borderColor: MRL.color.growth,
                 borderWidth: 1,
                 borderRadius: 2,
                 order: 2,
@@ -162,7 +162,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 label: 'Annual contribution',
                 data: contributionsData,
                 backgroundColor: 'rgba(99,102,241,0.50)',
-                borderColor: '#6366F1',
+                borderColor: MRL.color.accent,
                 borderWidth: 1,
                 borderRadius: 2,
                 order: 3,
@@ -171,7 +171,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 label: 'Annual drawdown',
                 data: withdrawals,
                 backgroundColor: 'rgba(245,158,11,0.70)',
-                borderColor: '#D97706',
+                borderColor: MRL.color.withdrawal,
                 borderWidth: 1,
                 borderRadius: 2,
                 order: 1,
@@ -181,21 +181,14 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 label: 'Account balance',
                 data: balances,
                 type: 'line',
-                borderColor: '#6366F1',
+                borderColor: MRL.color.accent,
                 backgroundColor: 'transparent',
                 borderWidth: 2,
-                // Hide every point except the retirement-year marker. The
-                // X-axis tick label can't be trusted to show ★ — Chart.js
-                // autoSkip thins ticks by position, so the retirement year
-                // disappears whenever it doesn't survive the cull. Plotting
-                // it as a real data-point with pointStyle 'star' keeps it
-                // visible regardless of axis density.
-                pointRadius: years.map(y => y === retirementYear ? 7 : 0),
-                pointHoverRadius: years.map(y => y === retirementYear ? 9 : 4),
-                pointStyle: years.map(y => y === retirementYear ? 'star' : 'circle'),
-                pointBackgroundColor: '#6366F1',
-                pointBorderColor: '#6366F1',
-                pointBorderWidth: years.map(y => y === retirementYear ? 2 : 1),
+                // Retirement-year ★ as a real data point: the X-axis tick
+                // label can't be trusted to show it, because Chart.js autoSkip
+                // thins ticks by position and drops the retirement year
+                // whenever it doesn't survive the cull.
+                ...MRL.starPoints(years, retirementYear, { hoverBase: 4 }),
                 tension: 0.3,
                 yAxisID: 'yBalance',
                 order: 0,
@@ -246,7 +239,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
                 position: 'right',
                 ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                 grid: { drawOnChartArea: false },
-                title: { display: true, text: 'Balance (line)', font: { size: 10 }, color: '#6366F1' }
+                title: { display: true, text: 'Balance (line)', font: { size: 10 }, color: MRL.color.accent }
             }
         }
     }

@@ -1,0 +1,130 @@
+/**
+ * mrl-charts.js — shared chart palette and helpers (ADR-022 commit 3).
+ *
+ * Every chart in the app pulls its colours and its retirement-★ marker from
+ * here. Before this module the palettes were copy-pasted verbatim into three
+ * templates and the ★ marker was implemented five separate times — which is
+ * exactly why the session-15 "disappearing star" bug needed five separate
+ * fixes. One definition, one fix.
+ *
+ * Colours are read from CSS custom properties (see src/styles/app.css), not
+ * hardcoded here, so a theme change re-tints the charts with no JS edit.
+ */
+(function (window) {
+    'use strict';
+
+    function cssVar(name, fallback) {
+        const v = getComputedStyle(document.documentElement)
+            .getPropertyValue(name).trim();
+        return v || fallback;
+    }
+
+    /** Read the palette from CSS. Called lazily so the stylesheet is parsed. */
+    function readPalette() {
+        return {
+            cash: [
+                cssVar('--mrl-cash-1', '#2563EB'),
+                cssVar('--mrl-cash-2', '#3B82F6'),
+                cssVar('--mrl-cash-3', '#60A5FA'),
+                cssVar('--mrl-cash-4', '#93C5FD'),
+            ],
+            invest: [
+                cssVar('--mrl-invest-1', '#059669'),
+                cssVar('--mrl-invest-2', '#10B981'),
+                cssVar('--mrl-invest-3', '#34D399'),
+                cssVar('--mrl-invest-4', '#6EE7B7'),
+                cssVar('--mrl-invest-5', '#0D9488'),
+                cssVar('--mrl-invest-6', '#0F766E'),
+            ],
+            asset: [
+                cssVar('--mrl-asset-1', '#D97706'),
+                cssVar('--mrl-asset-2', '#F59E0B'),
+                cssVar('--mrl-asset-3', '#FBBF24'),
+                cssVar('--mrl-asset-4', '#FCD34D'),
+            ],
+        };
+    }
+
+    function readColors() {
+        return {
+            accent:     cssVar('--mrl-accent', '#4F46E5'),
+            tax:        cssVar('--mrl-tax', '#DC2626'),
+            growth:     cssVar('--mrl-growth', '#059669'),
+            withdrawal: cssVar('--mrl-withdrawal', '#D97706'),
+        };
+    }
+
+    let _palette = null;
+    let _colors = null;
+
+    const MRL = {
+        get palette() {
+            if (!_palette) _palette = readPalette();
+            return _palette;
+        },
+        get color() {
+            if (!_colors) _colors = readColors();
+            return _colors;
+        },
+
+        /** Re-read the palette after a theme change (commit 5 / dark mode). */
+        refresh() {
+            _palette = null;
+            _colors = null;
+        },
+
+        /**
+         * Per-point config that renders a ★ on the retirement year of a LINE
+         * series, and nothing on any other year.
+         *
+         * Why not an X-axis tick label: Chart.js `autoSkip` thins ticks by
+         * POSITION, not by content, so a ★ appended to the retirement-year tick
+         * vanishes whenever that tick doesn't survive the cull (session-15 bug).
+         * A real data point can't be skipped.
+         *
+         * `hoverBase` is the hover radius for non-retirement years — 0 for a
+         * marker-only series, 4 where the line already showed hover points.
+         */
+        starPoints(years, retirementYear, opts) {
+            const o = opts || {};
+            const hoverBase = o.hoverBase || 0;
+            const c = o.color || MRL.color.accent;
+            return {
+                pointRadius:          years.map(y => (y === retirementYear ? 7 : 0)),
+                pointHoverRadius:     years.map(y => (y === retirementYear ? 9 : hoverBase)),
+                pointStyle:           years.map(y => (y === retirementYear ? 'star' : 'circle')),
+                pointBackgroundColor: c,
+                pointBorderColor:     c,
+                pointBorderWidth:     years.map(y => (y === retirementYear ? 2 : 1)),
+            };
+        },
+
+        /**
+         * A transparent dataset whose only visible mark is the retirement ★,
+         * sitting at the top of a STACKED chart's stack for that year.
+         *
+         * Stacked charts can't use starPoints() on a real series: the star would
+         * sit at that series' segment, not at the stack total. This rides in its
+         * own stack group ('_marker') so it adds nothing to the totals, and is
+         * filtered out of tooltips and legends by the callers.
+         */
+        markerDataset(years, retirementYear, totals, opts) {
+            const o = opts || {};
+            return Object.assign({
+                label:       o.label || 'Retirement',
+                data:        totals,
+                stack:       o.stack || '_marker',
+                fill:        false,
+                borderColor: 'transparent',
+                borderWidth: 0,
+                // The budget chart curves less than the balance charts.
+                tension:     o.tension === undefined ? 0.3 : o.tension,
+                order:       -1,
+            }, MRL.starPoints(years, retirementYear, { hoverBase: 0 }), {
+                pointBorderWidth: 2,
+            });
+        },
+    };
+
+    window.MRL = MRL;
+})(window);

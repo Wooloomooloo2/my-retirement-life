@@ -637,8 +637,9 @@ const accountNames   = {{ projection.account_names   | tojson }};
 const accountClasses = {{ projection.account_classes | tojson }};
 const accountBals    = {{ projection.account_balances | tojson }};
 
-const CASH_PALETTE   = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD'];
-const INVEST_PALETTE = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#0D9488', '#0F766E'];
+// Palette from the shared module (ADR-022) — CSS-var driven.
+const CASH_PALETTE   = MRL.palette.cash;
+const INVEST_PALETTE = MRL.palette.invest;
 const CHIP_THRESHOLD = 8;   // use chips below this; dropdown at or above
 
 let byAccountChartInstance = null;
@@ -674,15 +675,7 @@ function initByAccountChart() {
     // stack, and filter it out of the tooltip so the footer isn't doubled.
     const byAccountTotals = years.map((_, i) =>
         sortedLabels.reduce((s, l) => s + ((accountBals[l] || [])[i] || 0), 0));
-    datasets.push({
-        label: 'Retirement', data: byAccountTotals, stack: '_marker',
-        fill: false, borderColor: 'transparent', borderWidth: 0,
-        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
-        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
-        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
-        pointBackgroundColor: '#4F46E5', pointBorderColor: '#4F46E5',
-        pointBorderWidth: 2, tension: 0.3, order: -1,
-    });
+    datasets.push(MRL.markerDataset(years, retirementYear, byAccountTotals));
 
     byAccountChartInstance = new Chart(
         document.getElementById('byAccountChart').getContext('2d'),
@@ -922,18 +915,13 @@ const datasets = [
         label: 'Balance',
         data: balances,
         type: 'line',
-        borderColor: '#534AB7',
-        backgroundColor: 'rgba(83,74,183,0.08)',
+        borderColor: MRL.color.accent,
+        backgroundColor: MRL.color.accent + '14',   // 8% accent
         borderWidth: 2,
         fill: true,
-        // Retirement-year ★ on the balance line (item 56) — a real data point,
-        // so it survives the X-axis autoSkip that drops the tick label.
-        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
-        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 4),
-        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
-        pointBackgroundColor: '#534AB7',
-        pointBorderColor: '#534AB7',
-        pointBorderWidth:  years.map(y => y === retirementYear ? 2 : 1),
+        // Retirement-year ★ (item 56) — a real data point, so it survives the
+        // X-axis autoSkip that drops the tick label.
+        ...MRL.starPoints(years, retirementYear, { hoverBase: 4 }),
         tension: 0.3,
         yAxisID: 'yBalance',
         order: 1,
@@ -1010,7 +998,7 @@ new Chart(ctx, {
                     display: true,
                     text: 'Balance (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
-                    color: '#534AB7'
+                    color: MRL.color.accent
                 }
             }
         }
@@ -1056,18 +1044,12 @@ const mcDatasets = [
     {
         label: 'Median (P50)',
         data: mcP50,
-        borderColor: '#534AB7',
+        borderColor: MRL.color.accent,
         backgroundColor: 'transparent',
         borderWidth: 2.5,
         fill: false,
-        // Retirement-year ★ on the median line (item 56) — real data point so
-        // it survives the X-axis autoSkip that drops the tick label.
-        pointRadius:      mcYears.map(y => y === retirementYear ? 7 : 0),
-        pointHoverRadius: mcYears.map(y => y === retirementYear ? 9 : 4),
-        pointStyle:       mcYears.map(y => y === retirementYear ? 'star' : 'circle'),
-        pointBackgroundColor: '#534AB7',
-        pointBorderColor: '#534AB7',
-        pointBorderWidth:  mcYears.map(y => y === retirementYear ? 2 : 1),
+        // Retirement-year ★ on the median line (item 56).
+        ...MRL.starPoints(mcYears, retirementYear, { hoverBase: 4 }),
         tension: 0.3,
     },
 ];

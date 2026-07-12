@@ -384,9 +384,11 @@ const accountClasses   = {{ projection.account_classes  | tojson }};
 const assetBalances    = {{ projection.asset_balances    | tojson }};
 const assetNames       = {{ projection.asset_names       | tojson }};
 
-const CASH_PALETTE   = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD'];
-const INVEST_PALETTE = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#0D9488', '#0F766E'];
-const ASSET_PALETTE  = ['#D97706', '#F59E0B', '#FBBF24', '#FCD34D'];
+// Palette from the shared module (ADR-022) — CSS-var driven, so a theme
+// change re-tints these with no edit here.
+const CASH_PALETTE   = MRL.palette.cash;
+const INVEST_PALETTE = MRL.palette.invest;
+const ASSET_PALETTE  = MRL.palette.asset;
 const CHIP_THRESHOLD = 8;
 
 let networthChartInstance = null;
@@ -456,22 +458,7 @@ function initNetworthChart() {
         [...cashLabels, ...invLabels].reduce((s, l) => s + ((accountBalances[l] || [])[i] || 0), 0)
         + astLabels.reduce((s, l) => s + ((assetBalances[l] || [])[i] || 0), 0)
     );
-    datasets.push({
-        label:            'Retirement',
-        data:             networthTotals,
-        stack:            '_marker',
-        fill:             false,
-        borderColor:      'transparent',
-        borderWidth:      0,
-        pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
-        pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
-        pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
-        pointBackgroundColor: '#4F46E5',
-        pointBorderColor: '#4F46E5',
-        pointBorderWidth: 2,
-        tension:          0.3,
-        order:            -1,
-    });
+    datasets.push(MRL.markerDataset(years, retirementYear, networthTotals));
 
     networthChartInstance = new Chart(
         document.getElementById('networthChart').getContext('2d'),

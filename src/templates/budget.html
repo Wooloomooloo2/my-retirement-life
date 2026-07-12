@@ -645,15 +645,7 @@
         // every grouping/inflation toggle since the totals can change.
         const totals = years.map((_, i) =>
             payload.groups.reduce((s, g) => s + ((g.values || [])[i] || 0), 0));
-        sets.push({
-            label: 'Retirement', data: totals, stack: '_marker',
-            fill: false, borderColor: 'transparent', borderWidth: 0,
-            pointRadius:      years.map(y => y === retirementYear ? 7 : 0),
-            pointHoverRadius: years.map(y => y === retirementYear ? 9 : 0),
-            pointStyle:       years.map(y => y === retirementYear ? 'star' : 'circle'),
-            pointBackgroundColor: '#4F46E5', pointBorderColor: '#4F46E5',
-            pointBorderWidth: 2, tension: 0.15, order: -1,
-        });
+        sets.push(MRL.markerDataset(years, retirementYear, totals, { tension: 0.15 }));
         return sets;
     }
 

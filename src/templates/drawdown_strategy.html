@@ -175,8 +175,9 @@
 <script src="/static/vendor/Sortable.min.js"></script>
 <script>
 const SYM            = {{ base_currency_symbol() | tojson }};
-const CASH_PALETTE   = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD'];
-const INVEST_PALETTE = ['#059669', '#10B981', '#34D399', '#6EE7B7', '#0D9488', '#0F766E'];
+// Palette from the shared module (ADR-022) — CSS-var driven.
+const CASH_PALETTE   = MRL.palette.cash;
+const INVEST_PALETTE = MRL.palette.invest;
 const CHIP_THRESHOLD = 8;
 
 let currentStrategy = {{ current_strategy | tojson }};
@@ -306,7 +307,7 @@ function buildDatasets(data, mode) {
             labels.reduce((s, l) => s + ((data.account_withdrawals[l] || [])[i] || 0), 0));
         datasets.push({
             label: 'Total drawdown', data: total, type: 'bar', stack: 'wd',
-            backgroundColor: '#6366F1BF', borderColor: '#6366F1', borderWidth: 1, yAxisID: 'y',
+            backgroundColor: MRL.color.accent + 'BF', borderColor: MRL.color.accent, borderWidth: 1, yAxisID: 'y',
         });
     } else {
         let ci = 0, ii = 0;
@@ -327,7 +328,7 @@ function buildDatasets(data, mode) {
     if ((data.tax_per_year || []).some(t => t > 0)) {
         datasets.push({
             label: 'Tax paid', data: data.tax_per_year, type: 'line', yAxisID: 'yTax',
-            borderColor: '#DC2626', backgroundColor: '#DC2626', borderWidth: 2,
+            borderColor: MRL.color.tax, backgroundColor: MRL.color.tax, borderWidth: 2,
             pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false,
         });
     }
@@ -339,7 +340,7 @@ function buildDatasets(data, mode) {
             label: 'Retirement', type: 'line', yAxisID: 'yTax', showLine: false,
             data: years.map(y => y === ry ? 0 : null),
             pointStyle: 'star', pointRadius: 11, pointHoverRadius: 13,
-            borderColor: '#4F46E5', backgroundColor: '#4F46E5',
+            borderColor: MRL.color.accent, backgroundColor: MRL.color.accent,
         });
     }
 

@@ -13,6 +13,49 @@
 
 @layer base {
     /*
+     * Chart palette (ADR-022 commit 3).
+     *
+     * The single source of truth for every chart colour in the app. Chart.js
+     * cannot read Tailwind classes, so the colours live here as CSS custom
+     * properties and mrl-charts.js reads them back via getComputedStyle. That
+     * indirection is the point: re-theming (commit 4) and dark mode (commit 5)
+     * become edits to THIS block, not sweeps through five chart templates.
+     *
+     * Before this, 18 hardcoded hexes were scattered across 5 templates —
+     * including four near-identical indigos (#4F46E5, #534AB7, #6366F1 and
+     * #6366F1 again) that were doing the same accent job by accident. They are
+     * now one `--mrl-accent`.
+     *
+     * Series ramps are ordered light-to-dark within a family so a stacked area
+     * reads as one material. Cash = blue, investments = green, assets = amber:
+     * the same semantic mapping the dashboard's legend dots already used.
+     */
+    :root {
+        --mrl-cash-1: #2563EB;
+        --mrl-cash-2: #3B82F6;
+        --mrl-cash-3: #60A5FA;
+        --mrl-cash-4: #93C5FD;
+
+        --mrl-invest-1: #059669;
+        --mrl-invest-2: #10B981;
+        --mrl-invest-3: #34D399;
+        --mrl-invest-4: #6EE7B7;
+        --mrl-invest-5: #0D9488;
+        --mrl-invest-6: #0F766E;
+
+        --mrl-asset-1: #D97706;
+        --mrl-asset-2: #F59E0B;
+        --mrl-asset-3: #FBBF24;
+        --mrl-asset-4: #FCD34D;
+
+        /* Semantic, non-series colours. */
+        --mrl-accent:     #4F46E5;  /* retirement ★ marker, balance line */
+        --mrl-tax:        #DC2626;
+        --mrl-growth:     #059669;
+        --mrl-withdrawal: #D97706;
+    }
+
+    /*
      * Tabular figures in every table (ADR-022). This is a financial app: money
      * columns must line up. Proportional digits made the Projection and Budget
      * tables ragged down the right-hand edge.
