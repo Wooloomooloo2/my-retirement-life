@@ -383,7 +383,7 @@
             <div class="flex flex-wrap gap-2">
                 {% for acc in tax_shield_summary.accounts %}
                 <div class="badge badge-outline gap-1.5 py-3">
-                    <span class="inline-block w-2 h-2 rounded-full {% if acc.account_class == 'CashAccount' %}bg-blue-500{% else %}bg-emerald-500{% endif %}"></span>
+                    <span class="inline-block w-2 h-2 rounded-full" style="background: var({% if acc.account_class == 'CashAccount' %}--mrl-cash-1{% else %}--mrl-invest-1{% endif %})"></span>
                     <span class="font-medium">{{ acc.name }}</span>
                     <span class="text-base-content/60">{{ acc.amount | money }}</span>
                 </div>
@@ -870,36 +870,36 @@ const datasets = [
     {
         label: 'Mandatory spending',
         data: mandatory,
-        backgroundColor: 'rgba(239,68,68,0.7)',
+        backgroundColor: MRL.alpha(MRL.color.mandatory, 0.7),
         stack: 'spending',
         order: 2,
     },
     {
         label: 'Discretionary spending',
         data: discretionary,
-        backgroundColor: 'rgba(245,158,11,0.7)',
+        backgroundColor: MRL.alpha(MRL.color.discretionary, 0.7),
         stack: 'spending',
         order: 2,
     },
     {
         label: 'Loan repayments',
         data: loans,
-        backgroundColor: 'rgba(59,130,246,0.7)',
+        backgroundColor: MRL.alpha(MRL.color.loan, 0.7),
         stack: 'spending',
         order: 2,
     },
     {
         label: 'Life event costs',
         data: lifeEventCosts,
-        backgroundColor: 'rgba(168,85,247,0.7)',
+        backgroundColor: MRL.alpha(MRL.color.eventCost, 0.7),
         stack: 'spending',
         order: 2,
     },
     {
         label: 'Income',
         data: income,
-        backgroundColor: 'rgba(34,197,94,0.15)',
-        borderColor: 'rgba(34,197,94,0.6)',
+        backgroundColor: MRL.alpha(MRL.color.income, 0.15),
+        borderColor: MRL.alpha(MRL.color.income, 0.6),
         borderWidth: 1,
         stack: 'income',
         order: 2,
@@ -907,7 +907,7 @@ const datasets = [
     {
         label: 'Life event receipts',
         data: lifeEventReceipts,
-        backgroundColor: 'rgba(20,184,166,0.7)',
+        backgroundColor: MRL.alpha(MRL.color.eventReceipt, 0.7),
         stack: 'income',
         order: 2,
     },
@@ -932,7 +932,7 @@ if (hasTax) {
     datasets.splice(4, 0, {
         label: 'Tax paid',
         data: taxPaid,
-        backgroundColor: 'rgba(239,68,68,0.35)',
+        backgroundColor: MRL.alpha(MRL.color.tax, 0.35),
         stack: 'spending',
         order: 2,
     });
@@ -1024,8 +1024,8 @@ const mcDatasets = [
         // P90 fills DOWN to P10 (next dataset), creating the confidence band
         label: 'Optimistic (P90)',
         data: mcP90,
-        borderColor: 'rgba(34,197,94,0.35)',
-        backgroundColor: 'rgba(34,197,94,0.10)',
+        borderColor: MRL.alpha(MRL.color.growth, 0.35),
+        backgroundColor: MRL.alpha(MRL.color.growth, 0.10),
         borderWidth: 1,
         fill: '+1',
         pointRadius: 0,
@@ -1034,7 +1034,7 @@ const mcDatasets = [
     {
         label: 'Pessimistic (P10)',
         data: mcP10,
-        borderColor: 'rgba(239,68,68,0.35)',
+        borderColor: MRL.alpha(MRL.color.tax, 0.35),
         backgroundColor: 'transparent',
         borderWidth: 1,
         fill: false,
@@ -1058,7 +1058,7 @@ if (hasCashFloor) {
     mcDatasets.push({
         label: 'Cash floor (deterministic)',
         data: cashFloor,
-        borderColor: 'rgba(16,185,129,0.6)',
+        borderColor: MRL.alpha(MRL.color.growth, 0.6),
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         borderDash: [4, 4],

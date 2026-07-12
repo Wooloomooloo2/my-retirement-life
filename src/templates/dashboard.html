@@ -222,20 +222,20 @@
 <!-- Net-worth: estate hero + today / years-to-retirement / at-retirement cards -->
 {% if snapshots %}
 {% macro nw_breakdown(snap) -%}
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></span>{{ snap.cash | money }}</span>
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1"></span>{{ snap.invest | money }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: var(--mrl-cash-1)"></span>{{ snap.cash | money }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: var(--mrl-invest-1)"></span>{{ snap.invest | money }}</span>
   {% if snap.assets %}
-  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>{{ snap.assets | money }}</span>
+  <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: var(--mrl-asset-1)"></span>{{ snap.assets | money }}</span>
   {% endif %}
 {%- endmacro %}
 
 <!-- Hero: Expected Estate Value at Life Expectancy (snapshots.final = net worth
      incl. physical assets at the end of the projection horizon) -->
 {% if snapshots.final %}
-<div class="card bg-base-100 shadow-sm mb-4 border-l-4 border-amber-500">
+<div class="card bg-base-100 shadow-sm mb-4 border-l-4 border-accent">
     <div class="card-body p-5">
         <div class="flex items-center gap-2">
-            <i class="ti ti-building-estate text-amber-500 text-xl" aria-hidden="true"></i>
+            <i class="ti ti-building-estate text-accent text-xl" aria-hidden="true"></i>
             <p class="text-sm text-base-content/60 uppercase tracking-wide">Expected Estate Value at Life Expectancy</p>
         </div>
         <p class="text-4xl font-bold mt-1 tabular-nums {% if snapshots.final.total < 0 %}text-error{% endif %}">
@@ -315,9 +315,9 @@
         </div>
         <p class="text-xs text-base-content/40 mt-3 text-center">
             Stacked closing balance per item each year —
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle"></span> cash &nbsp;·&nbsp;
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle"></span> investments &nbsp;·&nbsp;
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle"></span> physical assets
+            <span class="inline-block w-1.5 h-1.5 rounded-full align-middle" style="background: var(--mrl-cash-1)"></span> cash &nbsp;·&nbsp;
+            <span class="inline-block w-1.5 h-1.5 rounded-full align-middle" style="background: var(--mrl-invest-1)"></span> investments &nbsp;·&nbsp;
+            <span class="inline-block w-1.5 h-1.5 rounded-full align-middle" style="background: var(--mrl-asset-1)"></span> physical assets
             &nbsp;|&nbsp; ★ = retirement year
         </p>
     </div>
@@ -342,7 +342,7 @@
     </a>
     <a href="/accounts" class="card bg-base-100 shadow-sm hover:shadow transition-shadow">
         <div class="card-body p-3 text-center">
-            <i class="ti ti-building-estate text-amber-500 text-lg" aria-hidden="true"></i>
+            <i class="ti ti-building-estate text-lg" style="color: var(--mrl-asset-1)" aria-hidden="true"></i>
             <p class="text-lg font-semibold mt-1">{{ asset_count }}</p>
             <p class="text-xs text-base-content/50 uppercase tracking-wide">Asset{% if asset_count != 1 %}s{% endif %}</p>
         </div>

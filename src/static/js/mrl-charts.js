@@ -47,11 +47,30 @@
 
     function readColors() {
         return {
-            accent:     cssVar('--mrl-accent', '#4F46E5'),
-            tax:        cssVar('--mrl-tax', '#DC2626'),
-            growth:     cssVar('--mrl-growth', '#059669'),
-            withdrawal: cssVar('--mrl-withdrawal', '#D97706'),
+            accent:       cssVar('--mrl-accent', '#E08A3C'),
+            contribution: cssVar('--mrl-contribution', '#1F6E78'),
+            withdrawal:   cssVar('--mrl-withdrawal', '#D97706'),
+            tax:          cssVar('--mrl-tax', '#DC2626'),
+            growth:       cssVar('--mrl-growth', '#16A34A'),
+            // Projection overview cashflow series.
+            mandatory:     cssVar('--mrl-spend-mandatory', '#EF4444'),
+            discretionary: cssVar('--mrl-spend-discretionary', '#F59E0B'),
+            loan:          cssVar('--mrl-loan', '#3B82F6'),
+            eventCost:     cssVar('--mrl-event-cost', '#A855F7'),
+            eventReceipt:  cssVar('--mrl-event-receipt', '#14B8A6'),
+            income:        cssVar('--mrl-income', '#22C55E'),
         };
+    }
+
+    /**
+     * Append an alpha channel to a #RRGGBB colour: alpha(c, 0.7) -> '#RRGGBBB3'.
+     * Chart.js fills were written as rgba() literals; this keeps them
+     * token-driven (and therefore themeable) without hand-computed hex suffixes.
+     */
+    function alpha(hex, a) {
+        const c = String(hex).trim().slice(0, 7);   // drop any existing alpha
+        const byte = Math.round(Math.max(0, Math.min(1, a)) * 255);
+        return c + byte.toString(16).padStart(2, '0').toUpperCase();
     }
 
     let _palette = null;
@@ -66,6 +85,8 @@
             if (!_colors) _colors = readColors();
             return _colors;
         },
+
+        alpha: alpha,
 
         /** Re-read the palette after a theme change (commit 5 / dark mode). */
         refresh() {

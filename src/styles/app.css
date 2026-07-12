@@ -43,16 +43,39 @@
         --mrl-invest-5: #0D9488;
         --mrl-invest-6: #0F766E;
 
-        --mrl-asset-1: #D97706;
-        --mrl-asset-2: #F59E0B;
-        --mrl-asset-3: #FBBF24;
-        --mrl-asset-4: #FCD34D;
+        /* Assets are GOLD, not amber (ADR-022 commit 4) — gold is the brand's,
+           and it keeps the asset ramp clear of the sunset accent below. */
+        --mrl-asset-1: #C9A23A;
+        --mrl-asset-2: #DCBB55;
+        --mrl-asset-3: #E6CD82;
+        --mrl-asset-4: #F0DFAE;
 
         /* Semantic, non-series colours. */
-        --mrl-accent:     #4F46E5;  /* retirement ★ marker, balance line */
-        --mrl-tax:        #DC2626;
-        --mrl-growth:     #059669;
-        --mrl-withdrawal: #D97706;
+
+        /* MRL's signature sunset — the retirement ★ and the balance line. The
+           moment the whole app is about gets the colour the brand reserves for
+           MRL (MFL leans on plain teal). Was an accidental indigo (#4F46E5). */
+        --mrl-accent:       #E08A3C;
+
+        /* Contributions are money going IN — brand teal, distinct from the two
+           warm colours. Commit 3 folded this into --mrl-accent because both were
+           indigo; under a warm accent that conflation reads as "contributions
+           and withdrawals are the same kind of thing", which they are not. */
+        --mrl-contribution: #1F6E78;
+
+        --mrl-withdrawal:   #D97706;  /* money going OUT */
+        --mrl-tax:          #DC2626;  /* brief: negative */
+        --mrl-growth:       #16A34A;  /* brief: positive */
+
+        /* Cashflow series on the Projection overview chart. These were written
+           as rgba() literals, so the commit-3 sweep (which matched quoted hex)
+           missed them — same problem, second syntax. */
+        --mrl-spend-mandatory:     #EF4444;
+        --mrl-spend-discretionary: #F59E0B;
+        --mrl-loan:                #3B82F6;
+        --mrl-event-cost:          #A855F7;
+        --mrl-event-receipt:       #14B8A6;
+        --mrl-income:              #22C55E;
     }
 
     /*

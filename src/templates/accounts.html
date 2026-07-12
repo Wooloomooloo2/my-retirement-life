@@ -266,10 +266,8 @@
                     <tr class="hover {% if edit_account and edit_account.get('label') == account.label %}bg-base-200{% endif %}">
                         <td class="font-medium">
                             <div class="flex items-center gap-2">
-                                <span class="inline-block w-1.5 h-1.5 rounded-full
-                                    {% if is_cash %}bg-blue-500
-                                    {% elif is_invest %}bg-green-500
-                                    {% else %}bg-amber-500{% endif %}"
+                                <span class="inline-block w-1.5 h-1.5 rounded-full"
+                                    style="background: var({% if is_cash %}--mrl-cash-1{% elif is_invest %}--mrl-invest-1{% else %}--mrl-asset-1{% endif %})"
                                     title="{% if is_cash %}Cash account{% elif is_invest %}Investment account{% else %}Physical asset{% endif %}"></span>
                                 {{ account.name }}
                             </div>
@@ -401,7 +399,7 @@
                     {% if edit_class and edit_class != 'CashAccount' %}opacity-40 cursor-not-allowed{% endif %}"
                 onclick="setAccountClass('cash')"
                 {% if edit_class and edit_class != 'CashAccount' %}disabled{% endif %}>
-                <span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></span>
+                <span class="inline-block w-1.5 h-1.5 rounded-full mr-1.5" style="background: var(--mrl-cash-1)"></span>
                 Cash account
             </button>
             <button type="button"
@@ -411,7 +409,7 @@
                     {% if edit_class and edit_class != 'InvestmentAccount' %}opacity-40 cursor-not-allowed{% endif %}"
                 onclick="setAccountClass('invest')"
                 {% if edit_class and edit_class != 'InvestmentAccount' %}disabled{% endif %}>
-                <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
+                <span class="inline-block w-1.5 h-1.5 rounded-full mr-1.5" style="background: var(--mrl-invest-1)"></span>
                 Investment account
             </button>
             <button type="button"
@@ -421,7 +419,7 @@
                     {% if edit_class and edit_class != 'PhysicalAsset' %}opacity-40 cursor-not-allowed{% endif %}"
                 onclick="setAccountClass('asset')"
                 {% if edit_class and edit_class != 'PhysicalAsset' %}disabled{% endif %}>
-                <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+                <span class="inline-block w-1.5 h-1.5 rounded-full mr-1.5" style="background: var(--mrl-asset-1)"></span>
                 Physical asset
             </button>
         </div>

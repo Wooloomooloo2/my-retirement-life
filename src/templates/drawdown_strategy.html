@@ -307,7 +307,7 @@ function buildDatasets(data, mode) {
             labels.reduce((s, l) => s + ((data.account_withdrawals[l] || [])[i] || 0), 0));
         datasets.push({
             label: 'Total drawdown', data: total, type: 'bar', stack: 'wd',
-            backgroundColor: MRL.color.accent + 'BF', borderColor: MRL.color.accent, borderWidth: 1, yAxisID: 'y',
+            backgroundColor: MRL.color.withdrawal + 'BF', borderColor: MRL.color.withdrawal, borderWidth: 1, yAxisID: 'y',
         });
     } else {
         let ci = 0, ii = 0;
