@@ -316,6 +316,39 @@ def get_dashboard_data() -> dict:
                 snapshots["retirement"] = _snapshot_at(years.index(ret_year))
             snapshots["final"] = _snapshot_at(-1)
 
+            # For a user who has ALREADY retired, the "at retirement" snapshot is
+            # the same index as "today" — the projection starts at the current year,
+            # and their retirement year IS the current year. The dashboard therefore
+            # showed two identical cards with nothing to explain why, which reads as
+            # a bug even though the figure is right.
+            snapshots["already_retired"] = (
+                ret_year is not None and ret_year <= years[0]
+            )
+
+            # Peak net worth and the year it occurs — the natural replacement, since
+            # once you're drawing down the question is how high it gets and when.
+            peak_idx = max(
+                range(len(years)),
+                key=lambda i: _snapshot_at(i)["total"],
+            )
+            snapshots["peak"] = _snapshot_at(peak_idx)
+            snapshots["peak"]["year"] = years[peak_idx]
+
+            # ...but only when the peak is a real turning point. On a plan that never
+            # declines, the peak IS the final year, and a "peak" card would just
+            # repeat the estate hero above it — swapping one duplicate for another.
+            snapshots["peak_is_turning_point"] = 0 < peak_idx < len(years) - 1
+
+            # Fallback for that case: spendable savings. Always distinct from net
+            # worth (it excludes property and other physical assets) and it is the
+            # money that actually funds retirement.
+            today_snap = snapshots["today"]
+            snapshots["spendable_today"] = {
+                "total":  round(today_snap["cash"] + today_snap["invest"], 0),
+                "cash":   today_snap["cash"],
+                "invest": today_snap["invest"],
+            }
+
     return {
         "profile":             prof,
         "income_count":        income_count,

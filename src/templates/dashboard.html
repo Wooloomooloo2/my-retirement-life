@@ -277,6 +277,44 @@
         </div>
     </div>
 
+    {# Once you're retired, "at retirement" IS "today" — same year, same index in
+       the projection — so the card repeated the one two along from it and looked
+       broken. What replaces it depends on the shape of the plan:
+
+       · the plan peaks and then declines  -> "Peak net worth" (how high, and when)
+       · the plan never declines           -> the peak IS the final year, and a peak
+                                              card would just repeat the estate hero
+                                              above. Show spendable savings instead —
+                                              always distinct from net worth, because
+                                              it excludes property and other assets. #}
+    {% if snapshots.already_retired and snapshots.peak_is_turning_point %}
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Peak net worth</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums">
+                {{ snapshots.peak.total | money }}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span class="text-base-content/50">in {{ snapshots.peak.year }}</span>
+                {{ nw_breakdown(snapshots.peak) }}
+            </p>
+        </div>
+    </div>
+    {% elif snapshots.already_retired %}
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-4">
+            <p class="text-xs text-base-content/50 uppercase tracking-wide">Spendable savings today</p>
+            <p class="text-xl font-semibold mt-1 tabular-nums">
+                {{ snapshots.spendable_today.total | money }}
+            </p>
+            <p class="text-xs text-base-content/40 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span class="text-base-content/50">excludes assets</span>
+                <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: var(--mrl-cash-1)"></span>{{ snapshots.spendable_today.cash | money }}</span>
+                <span class="inline-flex items-center"><span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: var(--mrl-invest-1)"></span>{{ snapshots.spendable_today.invest | money }}</span>
+            </p>
+        </div>
+    </div>
+    {% else %}
     <div class="card bg-base-100 shadow-sm">
         <div class="card-body p-4">
             <p class="text-xs text-base-content/50 uppercase tracking-wide">At retirement</p>
@@ -288,6 +326,7 @@
             </p>
         </div>
     </div>
+    {% endif %}
 
 </div>
 
