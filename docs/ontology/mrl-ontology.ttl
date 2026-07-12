@@ -14,7 +14,7 @@
 mrl:Ontology a owl:Ontology ;
     rdfs:label "My Retirement Life Ontology"@en ;
     rdfs:comment "Core ontology for the My Retirement Life retirement planning application."@en ;
-    owl:versionInfo "1.0.9" .
+    owl:versionInfo "1.0.10" .
 
 
 # ===========================================================================
@@ -1366,6 +1366,12 @@ mrl:budgetLineExchangeRateDate a owl:DatatypeProperty ;
     rdfs:comment "The date on which mrl:budgetLineExchangeRateToBase was last set or refreshed. Added 1.0.5 (ADR-016 follow-on)."@en ;
     rdfs:domain mrl:BudgetLine ;
     rdfs:range xsd:date .
+
+mrl:budgetLineNotes a owl:DatatypeProperty ;
+    rdfs:label "budget line notes"@en ;
+    rdfs:comment "Free-text note on a budget line — the assumption behind the amount, what it covers, or why it ends when it does. Purely descriptive: the projection engine never reads it. Mirrors mrl:accountNotes and mrl:lifeEventNotes. Added 1.0.10."@en ;
+    rdfs:domain mrl:BudgetLine ;
+    rdfs:range xsd:string .
 
 
 # ===========================================================================

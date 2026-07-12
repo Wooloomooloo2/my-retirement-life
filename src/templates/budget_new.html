@@ -17,6 +17,22 @@
         Back to budget
     </a>
 
+    {# Confirmation after "Save & add another": the form is blank again, so
+       without this the click looks like it did nothing. #}
+    {% if added and last_line_name %}
+    <div class="alert alert-success mb-4 py-2.5">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+        <span class="text-sm">
+            Saved <strong>{{ last_line_name }}</strong>.
+            You now have {{ line_count }} budget line{{ 's' if line_count != 1 }}.
+        </span>
+        <a href="/budget" class="btn btn-sm btn-ghost gap-1">
+            Done adding
+            <i class="ti ti-arrow-right" aria-hidden="true"></i>
+        </a>
+    </div>
+    {% endif %}
+
     {% include "_budget_form.html" %}
 </div>
 

@@ -77,6 +77,24 @@
         --mrl-event-receipt:       #14B8A6;
         --mrl-income:              #22C55E;
 
+        /* Categorical ramp — budget categories, which are USER-CREATED and so
+           unbounded. Assigned by position and cycled, not hashed: the old code
+           MD5'd the category name into a random HSL hue, which is why the budget
+           chart came out pink/purple/olive.
+           Excludes BOTH reserved colours: the sunset accent (the retirement ★ and
+           the total line, which sit on top of this very chart) and the brand teal
+           (pinned to "Account contributions"). Include either and a user category
+           comes out the same colour as something that isn't a category. */
+        --mrl-cat-1: #4F7CAC;   /* slate blue   */
+        --mrl-cat-2: #C9A23A;   /* brand gold   */
+        --mrl-cat-3: #B4656F;   /* dusty rose   */
+        --mrl-cat-4: #5B8C5A;   /* moss green   */
+        --mrl-cat-5: #8B6BB1;   /* muted purple */
+        --mrl-cat-6: #9C6B4F;   /* brown        */
+        --mrl-cat-7: #6B7A8F;   /* blue grey    */
+        --mrl-cat-8: #A8577E;   /* plum         */
+        --mrl-neutral: #9CA3AF; /* "Uncategorised" — recedes on purpose */
+
         /* Chart chrome. Gridlines and axis labels are drawn on the canvas, so
            they can't inherit `text-base-content` — they need their own tokens or
            they stay black-on-black in dark mode. */
@@ -129,6 +147,17 @@
         --mrl-event-cost:          #C084FC;
         --mrl-event-receipt:       #2DD4BF;
         --mrl-income:              #4ADE80;
+
+        /* Categorical ramp, lifted for a dark canvas. */
+        --mrl-cat-1: #7BA7D4;
+        --mrl-cat-2: #DCBB55;
+        --mrl-cat-3: #D68C96;
+        --mrl-cat-4: #86B884;
+        --mrl-cat-5: #B195D6;
+        --mrl-cat-6: #C29478;
+        --mrl-cat-7: #9AA8BA;
+        --mrl-cat-8: #D083AC;
+        --mrl-neutral: #64748B;
 
         --mrl-grid:        rgba(255, 255, 255, 0.08);
         --mrl-chart-label: #CBD5E1;

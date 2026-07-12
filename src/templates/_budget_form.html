@@ -77,6 +77,27 @@
                             class="btn btn-xs btn-ghost btn-outline">{{ chip }}</button>
                         {% endfor %}
                     </div>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">
+                            Suggestions only — type any category you like.
+                        </span>
+                    </label>
+                </div>
+
+                {# Note (ontology 1.0.10). Free text, purely descriptive — the
+                   projection engine never reads it. It exists because the number
+                   alone doesn't carry the assumption behind it: "£650/mo, assumes
+                   the kids have left by 2031" is the sort of thing you cannot
+                   reconstruct from a budget table a year later. #}
+                <div class="form-control col-span-2">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                            Note <span class="normal-case font-normal text-base-content/40">(optional)</span>
+                        </span>
+                    </label>
+                    <textarea name="budgetLineNotes" rows="2"
+                        placeholder="What this covers, or the assumption behind the amount"
+                        class="textarea textarea-bordered textarea-sm w-full">{{ edit_line.notes if edit_line else '' }}</textarea>
                 </div>
 
                 <!-- Currency (1.0.5 — ADR-016 follow-on) -->
@@ -222,15 +243,26 @@
             </div>
 
             <div class="flex justify-between items-center">
-                {% if edit_line %}
                 <a href="/budget" class="btn btn-ghost btn-sm">Cancel</a>
-                {% else %}
-                <span></span>
-                {% endif %}
-                <button type="submit" class="btn btn-primary btn-sm gap-1">
-                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
-                    {% if edit_line %}Save changes{% else %}Add budget line{% endif %}
-                </button>
+
+                <div class="flex items-center gap-2">
+                    {% if not edit_line %}
+                    {# Most people enter their budget in one sitting, several lines at a
+                       time. Without this, every line costs a round-trip back to the list
+                       and another click on "Add budget line". `submitAction` tells the
+                       POST handler which page to redirect to. #}
+                    <button type="submit" name="submitAction" value="add_another"
+                            class="btn btn-outline btn-sm gap-1">
+                        <i class="ti ti-plus" aria-hidden="true"></i>
+                        Save &amp; add another
+                    </button>
+                    {% endif %}
+                    <button type="submit" name="submitAction" value="save"
+                            class="btn btn-primary btn-sm gap-1">
+                        <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                        {% if edit_line %}Save changes{% else %}Save budget line{% endif %}
+                    </button>
+                </div>
             </div>
 
         </form>

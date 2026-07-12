@@ -26,6 +26,14 @@ Changes (ADR-021 rental income from property yield):
   a property-linked rental survives a scenario/backup round-trip. Pre-0.3.2
   backups restore cleanly (absent fields → source keeps its static amount).
   APP_VERSION bumped to 0.3.2.
+
+Changes (budget line notes, ontology 1.0.10):
+  export_all_data() / restore_all_data() now also cover mrl:budgetLineNotes, the
+  free-text note on a budget line. Required, not optional: restore_all_data()
+  wipes the data graph before re-inserting, so anything export omits is silently
+  DESTROYED on the next scenario load (ADR-014). Pre-0.3.3 backups restore
+  cleanly — an absent note simply means the line has none.
+  APP_VERSION bumped to 0.3.3.
 """
 import json
 from datetime import date, datetime
@@ -44,7 +52,7 @@ RDF_TYPE       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 MRL_EXT        = "https://myretirementlife.app/ontology/ext#"
 ONTOLOGY_GRAPH = og.NamedNode("https://myretirementlife.app/ontology/graph")
 
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +325,8 @@ def export_all_data() -> dict:
             "currency":         _local(iri, "budgetLineCurrency"),
             "exchangeRate":     _float_val(iri, "budgetLineExchangeRateToBase", 1.0),
             "exchangeRateDate": _val(iri, "budgetLineExchangeRateDate"),
+            # 1.0.10 — free-text note (schema 0.3.3)
+            "notes":            _val(iri, "budgetLineNotes"),
         })
     budget_lines.sort(key=lambda x: int(x["n"]) if x["n"].isdigit() else 0)
 
@@ -763,6 +773,12 @@ def restore_all_data(backup: dict) -> tuple[bool, str]:
             if line.get("currency"):
                 base_triples += (f'\n        <{line_iri}> mrl:budgetLineCurrency '
                                  f'mrl:{line["currency"]} .')
+            # 1.0.10: free-text note. Backups predating schema 0.3.3 don't carry
+            # it; absent simply means "no note".
+            if (line.get("notes") or "").strip():
+                _safe_notes = line["notes"].replace("\\", "\\\\").replace('"', '\\"')
+                base_triples += (f'\n        <{line_iri}> mrl:budgetLineNotes '
+                                 f'"{_safe_notes}" .')
             if line.get("exchangeRate") and float(line.get("exchangeRate", 1.0)) != 1.0:
                 base_triples += (f'\n        <{line_iri}> mrl:budgetLineExchangeRateToBase '
                                  f'"{line["exchangeRate"]}"^^xsd:decimal .')

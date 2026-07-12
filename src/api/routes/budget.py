@@ -70,35 +70,42 @@ FREQUENCY_LABELS = {
 
 # Starter chip suggestions surfaced in the line form (ADR-017). These are NOT
 # pre-created — they only materialise as BudgetCategory_N instances when the
-# user actually adopts one.
+# user actually adopts one, and the user can type any category they like.
+#
+# Deliberately a MINIMAL set: the previous nine chips (which added Travel,
+# Health, Subscriptions, Personal) read as a taxonomy to be completed rather
+# than a starting point. These six are the ones almost every household has.
+#
+# "Loans" sits slightly against ADR-017's grain — that ADR made loans take a
+# user category like any other line, so a mortgage could live under Housing.
+# It stays as a suggestion because users think in terms of "my loans", but
+# nothing forces a loan line into it.
 CATEGORY_SUGGESTIONS = [
-    "Housing", "Food", "Transport", "Travel", "Health",
-    "Subscriptions", "Personal", "Bills", "Taxes",
+    "Housing", "Bills", "Taxes", "Food", "Loans", "Transportation",
 ]
 
 ACCOUNT_CONTRIBUTIONS_LABEL = "Account contributions"  # synthetic system group
 UNCATEGORISED_LABEL         = "Uncategorised"           # fallback group
 
 
-def _category_palette(name: str) -> tuple[str, str]:
-    """Return (fill_rgba, border_color) for a category name.
+def _category_role(name: str) -> str:
+    """Classify a chart group so the CLIENT can colour it (ADR-022).
 
-    System groups have pinned colours:
-      - Account contributions → teal (matches the existing 4th-band convention)
-      - Uncategorised         → neutral gray
+    Colour used to be decided here: a user category's name was MD5-hashed into
+    a random HSL hue. That is why the budget chart came out pink/purple/olive —
+    a set of colours nobody chose, belonging to no palette, and impossible to
+    re-theme, because they arrived as literals in a JSON payload that dark mode
+    could never see.
 
-    User categories get a deterministic HSL palette keyed off the lowercased
-    name, so the same category always renders in the same colour across
-    sessions even though categories are user-created.
+    Python now says only WHAT a group is; mrl-charts.js decides what it looks
+    like, from the same CSS custom properties as every other chart. Group order
+    is still fixed here, so a category keeps the same colour between renders.
     """
     if name == ACCOUNT_CONTRIBUTIONS_LABEL:
-        return "rgba(20,184,166,0.45)", "#14b8a6"
+        return "contributions"      # money going IN — pinned to the brand teal
     if name == UNCATEGORISED_LABEL:
-        return "rgba(156,163,175,0.45)", "#9ca3af"
-    import hashlib
-    h   = int(hashlib.md5(name.lower().encode("utf-8")).hexdigest()[:6], 16)
-    hue = h % 360
-    return f"hsla({hue}, 65%, 55%, 0.45)", f"hsl({hue}, 55%, 45%)"
+        return "uncategorised"      # pinned neutral, so it recedes
+    return "user"                   # coloured by position in the categorical ramp
 
 
 def _escape(s: str) -> str:
@@ -480,6 +487,7 @@ def get_all_budget_lines() -> list:
         currency_local   = gl("budgetLineCurrency")
         exchange_rate    = gv("budgetLineExchangeRateToBase")
         exchange_rate_dt = gv("budgetLineExchangeRateDate")
+        notes            = gv("budgetLineNotes")   # 1.0.10 — free text; engine ignores it
 
         segments  = get_segments_for_line(n)
         line_type = gl("budgetLineType")
@@ -521,6 +529,7 @@ def get_all_budget_lines() -> list:
             # ADR-017 category
             "categoryN":     category["n"]    if category else "",
             "categoryName":  category["name"] if category else "",
+            "notes":         notes,
             # ADR-017 segments list (for Phase 3 multi-segment UI)
             "segments":      segments,
             # Per-line currency + FX (1.0.5 — ADR-016 follow-on)
@@ -812,7 +821,8 @@ def compute_annual_spending_by_category(
         the synthetic system group derived from mrl:AccountContribution
         instances and pinned to teal.
 
-    Each group entry is {name, values, fill, border, is_system}.
+    Each group entry is {name, values, role, is_system}. Colour is the client's
+    job (ADR-022) — see _category_role.
     """
     years = list(range(current_year, end_year + 1))
 
@@ -824,33 +834,27 @@ def compute_annual_spending_by_category(
     groups = []
     user_cats = sorted(k for k in by_cat if k != UNCATEGORISED_LABEL)
     for name in user_cats:
-        fill, border = _category_palette(name)
         groups.append({
             "name":      name,
             "values":    _sum_lines_per_year(by_cat[name], years, inflation_rate),
-            "fill":      fill,
-            "border":    border,
+            "role":      _category_role(name),
             "is_system": False,
         })
     if UNCATEGORISED_LABEL in by_cat:
-        fill, border = _category_palette(UNCATEGORISED_LABEL)
         groups.append({
             "name":      UNCATEGORISED_LABEL,
             "values":    _sum_lines_per_year(by_cat[UNCATEGORISED_LABEL], years, inflation_rate),
-            "fill":      fill,
-            "border":    border,
+            "role":      _category_role(UNCATEGORISED_LABEL),
             "is_system": False,
         })
 
     contrib_series = compute_annual_contributions_series(
         contributions, current_year, end_year, retirement_year, inflation_rate)
     if any(v > 0 for v in contrib_series):
-        fill, border = _category_palette(ACCOUNT_CONTRIBUTIONS_LABEL)
         groups.append({
             "name":      ACCOUNT_CONTRIBUTIONS_LABEL,
             "values":    contrib_series,
-            "fill":      fill,
-            "border":    border,
+            "role":      _category_role(ACCOUNT_CONTRIBUTIONS_LABEL),
             "is_system": True,
         })
 
@@ -878,24 +882,20 @@ def compute_annual_spending_by_line(
     groups = []
     for line in sorted(lines, key=lambda l: (l.get("name") or "").lower()):
         nm = line.get("name") or f"Line {line.get('n','?')}"
-        fill, border = _category_palette(nm)
         groups.append({
             "name":      nm,
             "values":    _sum_lines_per_year([line], years, inflation_rate),
-            "fill":      fill,
-            "border":    border,
+            "role":      "user",
             "is_system": False,
         })
 
     contrib_series = compute_annual_contributions_series(
         contributions, current_year, end_year, retirement_year, inflation_rate)
     if any(v > 0 for v in contrib_series):
-        fill, border = _category_palette(ACCOUNT_CONTRIBUTIONS_LABEL)
         groups.append({
             "name":      ACCOUNT_CONTRIBUTIONS_LABEL,
             "values":    contrib_series,
-            "fill":      fill,
-            "border":    border,
+            "role":      _category_role(ACCOUNT_CONTRIBUTIONS_LABEL),
             "is_system": True,
         })
 
@@ -953,6 +953,7 @@ def save_budget_line_segments(
     currency_local: str = "",
     exchange_rate: float = 1.0,
     exchange_rate_date: str = "",
+    notes: str = "",
 ) -> None:
     """Write or overwrite BudgetLine_N together with all its segments.
 
@@ -1006,6 +1007,12 @@ def save_budget_line_segments(
         f' ;\n                    mrl:budgetLineCurrency mrl:{currency_local}'
         if currency_local else ""
     )
+    # 1.0.10 — free-text note. Omitted entirely when blank, so a line without a
+    # note carries no triple at all (same convention as the optional clauses above).
+    notes_clause = (
+        f' ;\n                    mrl:budgetLineNotes "{_escape(notes)}"'
+        if (notes or "").strip() else ""
+    )
     store.update(f"""
         PREFIX mrl:  <{MRL}>
         PREFIX mrlx: <{MRL_EXT}>
@@ -1015,7 +1022,7 @@ def save_budget_line_segments(
                 <{line_iri}> a mrl:BudgetLine ;
                     mrl:budgetLineName "{_escape(name)}" ;
                     mrl:budgetLineType mrlx:{line_type} ;
-                    mrl:budgetOwner <{person_iri}>{cat_clause}{currency_clause} .
+                    mrl:budgetOwner <{person_iri}>{cat_clause}{currency_clause}{notes_clause} .
             }}
         }}
     """)
@@ -1281,6 +1288,8 @@ async def add_budget_line(
     budgetLineCurrency:           str   = Form(""),
     budgetLineExchangeRateToBase: float = Form(1.0),
     budgetLineExchangeRateDate:   str   = Form(""),
+    budgetLineNotes:              str   = Form(""),
+    submitAction:                 str   = Form("save"),
 ):
     existing = get_all_budget_lines()
     next_n   = max([int(l["n"]) for l in existing if l["n"].isdigit()], default=0) + 1
@@ -1294,22 +1303,39 @@ async def add_budget_line(
         currency_local=budgetLineCurrency,
         exchange_rate=budgetLineExchangeRateToBase,
         exchange_rate_date=budgetLineExchangeRateDate,
+        notes=budgetLineNotes,
     )
-    # Post/redirect/get back to a blank add form so the fields (including any
-    # extra stages added before saving) reset for the next line and `?added=1`
-    # surfaces a clear "saved" confirmation. Editing keeps its in-place,
-    # stay-populated behaviour (see save_edit_budget_line).
+    # Post/redirect/get either way, so a refresh can't double-submit. "Save & add
+    # another" returns to a blank form (people enter a budget several lines at a
+    # time); plain Save returns to the list, where the "Continue to projection"
+    # CTA is. Editing keeps its own stay-populated behaviour.
+    if submitAction == "add_another":
+        return RedirectResponse(url="/budget/new?added=1", status_code=303)
     return RedirectResponse(url="/budget?added=1", status_code=303)
 
 
 @router.get("/budget/new", response_class=HTMLResponse)
-async def new_budget_line_form(request: Request):
-    """Dedicated add-budget-line page — the shared form in add mode."""
+async def new_budget_line_form(request: Request, added: int = 0):
+    """Dedicated add-budget-line page — the shared form in add mode.
+
+    `added=1` arrives from a "Save & add another" round-trip: the previous line
+    is stored, the form is blank again, and the page confirms what was saved so
+    the user isn't left wondering whether the click registered.
+    """
     lines = get_all_budget_lines()
+    ctx = _page_context(request, lines)
+    ctx["added"] = added
+    # The line just created is the highest n — don't assume list order.
+    newest = max(
+        (l for l in lines if str(l["n"]).isdigit()),
+        key=lambda l: int(l["n"]), default=None,
+    )
+    ctx["last_line_name"] = newest["name"] if (added and newest) else ""
+    ctx["line_count"] = len(lines)
     return templates.TemplateResponse(
         request=request,
         name="budget_new.html",
-        context=_page_context(request, lines),
+        context=ctx,
     )
 
 
@@ -1339,6 +1365,7 @@ async def save_edit_budget_line(
     budgetLineCurrency:           str   = Form(""),
     budgetLineExchangeRateToBase: float = Form(1.0),
     budgetLineExchangeRateDate:   str   = Form(""),
+    budgetLineNotes:              str   = Form(""),
 ):
     segments = _segments_from_form(
         segmentStartYear, segmentEndYear, segmentAmount,
@@ -1350,6 +1377,7 @@ async def save_edit_budget_line(
         currency_local=budgetLineCurrency,
         exchange_rate=budgetLineExchangeRateToBase,
         exchange_rate_date=budgetLineExchangeRateDate,
+        notes=budgetLineNotes,
     )
     # Post/redirect/get back to the list with a blank add form + "saved" banner.
     # The persisted line — including any stage just added — is visible in the

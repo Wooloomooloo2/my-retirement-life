@@ -89,6 +89,29 @@
         alpha: alpha,
 
         /**
+         * Colour for an unbounded, user-created series (a budget category or a
+         * budget line) by its POSITION in the group list. Cycles once it runs
+         * out — eight distinguishable colours is far past the point where a
+         * stacked chart is readable anyway.
+         *
+         * `role` pins the two system groups so they never take a category's
+         * colour: contributions are money coming IN (brand teal, matching the
+         * investment-detail chart), and "Uncategorised" is deliberately grey so
+         * it recedes rather than competing.
+         */
+        categorical(index, role) {
+            if (role === 'contributions') return MRL.color.contribution;
+            if (role === 'uncategorised') return cssVar('--mrl-neutral', '#9CA3AF');
+            const ramp = [
+                cssVar('--mrl-cat-1', '#4F7CAC'), cssVar('--mrl-cat-2', '#C9A23A'),
+                cssVar('--mrl-cat-3', '#B4656F'), cssVar('--mrl-cat-4', '#5B8C5A'),
+                cssVar('--mrl-cat-5', '#8B6BB1'), cssVar('--mrl-cat-6', '#9C6B4F'),
+                cssVar('--mrl-cat-7', '#6B7A8F'), cssVar('--mrl-cat-8', '#A8577E'),
+            ];
+            return ramp[index % ramp.length];
+        },
+
+        /**
          * Chart chrome. Gridlines and axis labels are painted on the canvas, so
          * they cannot inherit `text-base-content` — without these they'd stay
          * black-on-black in dark mode.

@@ -110,19 +110,30 @@
         </div>
         <p class="text-xs text-base-content/40 mb-2"><i class="ti ti-info-circle"></i> Snapshot figures above are in today's {{ base_currency_code() }}; the chart toggle controls whether year-by-year bars are shown in real or nominal terms.</p>
 
-        <div style="position:relative; height:240px">
+        <div style="position:relative; height:320px">
             <canvas id="budgetChart"></canvas>
         </div>
     </div>
 </div>
 {% endif %}
 
-<!-- Toolbar: Add budget line -->
-<div class="flex items-center gap-3 mb-4">
-    <a href="/budget/new" class="btn btn-primary btn-sm gap-1.5">
+<!-- Toolbar: Add budget line · Continue to projection -->
+{# The budget is the LAST setup step, so the moment the first line is saved
+   `setup_all_done` flips true and base.html's setup banner — which carried the
+   only "next step" button in the app — disappears. The user finished their
+   budget and the app went silent. This CTA is the missing hand-off: once there
+   is at least one line, there is always a visible way forward. #}
+<div class="flex items-center justify-between gap-3 mb-4">
+    <a href="/budget/new" class="btn {% if lines %}btn-outline{% else %}btn-primary{% endif %} btn-sm gap-1.5">
         <i class="ti ti-plus" aria-hidden="true"></i>
         Add budget line
     </a>
+    {% if lines %}
+    <a href="/projection" class="btn btn-primary btn-sm gap-1.5">
+        Continue to projection
+        <i class="ti ti-arrow-right" aria-hidden="true"></i>
+    </a>
+    {% endif %}
 </div>
 
 <!-- ====================================================================== -->
@@ -170,6 +181,13 @@
                             {{ line.name }}
                             {% if seg_count > 1 %}
                             <span class="badge badge-ghost badge-sm ml-1" title="This line has {{ seg_count }} stages over its lifetime">{{ seg_count }} stages</span>
+                            {% endif %}
+                            {# The note is the reasoning behind the number — show it
+                               under the name rather than hiding it behind a hover. #}
+                            {% if line.notes %}
+                            <p class="text-xs font-normal text-base-content/50 mt-0.5 max-w-xs">
+                                {{ line.notes }}
+                            </p>
                             {% endif %}
                         </td>
                         <td>
@@ -404,23 +422,52 @@
     }
 
     function datasetsFor(payload) {
-        const sets = payload.groups.map((g, idx) => ({
-            label:           g.name,
-            data:            g.values,
-            borderColor:     g.border,
-            backgroundColor: g.fill,
-            fill:            idx === 0 ? 'origin' : '-1',
-            tension:         0.15,
-            pointRadius:     0,
-            stack:           'spend',
-        }));
-        // Retirement-year ★ marker (item 56) — overlay a real data point at the
-        // top of the spending stack (per-year total) in its own stack group so
-        // it's off the stack, and filter it from the tooltip footer. Rebuilt on
-        // every grouping/inflation toggle since the totals can change.
-        const totals = years.map((_, i) =>
+        // Stacked BARS, not a smoothed area. Spending is a discrete amount per
+        // year, and the area chart's tension smoothed straight through the
+        // step-changes that matter most — a mortgage ending, a multi-stage line
+        // dropping at retirement. Bars show the step; the area hid it.
+        //
+        // Colour comes from the shared palette by POSITION (ADR-022). It used to
+        // be an MD5 hash of the category name, which is where the pink/purple/
+        // olive came from.
+        const sets = payload.groups.map((g, idx) => {
+            const c = MRL.categorical(idx, g.role);
+            return {
+                type:            'bar',
+                label:           g.name,
+                data:            g.values,
+                backgroundColor: MRL.alpha(c, 0.85),
+                borderColor:     c,
+                borderWidth:     0,
+                stack:           'spend',
+                order:           3,
+            };
+        });
+
+        // Total spending line on the same axis — the trajectory is the question
+        // the page actually answers ("what does my spending do over time?"), and
+        // in a stack of six categories it was the one thing you couldn't read.
+        const totalSeries = years.map((_, i) =>
             payload.groups.reduce((s, g) => s + ((g.values || [])[i] || 0), 0));
-        sets.push(MRL.markerDataset(years, retirementYear, totals, { tension: 0.15 }));
+        sets.push({
+            type:            'line',
+            label:           'Total spending',
+            data:            totalSeries,
+            borderColor:     MRL.color.accent,
+            backgroundColor: 'transparent',
+            borderWidth:     2,
+            pointRadius:     0,
+            pointHoverRadius: 4,
+            tension:         0.15,
+            order:           1,
+            _total:          true,
+            // Retirement-year ★ (item 56) rides the total line itself, rather
+            // than a separate transparent marker series as before. The line is
+            // already at the stack total and already the accent colour, so the
+            // extra dataset was doing nothing the line couldn't. One less thing
+            // to filter out of the legend and tooltip.
+            ...MRL.starPoints(years, retirementYear, { hoverBase: 4 }),
+        });
         return sets;
     }
 
@@ -439,7 +486,9 @@
     }
 
     const chart = new Chart(ctxEl.getContext('2d'), {
-        type: 'line',
+        // Mixed chart: stacked bars for the categories, a line for the total.
+        // Base type is 'bar'; the total dataset declares type 'line' itself.
+        type: 'bar',
         data: {
             labels:   years,
             datasets: datasetsFor(currentPayload()),
@@ -452,28 +501,46 @@
                 legend: {
                     position: 'bottom',
                     labels: {
-                        font: { size: 11 }, boxWidth: 12,
-                        // Hide the ★ marker dataset from the legend.
-                        filter: (item, data) => data.datasets[item.datasetIndex].stack !== '_marker',
+                        font: { size: 11 }, boxWidth: 12, usePointStyle: true,
                     },
                 },
                 tooltip: {
-                    // Drop the ★ marker so it neither shows a row nor doubles the footer Total.
-                    filter: item => item.dataset.stack !== '_marker',
                     callbacks: {
-                        title: items => `${items[0].label}${retirementYear && Number(items[0].label) === retirementYear ? ' ★ retirement' : ''}`,
-                        label: ctx => ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.round(ctx.parsed.y).toLocaleString('en-GB')}`,
-                        footer: items => `Total: ${BASE_SYMBOL}${Math.round(items.reduce((s, i) => s + i.parsed.y, 0)).toLocaleString('en-GB')}`,
+                        title: items => `${items[0].label}${retirementYear && Number(items[0].label) === retirementYear ? '  ★ retirement' : ''}`,
+                        // Each category shows its SHARE of that year as well as its
+                        // amount: in a stack, "£6,000" tells you far less than
+                        // "£6,000 · 18%". The total line is skipped here — it is
+                        // the footer, and printing it twice was just noise.
+                        label: (ctx) => {
+                            if (ctx.dataset._total) return null;
+                            const i = ctx.dataIndex;
+                            const total = ctx.chart.data.datasets
+                                .filter(d => !d._total)
+                                .reduce((s, d) => s + (d.data[i] || 0), 0);
+                            const v   = ctx.parsed.y || 0;
+                            const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                            return ` ${ctx.dataset.label}: ${BASE_SYMBOL}${Math.round(v).toLocaleString('en-GB')}  ·  ${pct}%`;
+                        },
+                        footer: (items) => {
+                            const i = items[0].dataIndex;
+                            const total = items[0].chart.data.datasets
+                                .filter(d => !d._total)
+                                .reduce((s, d) => s + (d.data[i] || 0), 0);
+                            return `Total: ${BASE_SYMBOL}${Math.round(total).toLocaleString('en-GB')}`;
+                        },
                     },
                 },
             },
             scales: {
                 x: {
+                    stacked: true,          // bars stack per year
                     ticks: {
                         font: { size: 10 },
+                        maxRotation: 0,
+                        autoSkip: false,    // we thin the labels ourselves below
                         callback: function (val, idx) {
                             const y = years[idx];
-                            if (retirementYear && y === retirementYear) return `${y}★`;
+                            if (retirementYear && y === retirementYear) return `${y} ★`;
                             return y % 5 === 0 ? y : '';
                         },
                     },
