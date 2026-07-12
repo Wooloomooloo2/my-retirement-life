@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{# ===========================================================================
+   Dedicated per-budget-line edit page. Rendered by GET /budget/{n}/edit. The
+   shared form lives in _budget_form.html; here it runs in edit mode (edit_line
+   set).
+   =========================================================================== #}
+
+{% block title %}Edit {{ edit_line.name }} — {{ app_name }}{% endblock %}
+{% block page_title %}Edit budget line{% endblock %}
+{% block page_subtitle %}{{ edit_line.name }}{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl">
+    <div class="flex items-center gap-3 mb-4">
+        <a href="/budget" class="btn btn-ghost btn-sm gap-1">
+            <i class="ti ti-arrow-left" aria-hidden="true"></i>
+            Back to budget
+        </a>
+        <span class="text-sm text-base-content/50">
+            Editing <span class="font-medium text-base-content/80">{{ edit_line.name }}</span>
+        </span>
+    </div>
+
+    {% include "_budget_form.html" %}
+</div>
+
+{% endblock %}

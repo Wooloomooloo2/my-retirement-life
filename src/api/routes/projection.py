@@ -1013,6 +1013,7 @@ def _simulate_run(
     # Per-account history arrays
     account_history:              dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_withdrawal_history:   dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
+    account_tax_history:          dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_return_history:       dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     account_contribution_history: dict[str, list[float]] = {acc["label"]: [] for acc in all_accounts}
     asset_history:                dict[str, list[float]] = {asset["label"]: [] for asset in all_assets}
@@ -1298,20 +1299,36 @@ def _simulate_run(
                 forced_gross += extra
 
         # Phase C — tax over ALL withdrawals this year (shortfall + forced), ADR-013.
+        # Track source tax and taxable-at-source PER ACCOUNT so the tax can be
+        # attributed back to the accounts that generated it (the drawdown-strategy
+        # chart filters the "tax paid" series to the selected accounts).
+        year_source_tax_by_account: dict[str, float] = {}
+        year_taxable_by_account:    dict[str, float] = {}
         for acc_label, gross_draw in year_withdrawals.items():
             acc = next(a for a in all_accounts if a["label"] == acc_label)
             free_used, src_tax = _compute_source_tax(
                 acc, gross_draw, tax_free_used[acc_label])
             tax_free_used[acc_label] += free_used
             total_source_tax         += src_tax
+            year_source_tax_by_account[acc_label] = src_tax
             if acc["tax_treatment"] not in RESIDENCE_EXEMPT_TREATMENTS:
-                total_taxable_at_source += (gross_draw - free_used)
+                taxable = gross_draw - free_used
+                total_taxable_at_source          += taxable
+                year_taxable_by_account[acc_label] = taxable
             balances[acc_label] = max(0.0, balances[acc_label] - src_tax)
 
         res_tax = _compute_residence_tax(
             total_taxable_at_source, total_source_tax,
             personal_allowance, residence_rate)
-        if res_tax > 0:
+        # Residence tax is a portfolio-level layer on pooled taxable income. For
+        # per-account reporting, attribute it pro-rata to each account's taxable
+        # withdrawals — the accounts that created the liability. (When res_tax > 0
+        # then total_taxable_at_source > 0 by construction, so this is safe; the
+        # attributed shares sum back to res_tax, keeping per-account tax exact.)
+        year_res_tax_by_account: dict[str, float] = {}
+        if res_tax > 0 and total_taxable_at_source > 0:
+            for lbl, taxable in year_taxable_by_account.items():
+                year_res_tax_by_account[lbl] = res_tax * (taxable / total_taxable_at_source)
             if spending_acc and spending_acc in balances:
                 balances[spending_acc] = max(0.0, balances[spending_acc] - res_tax)
             elif eligible:
@@ -1321,6 +1338,13 @@ def _simulate_run(
                         share = (balances.get(a["label"], 0) / total_el_bal) * res_tax
                         balances[a["label"]] = max(0.0, balances[a["label"]] - share)
         net_annual_tax = total_source_tax + res_tax
+
+        # Per-account total tax this year = source tax + attributed residence tax.
+        year_tax_by_account = {
+            lbl: (year_source_tax_by_account.get(lbl, 0.0)
+                  + year_res_tax_by_account.get(lbl, 0.0))
+            for lbl in year_withdrawals
+        }
 
         # Phase D — sweep the AFTER-TAX forced proceeds to the spending account.
         # They weren't needed for spending; an RMD forces a taxable distribution
@@ -1356,6 +1380,9 @@ def _simulate_run(
             account_withdrawal_history[acc["label"]].append(
                 round(year_withdrawals.get(acc["label"], 0.0), 0)
             )
+            account_tax_history[acc["label"]].append(
+                round(year_tax_by_account.get(acc["label"], 0.0), 0)
+            )
 
         total_balance = sum(balances.values())
         projection_years.append({
@@ -1377,6 +1404,7 @@ def _simulate_run(
         "years":                       projection_years,
         "account_balances":            account_history,
         "account_withdrawals":         account_withdrawal_history,
+        "account_tax":                 account_tax_history,
         "account_returns":             account_return_history,
         "account_contributions":       account_contribution_history,
         "asset_balances":              asset_history,
@@ -1561,6 +1589,7 @@ def run_projection(
         "col_ratio":                  col_ratio,
         "account_balances":           sim["account_balances"],
         "account_withdrawals":        sim["account_withdrawals"],
+        "account_tax":                sim["account_tax"],
         "account_returns":            sim["account_returns"],
         "account_contributions":      sim["account_contributions"],
         "account_names":              {acc["label"]: acc["name"]          for acc in all_accounts},

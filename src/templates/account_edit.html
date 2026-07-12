@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{# ===========================================================================
+   Dedicated per-account edit page. Rendered by the GET .../edit routes (and the
+   contribution POST handlers) via _render_accounts(), which selects this template
+   whenever `edit_account` is set. The shared form lives in _account_form.html.
+   =========================================================================== #}
+
+{% block title %}Edit {{ edit_account.name }} — {{ app_name }}{% endblock %}
+{% block page_title %}Edit account{% endblock %}
+{% block page_subtitle %}{{ edit_account.name }}{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl">
+    <div class="flex items-center gap-3 mb-4">
+        <a href="/accounts" class="btn btn-ghost btn-sm gap-1">
+            <i class="ti ti-arrow-left" aria-hidden="true"></i>
+            Back to accounts
+        </a>
+        <span class="text-sm text-base-content/50">
+            Editing
+            <span class="inline-flex items-center gap-1.5 font-medium text-base-content/80">
+                <span class="inline-block w-1.5 h-1.5 rounded-full
+                    {% if edit_account.account_class == 'CashAccount' %}bg-blue-500
+                    {% elif edit_account.account_class == 'InvestmentAccount' %}bg-green-500
+                    {% else %}bg-amber-500{% endif %}"></span>
+                {{ edit_account.name }}
+            </span>
+        </span>
+    </div>
+
+    {% set compact = False %}
+    {% include "_account_form.html" %}
+</div>
+
+{% endblock %}

@@ -1302,13 +1302,24 @@ async def add_budget_line(
     return RedirectResponse(url="/budget?added=1", status_code=303)
 
 
+@router.get("/budget/new", response_class=HTMLResponse)
+async def new_budget_line_form(request: Request):
+    """Dedicated add-budget-line page — the shared form in add mode."""
+    lines = get_all_budget_lines()
+    return templates.TemplateResponse(
+        request=request,
+        name="budget_new.html",
+        context=_page_context(request, lines),
+    )
+
+
 @router.get("/budget/{n}/edit", response_class=HTMLResponse)
 async def edit_budget_line_form(request: Request, n: int):
     lines     = get_all_budget_lines()
     edit_line = next((l for l in lines if l["n"] == str(n)), None)
     return templates.TemplateResponse(
         request=request,
-        name="budget.html",
+        name="budget_edit.html",
         context=_page_context(request, lines, edit_line=edit_line),
     )
 

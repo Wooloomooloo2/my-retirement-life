@@ -43,7 +43,10 @@ SPLIT_ACTIONS = {"stksplit", "stocksplit"}
 
 # Highest MFL schema_version this reader has been written/verified against.
 # A newer file is read best-effort but surfaces a warning on the snapshot.
-KNOWN_SCHEMA_VERSION = 31
+# v32 (0032_category_import_map) is additive to MFL's own category-import
+# internals (category_import_map table + a "Needs Review" holding category) and
+# touches none of the tables this reader consumes, so it needs no reader change.
+KNOWN_SCHEMA_VERSION = 32
 
 _PENCE = Decimal(100)
 _CENT = Decimal("0.01")

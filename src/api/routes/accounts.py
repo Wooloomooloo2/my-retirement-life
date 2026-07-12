@@ -924,9 +924,11 @@ def get_all_accounts_combined() -> list:
     return cash + invest + asset
 
 
-def _render_accounts(request: Request, **extra) -> HTMLResponse:
+def _render_accounts(request: Request, template: str | None = None, **extra) -> HTMLResponse:
     """Render the unified accounts page, with optional extra context such as a
-    rate-refresh result banner."""
+    rate-refresh result banner. `template` forces a specific template (e.g. the
+    dedicated add page); otherwise it's chosen from whether an account is being
+    edited."""
     from src.api.routes.investments import (
         INVESTMENT_ACCOUNT_TYPES,
         INVESTMENT_ACCOUNT_TYPES_SHORT,
@@ -965,12 +967,20 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
         if a["account_class"] in ("CashAccount", "InvestmentAccount")
     ]
 
+    # Person's home jurisdiction + base currency, so a NEW account defaults to
+    # them instead of a hardcoded GB/GBP (less setup friction — the account is
+    # almost always in the user's own country/currency).
+    from src.api.routes.profile import get_profile
+    prof = get_profile() or {}
+
     context = {
         "app_name":            settings.app_name,
         "active":              "accounts",
         "accounts":            accounts,
         "currencies":          get_currencies(),
         "jurisdictions":       get_jurisdictions(),
+        "person_jurisdiction": prof.get("jurisdiction", ""),
+        "person_currency":     prof.get("baseCurrency", ""),
         "today":               date.today().isoformat(),
         "edit_account":        None,
         "cash_account_types":  CASH_ACCOUNT_TYPES,
@@ -983,8 +993,13 @@ def _render_accounts(request: Request, **extra) -> HTMLResponse:
         "proceeds_account_options": proceeds_account_options,
     }
     context.update(extra)
+    # Explicit template wins (the dedicated add page). Otherwise: edit context
+    # (an account being edited, or a contribution save re-rendering the edit
+    # view) → the per-account edit page; else the full-width list page.
+    name = template or (
+        "account_edit.html" if context.get("edit_account") else "accounts.html")
     return templates.TemplateResponse(
-        request=request, name="accounts.html", context=context)
+        request=request, name=name, context=context)
 
 
 @router.get("/api/fx/rate")
@@ -1183,6 +1198,13 @@ async def add_account(
     # account and `?added=1` surfaces a clear "saved" confirmation.
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/accounts?added=1", status_code=303)
+
+
+@router.get("/accounts/new", response_class=HTMLResponse)
+async def new_account_form(request: Request):
+    """Dedicated add-account page — the shared form in add mode (class tabs let
+    the user pick cash / investment / physical asset)."""
+    return _render_accounts(request, template="account_new.html")
 
 
 @router.get("/accounts/{n}/edit", response_class=HTMLResponse)

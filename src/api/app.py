@@ -126,12 +126,12 @@ def get_setup_state() -> dict:
 
     if not has_profile:
         next_url, next_label = "/profile",     "Set up your profile"
-    elif not has_income:
-        next_url, next_label = "/income",      "Add your income"
     elif not has_accounts:
         next_url, next_label = "/accounts",    "Add a cash account"
     elif not has_investments:
         next_url, next_label = "/accounts",    "Add an investment account"
+    elif not has_income:
+        next_url, next_label = "/income",      "Add your income"
     elif not has_budget:
         next_url, next_label = "/budget",      "Add your budget"
     else:

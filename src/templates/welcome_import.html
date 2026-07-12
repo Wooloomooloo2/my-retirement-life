@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome — {{ app_name }}{% endblock %}
+{% block page_title %}Profile saved{% endblock %}
+{% block page_subtitle %}One quick question before you carry on{% endblock %}
+
+{% block content %}
+
+<div class="max-w-2xl">
+    <div class="alert alert-success mb-5">
+        <i class="ti ti-circle-check"></i>
+        <span>
+            Thanks{% if profile and profile.firstName %}, {{ profile.firstName }}{% endif %} —
+            your profile is saved.
+        </span>
+    </div>
+
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body p-6">
+            <h3 class="text-base font-semibold flex items-center gap-2">
+                <i class="ti ti-database-import text-primary"></i>
+                Do you already track your finances in My Financial Life?
+            </h3>
+            <p class="text-sm text-base-content/70 mt-2">
+                If you use <strong>My Financial Life (MFL)</strong>, MRL can import your
+                accounts, investments, assets and income to seed your plan's balance sheet —
+                so you don't have to type it all in again. Otherwise, just carry on and add
+                your data manually.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+                <a href="/import"
+                   class="card bg-base-200 hover:bg-primary/10 border border-base-300 hover:border-primary transition-colors">
+                    <div class="card-body p-5">
+                        <div class="flex items-center gap-2 font-medium">
+                            <i class="ti ti-file-import text-primary"></i>
+                            Yes, import from MFL
+                        </div>
+                        <p class="text-xs text-base-content/60 mt-1">
+                            Pick your <code>.mfl</code> file, review what comes in, then apply.
+                            You can still edit everything afterwards.
+                        </p>
+                    </div>
+                </a>
+
+                <a href="/"
+                   class="card bg-base-200 hover:bg-base-300 border border-base-300 transition-colors">
+                    <div class="card-body p-5">
+                        <div class="flex items-center gap-2 font-medium">
+                            <i class="ti ti-pencil-plus text-base-content/70"></i>
+                            No, I'll add it manually
+                        </div>
+                        <p class="text-xs text-base-content/60 mt-1">
+                            Continue the setup checklist — add your income, accounts and
+                            budget one screen at a time.
+                        </p>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

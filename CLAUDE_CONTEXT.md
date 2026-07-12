@@ -2,13 +2,51 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-06-28 (session 15 — big session. Dashboard estate hero; ADR-021 rental-income-as-property-yield (ontology 1.0.9); Monte-Carlo-counts-unfunded; ★-marker fixed on all 5 charts; ← Dashboard breadcrumb; routing-vs-drawdown guard (item 54); MFL import now maps income + sets cash interest. Live store reloaded to 1.0.9 + live session saved as 'Mark Baseline 2026-06'. **All code uncommitted on `main`.**)
+> Last updated: 2026-07-01 (session 16 — onboarding offers MFL import after the first profile save (`/welcome/import`); Accounts + Budget rebuilt as full-width lists with dedicated Add/Edit pages (shared `_account_form.html` / `_budget_form.html` partials); per-account drawdown "tax paid" filtering (engine change); internationally-unambiguous date of birth (day / month-name / year); setup checklist reordered accounts-before-income; new accounts default to the person's jurisdiction + currency; MFL reader schema ceiling → v32. No ontology/schema change (still 1.0.9). First batch committed + pushed (`7fb95fd`); second batch (budget / DOB / checklist / account-defaults + these docs) pending commit.)
 
 ---
 
-## ▶ Next session — resume here (session 15 done 2026-06-28 on Windows; ALL CODE UNCOMMITTED ON `main`)
+## ▶ Next session — resume here (session 16 done 2026-07-01)
 
-**Working method this session:** the app was running for most of it, so all dev/verification used **isolated store copies** (copy live store → temp `DATA_DIR`, never the live data graph). At the end Mark **closed the app**, and only then did two writes hit the **live store**: the ontology reload and the session save (both below). ~11 source files + `ADR-021` are changed and **not yet committed** — offer to commit next session if Mark wants.
+**Commit state:** all session-16 work is **committed + pushed to `main`** — `7fb95fd` (onboarding MFL offer, dedicated account Add/Edit pages, per-account drawdown tax, MFL v32), `9a2f722` (budget dedicated Add/Edit pages, DOB day/month/year, setup-checklist reorder, account jurisdiction/currency defaults, CLAUDE_CONTEXT + CHANGELOG), `333d18a` (macOS app icon).
+
+**Live store untouched this session** — everything verified headlessly against isolated `DATA_DIR` copies + the committed demo backup (`sample-data/demo-backup-alex-sterling.json`) via FastAPI `TestClient` (`httpx` pip-installed then uninstalled each time, item-50 convention). Live store is still **1.0.9 / `Mark Baseline 2026-06`** (session 15). **No ontology/schema change this session.**
+
+**Built this session (detail under "Changes in session 16" below):** onboarding now offers MFL import right after the first profile save; Accounts + Budget rebuilt with full-width lists + dedicated Add/Edit pages (shared partials); drawdown "tax paid" now respects the account filter (engine change); date of birth is day / spelled-out-month / year; setup checklist reordered Profile → Accounts → Investments → Income → Budget; new accounts default to the person's jurisdiction + base currency; MFL reader schema ceiling 31 → 32.
+
+**STILL OPEN — MFL import live smoke-test:** Mark ran the import in the live app this session (that surfaced the v32 warning, now fixed) and onboarding now routes into it. A full re-import → diff pass (New/Update/Keep, no duplicates), exercising the income + cash-interest mappings (items 73–74), is still worth confirming formally in the live app.
+
+**Backlog / still-open (carried from session 15):** session-9 browser-only UX (drag-reorder `/drawdown-strategy`, withdrawals Total/Per-account toggle, Table CSV download); optional `.icns`/`.ico` branding + dark-mode/red-state screenshots; `verify_mfl_mapping.py` + `verify_mfl_diff.py` print a `→` that crashes the default Windows console (swap `→`→`->`, or run with `PYTHONIOENCODING=utf-8`).
+
+---
+
+## Changes in session 16 (2026-07-01)
+
+_UI/UX plus one engine-reporting change. No ontology/schema change (still 1.0.9 / export 0.3.2). Engine parity preserved. All verified headlessly on isolated `DATA_DIR` copies + the committed demo backup._
+
+**Onboarding — offer MFL import at the start (decision-cards, not a linear wizard).** MRL's first-run is a checklist + progress-banner pattern, so rather than a full wizard we inserted decision points. `profile.py`: `save_profile` detects first-run (no prior profile) and PRG-redirects to a new `GET /welcome/import` (`welcome_import.html`) — "Do you use My Financial Life?" → Yes `/import`, No dashboard checklist. `import_done.html` reframed to "add anything else / finish setting up" + a new "Adjust your future budget by date" guide line. Returning users editing their profile are unaffected.
+
+**Accounts — full-width list + dedicated Add/Edit pages.** Extracted the whole add/edit form (class tabs + fields + Tax/Drawdown + contribution + its JS) into **`_account_form.html`** (compact-aware grids, `contrib_fields` macro moved in). `accounts.html` is now a **full-width** list with a prominent "Add account" button → dedicated `GET /accounts/new` (`account_new.html`), **compact square icon actions** (detail/edit/delete), and relaxed column breakpoints. Edit → dedicated `/accounts/{…}/edit` / `/investments/{n}/edit` / `/accounts/asset/{label}/edit` (`account_edit.html`) with a "Back to accounts" header. `accounts.py`: `_render_accounts(template=…)` selects list / add / edit by context (edit auto-picks `account_edit.html` when `edit_account` set); new `GET /accounts/new`. **NB the first iteration was a two-column split that squeezed the table — corrected to full-width per Mark's feedback.**
+
+**Budget — same dedicated-page treatment.** **`_budget_form.html`** (form + multi-stage segment scheduler + category chips + per-line FX, self-contained `<script>`); `budget.html` loses the inline form, gains an "Add budget line" button → `GET /budget/new` (`budget_new.html`) and compact icon actions; Edit → `/budget/{n}/edit` (`budget_edit.html`). The chart JS **stays** on the list page. `budget.py`: edit GET renders `budget_edit.html`; new `GET /budget/new` (both via the existing `_page_context`).
+
+**Drawdown "tax paid" respects the account filter (engine change).** Per-account tax was computed then discarded. `projection.py` now records **source tax per account** and attributes the **residence-tax layer pro-rata** by each account's taxable withdrawals into a new `account_tax` history (returned by `_simulate_run` + `run_projection`). Parity-safe — the residence-tax deduction guard is a no-op when nothing is taxable, and per-account tax reconciles **exactly** to the per-year aggregate (verified 0.00 drift over the demo's 39 years). `drawdown.py` adds `account_tax` to the `/api/drawdown/preview` response; `drawdown_strategy.html` recomputes the tax line **and** the "Tax paid" stat from the currently-selected accounts on every chip/dropdown toggle (`refreshTax` / `taxSeriesForLabels` / `selectedAccountLabels`).
+
+**Date of birth — internationally unambiguous.** `profile.html` replaces the native `<input type=date>` (locale-formatted → dd/mm vs mm/dd ambiguity) with **Day / spelled-out-Month / Year** fields + a live "3 April 1970 · age 56" echo; JS clamps day to the month length and caps year at the current year. `profile.py` `save_profile` now takes `dobDay`/`dobMonth`/`dobYear` and reassembles to ISO `yyyy-mm-dd` (clamping impossible dates, e.g. 31 Feb → 28 Feb). Prefills on edit by splitting the stored ISO.
+
+**Setup checklist reordered — accounts before income.** Income's form asks "which account does your income go to", so accounts must exist first. `app.py` `get_setup_state()` next-step chain and **both** `dashboard.html` checklists now order **Profile → Accounts → Investments → Income → Budget → Projection**.
+
+**New accounts default to the person's jurisdiction + base currency.** `_render_accounts` passes `person_jurisdiction` / `person_currency` (from the profile); `_account_form.html` uses them as the new-account default instead of hardcoded GB/GBP (edit unchanged; GB/GBP fallback when no profile yet).
+
+**MFL reader — schema ceiling 31 → 32.** `mfl_import/reader.py` `KNOWN_SCHEMA_VERSION` 31 → 32. MFL migration `0032_category_import_map` (a `category_import_map` table + a "Needs Review" holding category) is additive to MFL's own internals and touches none of the tables the reader consumes, so v32 files no longer surface the "newer than built for" warning.
+
+**macOS app icon (dock).** The PyInstaller `BUNDLE` had `icon=None` (generic dock icon). Added `tools/appicon/AppIcon.icns` (16–1024px) from the MRL hex badge and set `icon=…AppIcon.icns` in `tools/MyRetirementLife.spec`. **Removed the badge's light "sticker" outline** so the icon has no background: a flood-fill from the already-transparent exterior erases the ~2px near-white ring, stopping at the teal edge (interior sun/sailboat untouched — they're enclosed by teal). Cleaned master kept at `tools/appicon/mrl-icon-clean.png`. Built via `VERSION=0.2.0 ./tools/build_mac.sh` → `dist/My Retirement Life.app` + `dist/MyRetirementLife-0.2.0.dmg`; verified the bundle embeds `AppIcon.icns` (1024px) with `Info.plist CFBundleIconFile = AppIcon.icns`. (Icon-processing used a throwaway Pillow install, uninstalled after — `iconutil`/`sips` are macOS built-ins.) **NB:** if a stale generic icon lingers in the dock after opening the rebuilt app, it's macOS icon-cache; moving the `.app` to `/Applications` (or `killall Dock`) refreshes it. The in-app web logo `src/static/img/mrl-icon.png` still has its outline — offer to apply the same clean version there if Mark wants visual consistency.
+
+---
+
+## Changes in session 15 (2026-06-28)
+
+**Working method this session:** the app was running for most of it, so all dev/verification used **isolated store copies** (copy live store → temp `DATA_DIR`, never the live data graph). At the end Mark **closed the app**, and only then did two writes hit the **live store**: the ontology reload and the session save (both below). (This work was later committed in `e1f5d2c`.)
 
 **Both prior user-actions now DONE (2026-06-28, app closed):**
 1. ~~Save the live session~~ **✓ DONE** — checkpointed the drifted live session headlessly (`export_all_data()` → `scenario_manager.save`). Saved as **`Mark Baseline 2026-06.json`** (14 accounts / £2.24M net worth today / £2.20M spendable-final; the extras vs the old file were **InvestmentAccount_5 "MS Pension"** + **InvestmentAccount_6 "Maria TRS"** + ~£620k of edits). `active_scenario.json` → `{"name":"Mark Baseline 2026-06","saved":true}`. The May-24 **`Mark Baseline.json`** (12 accts / £1.58M) is **preserved untouched** as a fallback. Loading any scenario is now safe (was destructive while unsaved — `restore_all_data` wipes the data graph).

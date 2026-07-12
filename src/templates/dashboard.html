@@ -67,9 +67,9 @@
 
         {% set checklist = [
             ('Profile',     'Personal details and retirement goal', '/profile',     false),
-            ('Income',      'At least one income source',           '/income',      false),
             ('Accounts',    'At least one cash account',            '/accounts',    false),
             ('Investments', 'At least one investment account',      '/accounts',    false),
+            ('Income',      'At least one income source',           '/income',      false),
             ('Budget',      'Your spending lines',                  '/budget',      false),
             ('Projection',  'View your retirement projection',      '/projection',  false),
         ] %}
@@ -113,10 +113,6 @@
         {% set items = [
             (profile is not none,
              'Profile', 'Personal details and retirement goal', '/profile'),
-            (income_count > 0,
-             'Income',
-             income_count ~ ' source' ~ ('s' if income_count != 1 else '') ~ ' added' if income_count > 0 else 'Add at least one income source',
-             '/income'),
             (account_count > 0,
              'Accounts',
              account_count ~ ' cash account' ~ ('s' if account_count != 1 else '') ~ ' added' if account_count > 0 else 'Add at least one cash account',
@@ -125,6 +121,10 @@
              'Investments',
              investment_count ~ ' investment account' ~ ('s' if investment_count != 1 else '') ~ ' added' if investment_count > 0 else 'Add at least one investment account',
              '/accounts'),
+            (income_count > 0,
+             'Income',
+             income_count ~ ' source' ~ ('s' if income_count != 1 else '') ~ ' added' if income_count > 0 else 'Add at least one income source',
+             '/income'),
             (budget_line_count > 0,
              'Budget',
              budget_line_count ~ ' line' ~ ('s' if budget_line_count != 1 else '') ~ ' added' if budget_line_count > 0 else 'Add your spending lines',

@@ -325,9 +325,13 @@ function buildDatasets(data, mode) {
     }
 
     // Tax line on the secondary axis (kept off the stacked withdrawal axis).
+    // Its data is the per-account tax summed over the currently-SELECTED accounts
+    // so it tracks the withdrawal filter (refreshTax recomputes on toggle). The
+    // initial render shows all accounts = the whole-portfolio total.
     if ((data.tax_per_year || []).some(t => t > 0)) {
         datasets.push({
-            label: 'Tax paid', data: data.tax_per_year, type: 'line', yAxisID: 'yTax',
+            label: 'Tax paid', data: taxSeriesForLabels(data, labels), type: 'line',
+            yAxisID: 'yTax', _taxLine: true,
             borderColor: MRL.color.tax, backgroundColor: MRL.color.tax, borderWidth: 2,
             pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false,
         });
@@ -422,6 +426,39 @@ function accountDatasetIndices() {
     return idx;
 }
 
+// Per-account tax summed over the given account labels, per year. Falls back to
+// the whole-portfolio total when per-account tax isn't in the response.
+function taxSeriesForLabels(data, labels) {
+    const at = data.account_tax;
+    if (!at) return (data.tax_per_year || []).slice();
+    return data.years.map((_, i) =>
+        labels.reduce((s, l) => s + ((at[l] || [])[i] || 0), 0));
+}
+
+// The account labels whose withdrawal bar is currently visible. In total mode
+// (or before any filtering) that's every account.
+function selectedAccountLabels() {
+    const all = sortedLabels(lastResult);
+    if (currentMode !== 'peraccount' || !ddChart) return all;
+    const accIdx = accountDatasetIndices();
+    if (!accIdx.length) return all;
+    return accIdx.filter(i => ddChart.isDatasetVisible(i))
+                 .map(i => ddChart.data.datasets[i]._accLabel);
+}
+
+// Recompute the tax line + "Tax paid" stat for the current account selection,
+// then repaint the chart once. Called by every filter control.
+function refreshTax() {
+    if (!ddChart || !lastResult) return;
+    const labels = selectedAccountLabels();
+    const series = taxSeriesForLabels(lastResult, labels);
+    const taxDs  = ddChart.data.datasets.find(d => d._taxLine);
+    if (taxDs) taxDs.data = series;
+    ddChart.update();
+    const total = series.reduce((s, v) => s + v, 0);
+    document.getElementById('dd-tax').textContent = fmtMoney(total);
+}
+
 function buildFilter() {
     const el = document.getElementById('dd-filter');
     el.innerHTML = '';
@@ -438,7 +475,7 @@ function buildChipFilter(el, idxs) {
     allBtn.textContent = 'All';
     allBtn.onclick = () => {
         idxs.forEach(i => ddChart.setDatasetVisibility(i, true));
-        ddChart.update();
+        refreshTax();
         el.querySelectorAll('[data-chip]').forEach(b => { b.style.opacity = '1'; b.dataset.on = '1'; });
     };
     el.appendChild(allBtn);
@@ -453,9 +490,9 @@ function buildChipFilter(el, idxs) {
         chip.onclick = function () {
             const on = this.dataset.on === '1';
             ddChart.setDatasetVisibility(i, !on);
-            ddChart.update();
             this.dataset.on = on ? '0' : '1';
             this.style.opacity = on ? '0.35' : '1';
+            refreshTax();
         };
         el.appendChild(chip);
     });
@@ -489,7 +526,7 @@ function buildDropdownFilter(el, idxs) {
         b.textContent = label;
         b.onclick = () => {
             idxs.forEach(i => ddChart.setDatasetVisibility(i, sel === 0));
-            ddChart.update(); cbs.forEach(cb => cb.checked = sel === 0); updLbl();
+            refreshTax(); cbs.forEach(cb => cb.checked = sel === 0); updLbl();
         };
         ctrl.appendChild(b);
     });
@@ -505,7 +542,7 @@ function buildDropdownFilter(el, idxs) {
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.checked = true; cb.className = 'checkbox checkbox-xs';
         cb.style.accentColor = ds.borderColor;
-        cb.onchange = () => { ddChart.setDatasetVisibility(i, cb.checked); ddChart.update(); updLbl(); };
+        cb.onchange = () => { ddChart.setDatasetVisibility(i, cb.checked); refreshTax(); updLbl(); };
         cbs.push(cb);
         const sw = document.createElement('span');
         sw.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${ds.borderColor};flex-shrink:0`;

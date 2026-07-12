@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{# ===========================================================================
+   Dedicated add-budget-line page. Rendered by GET /budget/new. The shared form
+   lives in _budget_form.html; here it runs in add mode (edit_line None).
+   =========================================================================== #}
+
+{% block title %}Add budget line — {{ app_name }}{% endblock %}
+{% block page_title %}Add budget line{% endblock %}
+{% block page_subtitle %}A recurring spending line{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl">
+    <a href="/budget" class="btn btn-ghost btn-sm gap-1 mb-4">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        Back to budget
+    </a>
+
+    {% include "_budget_form.html" %}
+</div>
+
+{% endblock %}

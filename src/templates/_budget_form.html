@@ -1,0 +1,449 @@
+{# ===========================================================================
+   Shared budget-line add/edit form (extracted from budget.html).
+   Included by:
+     - budget_new.html   → dedicated add page  (edit_line None)
+     - budget_edit.html  → dedicated edit page (edit_line set)
+   Drives add vs edit off `edit_line`. Carries its own <script> (segment
+   editor + category chips + per-line FX). The chart JS stays on budget.html.
+   =========================================================================== #}
+{% set default_seg = {'startYear': current_year, 'endYear': '', 'amount': '', 'frequency': 'FrequencyType_Monthly', 'changeRate': '0'} %}
+{% set form_segments = edit_line.segments if (edit_line and edit_line.segments) else [default_seg] %}
+
+<div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+        <h3 class="text-sm font-medium flex items-center gap-2 pb-3 mb-3 border-b border-base-200">
+            <i class="ti ti-plus text-base-content/40" aria-hidden="true"></i>
+            {% if edit_line %}Edit — {{ edit_line.name }}{% else %}Add a budget line{% endif %}
+        </h3>
+
+        <form method="post"
+              action="{% if edit_line %}/budget/{{ edit_line.n }}/edit{% else %}/budget{% endif %}"
+              id="budget-form">
+
+            <!-- Name (full row) -->
+            <div class="form-control mb-3">
+                <label class="label py-0.5">
+                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Name</span>
+                </label>
+                <input type="text" name="budgetLineName" required
+                    value="{{ edit_line.name if edit_line else '' }}"
+                    placeholder="e.g. Mortgage, Groceries, Netflix"
+                    class="input input-bordered input-sm w-full" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+
+                <!-- Type -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
+                    </label>
+                    <select name="budgetLineType" id="line-type"
+                            class="select select-bordered select-sm w-full">
+                        <option value="BudgetLineType_Mandatory"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Mandatory' %}selected{% elif not edit_line %}selected{% endif %}>
+                            Mandatory
+                        </option>
+                        <option value="BudgetLineType_Discretionary"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Discretionary' %}selected{% endif %}>
+                            Discretionary
+                        </option>
+                        <option value="BudgetLineType_Loan"
+                            {% if edit_line and edit_line.lineType == 'BudgetLineType_Loan' %}selected{% endif %}>
+                            Loan repayment
+                        </option>
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">Loans don't inflate — fixed nominal payments. Mandatory and Discretionary inflate with the projection rate.</span>
+                    </label>
+                </div>
+
+                <!-- Category -->
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Category</span>
+                    </label>
+                    <input type="text" name="budgetCategoryName" id="category-input"
+                        list="category-suggestions"
+                        value="{{ edit_line.categoryName if edit_line else '' }}"
+                        placeholder="e.g. Housing, Food — or type a new one"
+                        class="input input-bordered input-sm w-full" />
+                    <datalist id="category-suggestions">
+                        {% for c in categories %}<option value="{{ c.name }}"></option>{% endfor %}
+                    </datalist>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        {% for chip in category_suggestions %}
+                        <button type="button" onclick="setCategory('{{ chip }}')"
+                            class="btn btn-xs btn-ghost btn-outline">{{ chip }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Currency (1.0.5 — ADR-016 follow-on) -->
+                {% set selected_currency = edit_line.currency if edit_line and edit_line.currency else base_currency.local %}
+                <div class="form-control">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Currency</span>
+                    </label>
+                    <select name="budgetLineCurrency" id="budgetLineCurrency"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateFxVisibility()">
+                        {% for c in currencies %}
+                        <option value="{{ c.local }}" data-code="{{ c.code }}"
+                            {% if c.local == selected_currency %}selected{% endif %}>
+                            {{ c.code }} — {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">All segment amounts on this line are denominated in this currency. Defaults to your base currency ({{ base_currency.code }}).</span>
+                    </label>
+                </div>
+
+                <!-- FX rate to base — visible only when line currency != base currency -->
+                <div class="form-control" id="fx-rate-field"
+                     style="display:{% if edit_line and edit_line.currencyCode and edit_line.currencyCode != base_currency.code %}block{% else %}none{% endif %}">
+                    <label class="label py-0.5">
+                        <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                            Exchange rate to base
+                            <span class="font-normal normal-case text-base-content/50">— 1 unit of line currency in {{ base_currency.code }}</span>
+                        </span>
+                    </label>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <input type="number" name="budgetLineExchangeRateToBase" id="budgetLineExchangeRateToBase"
+                            step="0.000001" min="0"
+                            value="{{ edit_line.exchangeRate if edit_line and edit_line.exchangeRate else '1.0' }}"
+                            class="input input-bordered input-sm w-40" />
+                        <button type="button" id="fx-rate-live-btn"
+                                class="btn btn-ghost btn-sm gap-1 whitespace-nowrap"
+                                title="Pull today's rate from open.er-api.com for the selected currency">
+                            <i class="ti ti-refresh text-xs" aria-hidden="true"></i>
+                            <span>Use live rate</span>
+                        </button>
+                        {% if edit_line and edit_line.exchangeRateDate %}
+                        <span class="text-xs text-base-content/40" id="fx-rate-last-updated">Last updated {{ edit_line.exchangeRateDate }}</span>
+                        {% endif %}
+                    </div>
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40" id="fx-rate-hint">"Use live rate" pulls from open.er-api.com for this line; "Refresh rates" above does the same for every cross-currency line at once. Same-currency lines use 1.0 automatically.</span>
+                    </label>
+                </div>
+                <input type="hidden" name="budgetLineExchangeRateDate" id="budgetLineExchangeRateDate"
+                       value="{{ edit_line.exchangeRateDate if edit_line and edit_line.exchangeRateDate else today }}" />
+            </div>
+
+            <!-- =========================================================== -->
+            <!-- SCHEDULE — one or more time-bounded segments                -->
+            <!-- =========================================================== -->
+            <div class="border-t border-base-200 pt-3 mb-3">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-medium uppercase tracking-wide text-base-content/60 flex items-center gap-2">
+                        <i class="ti ti-calendar-event text-base-content/40" aria-hidden="true"></i>
+                        Schedule
+                    </h4>
+                    <button type="button" id="add-stage-btn" class="btn btn-ghost btn-xs gap-1">
+                        <i class="ti ti-plus text-xs"></i> Add stage
+                    </button>
+                </div>
+                <p class="text-xs text-base-content/40 mb-2">
+                    One stage covers a fixed amount over a time window. Add stages when the amount changes (e.g. groceries lower as a single person → higher with kids → lower in empty nest). Gaps between stages contribute zero — useful for pausing a category (e.g. travel) to pay down debt.
+                </p>
+
+                <div id="segments-container">
+                    {% for seg in form_segments %}
+                    <div class="segment-row border border-base-200 rounded-md p-2 mb-2">
+                        <div class="grid grid-cols-12 gap-2 items-end">
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Start year</span>
+                                </label>
+                                <input type="number" name="segmentStartYear" required
+                                    min="1900" max="2200"
+                                    value="{{ seg.startYear if seg.startYear else current_year }}"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">End year <span class="text-base-content/30">(∞ blank)</span></span>
+                                </label>
+                                <input type="number" name="segmentEndYear"
+                                    min="1900" max="2200"
+                                    value="{{ seg.endYear if seg.endYear else '' }}"
+                                    placeholder="∞"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Amount</span>
+                                </label>
+                                <input type="number" name="segmentAmount" required
+                                    min="0" step="0.01"
+                                    value="{{ seg.amount if seg.amount else '' }}"
+                                    placeholder="0.00"
+                                    class="input input-bordered input-xs w-full segment-amount" />
+                            </div>
+                            <div class="form-control col-span-3">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Frequency</span>
+                                </label>
+                                <select name="segmentFrequency"
+                                        class="select select-bordered select-xs w-full segment-frequency">
+                                    {% for key, label in frequency_options.items() %}
+                                    <option value="{{ key }}"
+                                        {% if seg.frequency == key %}selected
+                                        {% elif not seg.frequency and key == 'FrequencyType_Monthly' %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-control col-span-2">
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/50">Real growth %</span>
+                                </label>
+                                <input type="number" name="segmentChangeRate"
+                                    step="0.1" min="-100" max="100"
+                                    value="{{ seg.changeRate if seg.changeRate else '0' }}"
+                                    class="input input-bordered input-xs w-full" />
+                            </div>
+                            <div class="form-control col-span-1 flex items-end">
+                                <button type="button" class="btn btn-ghost btn-xs text-error remove-stage-btn"
+                                        onclick="removeStage(this)" title="Remove this stage">
+                                    <i class="ti ti-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-base-content/40 mt-1 px-1 segment-hint"></p>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <p class="text-xs text-base-content/40 mt-1" id="schedule-validation"></p>
+            </div>
+
+            <div class="flex justify-between items-center">
+                {% if edit_line %}
+                <a href="/budget" class="btn btn-ghost btn-sm">Cancel</a>
+                {% else %}
+                <span></span>
+                {% endif %}
+                <button type="submit" class="btn btn-primary btn-sm gap-1">
+                    <i class="ti ti-device-floppy" aria-hidden="true"></i>
+                    {% if edit_line %}Save changes{% else %}Add budget line{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+<script>
+// ============================================================================
+// Segment editor (multi-stage scheduling) + category chip helper (ADR-017)
+// ============================================================================
+const BASE_SYMBOL = {{ base_currency_symbol() | tojson }};
+const CURRENT_YEAR = {{ current_year }};
+const FREQ_LABELS = {{ frequency_options | tojson }};
+
+function setCategory(name) {
+    document.getElementById('category-input').value = name;
+}
+
+function buildSegmentRowHTML(defaults) {
+    const freqOptions = Object.entries(FREQ_LABELS).map(([k, v]) =>
+        `<option value="${k}" ${k === defaults.frequency ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    return `
+        <div class="grid grid-cols-12 gap-2 items-end">
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Start year</span></label>
+                <input type="number" name="segmentStartYear" required min="1900" max="2200"
+                       value="${defaults.startYear}" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">End year <span class="text-base-content/30">(∞ blank)</span></span></label>
+                <input type="number" name="segmentEndYear" min="1900" max="2200"
+                       value="${defaults.endYear}" placeholder="∞" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Amount</span></label>
+                <input type="number" name="segmentAmount" required min="0" step="0.01"
+                       value="${defaults.amount}" placeholder="0.00" class="input input-bordered input-xs w-full segment-amount" />
+            </div>
+            <div class="form-control col-span-3">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Frequency</span></label>
+                <select name="segmentFrequency" class="select select-bordered select-xs w-full segment-frequency">
+                    ${freqOptions}
+                </select>
+            </div>
+            <div class="form-control col-span-2">
+                <label class="label py-0.5"><span class="label-text-alt text-base-content/50">Real growth %</span></label>
+                <input type="number" name="segmentChangeRate" step="0.1" min="-100" max="100"
+                       value="${defaults.changeRate}" class="input input-bordered input-xs w-full" />
+            </div>
+            <div class="form-control col-span-1 flex items-end">
+                <button type="button" class="btn btn-ghost btn-xs text-error remove-stage-btn"
+                        onclick="removeStage(this)" title="Remove this stage">
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+        </div>
+        <p class="text-xs text-base-content/40 mt-1 px-1 segment-hint"></p>`;
+}
+
+function addStage() {
+    const container = document.getElementById('segments-container');
+    const rows      = container.querySelectorAll('.segment-row');
+    const last      = rows[rows.length - 1];
+
+    // Sensible defaults: start year = (previous end year + 1) or previous start + 1;
+    // amount/frequency/rate carry over from the previous stage as a starting point.
+    let defaultStart = CURRENT_YEAR, defaultAmount = '', defaultFreq = 'FrequencyType_Monthly', defaultRate = '0';
+    if (last) {
+        const prevStart  = parseInt(last.querySelector('input[name="segmentStartYear"]').value) || CURRENT_YEAR;
+        const prevEnd    = parseInt(last.querySelector('input[name="segmentEndYear"]').value);
+        const prevAmount = last.querySelector('input[name="segmentAmount"]').value;
+        const prevFreq   = last.querySelector('select[name="segmentFrequency"]').value;
+        const prevRate   = last.querySelector('input[name="segmentChangeRate"]').value;
+        defaultStart  = (Number.isFinite(prevEnd) ? prevEnd : prevStart) + 1;
+        defaultAmount = prevAmount;
+        defaultFreq   = prevFreq;
+        defaultRate   = prevRate;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'segment-row border border-base-200 rounded-md p-2 mb-2';
+    row.innerHTML = buildSegmentRowHTML({
+        startYear:  defaultStart,
+        endYear:    '',
+        amount:     defaultAmount,
+        frequency:  defaultFreq,
+        changeRate: defaultRate,
+    });
+    container.appendChild(row);
+    refreshHints();
+    validateSchedule();
+}
+
+function removeStage(btn) {
+    const container = document.getElementById('segments-container');
+    const rows      = container.querySelectorAll('.segment-row');
+    if (rows.length <= 1) {
+        alert('A budget line needs at least one stage.');
+        return;
+    }
+    btn.closest('.segment-row').remove();
+    refreshHints();
+    validateSchedule();
+}
+
+function refreshHints() {
+    document.querySelectorAll('#segments-container .segment-row').forEach(row => {
+        const amtEl  = row.querySelector('input[name="segmentAmount"]');
+        const freqEl = row.querySelector('select[name="segmentFrequency"]');
+        const hintEl = row.querySelector('.segment-hint');
+        const amount = parseFloat(amtEl.value) || 0;
+        const multipliers = { FrequencyType_Weekly:52, FrequencyType_Fortnightly:26, FrequencyType_TwiceMonthly:24, FrequencyType_Monthly:12, FrequencyType_Quarterly:4, FrequencyType_Annually:1 };
+        const m = multipliers[freqEl.value] || 12;
+        if (amount > 0 && hintEl) {
+            hintEl.textContent = `Annual: ${BASE_SYMBOL}${(amount * m).toLocaleString('en-GB', {maximumFractionDigits:0})}`;
+        } else if (hintEl) {
+            hintEl.textContent = '';
+        }
+    });
+}
+
+function validateSchedule() {
+    // Reject overlapping segments. Gaps and open-ended end years are allowed.
+    const rows = document.querySelectorAll('#segments-container .segment-row');
+    const ranges = [];
+    rows.forEach(row => {
+        const s = parseInt(row.querySelector('input[name="segmentStartYear"]').value);
+        const eRaw = row.querySelector('input[name="segmentEndYear"]').value;
+        const e = eRaw ? parseInt(eRaw) : Number.POSITIVE_INFINITY;
+        if (Number.isFinite(s)) ranges.push({s, e, row});
+    });
+    let conflict = null;
+    for (let i = 0; i < ranges.length; i++) {
+        for (let j = i + 1; j < ranges.length; j++) {
+            const a = ranges[i], b = ranges[j];
+            if (a.s <= b.e && b.s <= a.e) { conflict = [a, b]; break; }
+        }
+        if (conflict) break;
+    }
+    const validationEl = document.getElementById('schedule-validation');
+    const submitBtn    = document.querySelector('#budget-form button[type="submit"]');
+    if (conflict) {
+        validationEl.innerHTML = '<i class="ti ti-alert-triangle"></i> Stages overlap — adjust the years so each year is covered by at most one stage. (Gaps are fine: the line just contributes zero in those years.)';
+        validationEl.className = 'text-xs text-error mt-1';
+        if (submitBtn) submitBtn.disabled = true;
+    } else {
+        validationEl.textContent = '';
+        validationEl.className = 'text-xs text-base-content/40 mt-1';
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+document.getElementById('add-stage-btn')?.addEventListener('click', addStage);
+
+// Wire change/input listeners to all current rows + future ones (event delegation).
+document.getElementById('segments-container')?.addEventListener('input',  () => { refreshHints(); validateSchedule(); });
+document.getElementById('segments-container')?.addEventListener('change', () => { refreshHints(); validateSchedule(); });
+
+// Initial pass on page load.
+refreshHints();
+validateSchedule();
+
+// ============================================================================
+// Per-line currency + FX (1.0.5 — ADR-016 follow-on)
+// ============================================================================
+const BASE_CURRENCY_CODE = {{ base_currency.code | tojson }};
+
+function updateFxVisibility() {
+    const sel    = document.getElementById('budgetLineCurrency');
+    const field  = document.getElementById('fx-rate-field');
+    const rateIn = document.getElementById('budgetLineExchangeRateToBase');
+    if (!sel || !field) return;
+    const opt  = sel.options[sel.selectedIndex];
+    const code = opt ? opt.getAttribute('data-code') : '';
+    if (code && code !== BASE_CURRENCY_CODE) {
+        field.style.display = 'block';
+    } else {
+        field.style.display = 'none';
+        if (rateIn) rateIn.value = '1.0';
+    }
+}
+document.addEventListener('DOMContentLoaded', updateFxVisibility);
+
+async function pullLiveRate() {
+    const btn  = document.getElementById('fx-rate-live-btn');
+    const sel  = document.getElementById('budgetLineCurrency');
+    const inp  = document.getElementById('budgetLineExchangeRateToBase');
+    const dt   = document.getElementById('budgetLineExchangeRateDate');
+    const hint = document.getElementById('fx-rate-hint');
+    if (!btn || !sel || !inp) return;
+    const opt  = sel.options[sel.selectedIndex];
+    const code = opt ? opt.getAttribute('data-code') : '';
+    if (!code) return;
+    const origLabel = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Fetching…';
+    try {
+        const res  = await fetch('/api/fx/rate?code=' + encodeURIComponent(code));
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Live rate unavailable');
+        inp.value = data.rate_to_base;
+        const today = new Date().toISOString().slice(0, 10);
+        if (dt) dt.value = today;
+        const lastEl = document.getElementById('fx-rate-last-updated');
+        if (lastEl) lastEl.textContent = 'Last updated ' + today;
+        if (hint) hint.innerHTML = '<i class="ti ti-circle-check text-success"></i> Pulled ' + code + ' @ ' + data.rate_to_base + ' from ' + (data.provider || 'live source') + (data.as_of ? ' · ' + data.as_of : '');
+    } catch (e) {
+        if (hint) hint.innerHTML = '<i class="ti ti-alert-triangle text-warning"></i> ' + (e.message || 'Live rate unavailable') + '. Existing rate left unchanged.';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origLabel;
+    }
+}
+document.getElementById('fx-rate-live-btn')?.addEventListener('click', pullLiveRate);
+</script>

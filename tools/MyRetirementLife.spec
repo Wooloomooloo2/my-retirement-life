@@ -97,7 +97,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="My Retirement Life.app",
-    icon=None,
+    icon=str(REPO_ROOT / "tools" / "appicon" / "AppIcon.icns"),
     bundle_identifier="app.myretirementlife",
     info_plist={
         "CFBundleName": "My Retirement Life",

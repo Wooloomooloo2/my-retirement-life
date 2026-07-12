@@ -6,6 +6,55 @@ This project is pre-1.0; format follows
 
 ---
 
+## [Unreleased — guided onboarding, dedicated Add/Edit pages, clearer dates] — 2026-07-01
+
+### Feature — Import from My Financial Life offered during setup
+
+After you save your profile for the first time, MRL now asks whether you keep
+your finances in **My Financial Life** and offers a one-click import to seed
+your balance sheet — otherwise you carry straight on with the setup checklist
+as before. The import-complete page now also points you at adjusting your
+future budget by date.
+
+### Change — Dedicated Add/Edit pages for Accounts and Budget
+
+Adding or editing an account or a budget line now opens its own full-screen
+page with a **Back** button, instead of an inline form below the list. The
+Accounts and Budget lists are now **full-width** (all columns visible) with a
+clear **Add** button and compact edit/delete icons in a single actions column.
+
+### Change — Setup order: accounts before income
+
+The setup checklist now asks for your **accounts before your income**, so that
+income's "which account does this go to?" question already has accounts to
+choose from.
+
+### Feature — Unambiguous date of birth
+
+Date of birth is now entered as **day / month-name / year** (e.g. `3 · April ·
+1970`) rather than a locale-formatted date picker, so there's no dd/mm vs mm/dd
+confusion — with a live "3 April 1970 · age 56" confirmation.
+
+### Change — New accounts default to your country and currency
+
+A new account now defaults its jurisdiction and currency to the ones on your
+profile, instead of always GB/GBP.
+
+### Fix — Drawdown "tax paid" follows the account filter
+
+On the Drawdown Strategy chart, filtering to specific accounts now updates the
+**Tax paid** line and stat to that selection (previously it always showed the
+whole-portfolio total). The projection engine now tracks tax per account
+(source tax plus a pro-rata share of residence-level tax); projection numbers
+are unchanged.
+
+### Compatibility — My Financial Life schema v32
+
+The MFL importer now recognises schema **v32** files (the `category_import_map`
+migration) without showing a "newer than this importer" warning.
+
+---
+
 ## [Unreleased — per-line FX + inline live rates] — 2026-05-30
 
 ### Feature — Per-line currency on the budget
