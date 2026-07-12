@@ -715,8 +715,8 @@ function initByAccountChart() {
                     y: {
                         stacked: true,
                         ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
-                        grid: { color: 'rgba(0,0,0,0.04)' },
-                        title: { display: true, text: 'Balance (' + BASE_SYMBOL + ')', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                        grid: { color: MRL.grid },
+                        title: { display: true, text: 'Balance (' + BASE_SYMBOL + ')', font: { size: 10 }, color: MRL.chartText }
                     }
                 }
             }
@@ -979,12 +979,12 @@ new Chart(ctx, {
                     font: { size: 10 },
                     callback: v => BASE_SYMBOL + Math.abs(v/1000).toFixed(0) + 'k'
                 },
-                grid: { color: 'rgba(0,0,0,0.04)' },
+                grid: { color: MRL.grid },
                 title: {
                     display: true,
                     text: 'Annual cashflow (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
-                    color: 'rgba(0,0,0,0.4)'
+                    color: MRL.chartText
                 }
             },
             yBalance: {
@@ -1111,12 +1111,12 @@ new Chart(mcCtx, {
                     font: { size: 10 },
                     callback: v => (v < 0 ? '−' : '') + BASE_SYMBOL + Math.abs(v / 1000).toFixed(0) + 'k'
                 },
-                grid: { color: 'rgba(0,0,0,0.04)' },
+                grid: { color: MRL.grid },
                 title: {
                     display: true,
                     text: 'Balance (' + BASE_SYMBOL + ')',
                     font: { size: 10 },
-                    color: 'rgba(0,0,0,0.4)'
+                    color: MRL.chartText
                 }
             }
         }

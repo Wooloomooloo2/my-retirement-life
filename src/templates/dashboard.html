@@ -500,8 +500,8 @@ function initNetworthChart() {
                     y: {
                         stacked: true,
                         ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
-                        grid: { color: 'rgba(0,0,0,0.04)' },
-                        title: { display: true, text: 'Net worth (' + BASE_SYMBOL + ')', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                        grid: { color: MRL.grid },
+                        title: { display: true, text: 'Net worth (' + BASE_SYMBOL + ')', font: { size: 10 }, color: MRL.chartText }
                     }
                 }
             }

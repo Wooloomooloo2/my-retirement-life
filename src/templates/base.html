@@ -5,12 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
 
+    {# Theme, applied BEFORE first paint (ADR-022 commit 5). Inline and
+       synchronous on purpose: an external or deferred script would let the
+       light theme paint first and then flip — reintroducing exactly the flash
+       commit 1 removed. Falls back to the OS preference on first run. #}
+    <script>
+    (function () {
+        try {
+            var saved = localStorage.getItem('mrl-theme');
+            var dark  = saved
+                ? saved === 'mrl-dark'
+                : window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.setAttribute('data-theme', dark ? 'mrl-dark' : 'mrl');
+        } catch (e) { /* private mode / no storage — keep the markup default */ }
+    })();
+    </script>
+
     <!-- HTMX -->
     <script src="/static/vendor/htmx.min.js"></script>
 
-    <!-- Chart.js + the shared MRL chart palette/helpers (ADR-022) -->
+    <!-- Chart.js -->
     <script src="/static/vendor/chart.umd.min.js"></script>
-    <script src="/static/js/mrl-charts.js"></script>
 
     <!-- Tabler Icons -->
     <link rel="stylesheet" href="/static/vendor/tabler/tabler-icons.min.css" />
@@ -25,6 +40,11 @@
          Tabler (its `line-height: 1` then beats `text-base`), which changes
          every icon's box height and shifts the sidebar rows. -->
     <link href="/static/css/app.css" rel="stylesheet" />
+
+    {# AFTER app.css, deliberately: the module reads the chart palette from CSS
+       custom properties, and a script following a stylesheet link waits for it.
+       Loaded earlier, getComputedStyle would return the fallbacks. #}
+    <script src="/static/js/mrl-charts.js"></script>
 
     <!-- App icon / favicon (My Retirement Life hex mark) -->
     <link rel="icon" type="image/png" href="/static/img/favicon.png" />
@@ -151,6 +171,11 @@
                         <span class="hidden sm:inline">Unsaved session</span>
                     </a>
                     {% endif %}
+                    <button type="button" id="theme-toggle" onclick="toggleTheme()"
+                            class="btn btn-ghost btn-xs btn-circle text-base-content/50 hover:text-base-content"
+                            title="Switch between light and dark" aria-label="Switch between light and dark">
+                        <i id="theme-toggle-icon" class="ti ti-moon text-base" aria-hidden="true"></i>
+                    </button>
                     <div class="avatar placeholder">
                         <div class="bg-primary text-primary-content rounded-full w-8">
                             <span class="text-xs">{{ user_initials() }}</span>
@@ -196,6 +221,35 @@
     </div>
 
     {% block scripts %}{% endblock %}
+
+    <script>
+    // Theme toggle (ADR-022 commit 5). The pre-paint script in <head> is what
+    // applies the theme on load; this only flips and persists it.
+    //
+    // It reloads rather than re-tinting in place. Everything CSS-driven would
+    // update instantly, but the charts are painted to <canvas> and hold the
+    // colours they were constructed with — leaving light-tuned series on a dark
+    // canvas with invisible gridlines. Rebuilding them without a reload would
+    // mean a re-init hook in all five chart templates; a reload is one line and
+    // always correct. The cost is losing un-submitted form input, which is why
+    // the control is a small icon in the header and not next to a Save button.
+    function toggleTheme() {
+        var root = document.documentElement;
+        var next = root.getAttribute('data-theme') === 'mrl-dark' ? 'mrl' : 'mrl-dark';
+        try { localStorage.setItem('mrl-theme', next); } catch (e) { /* no storage */ }
+        root.setAttribute('data-theme', next);
+        if (window.MRL) MRL.refresh();
+        window.location.reload();
+    }
+
+    // Icon shows the mode you'd switch TO.
+    (function () {
+        var icon = document.getElementById('theme-toggle-icon');
+        if (!icon) return;
+        var dark = document.documentElement.getAttribute('data-theme') === 'mrl-dark';
+        icon.className = 'ti ' + (dark ? 'ti-sun' : 'ti-moon') + ' text-base';
+    })();
+    </script>
 
     <script>
     // On /edit URLs (budget, income, accounts, assets), scroll the primary

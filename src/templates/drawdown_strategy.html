@@ -382,14 +382,14 @@ function renderChart() {
                     y: {
                         stacked: true, beginAtZero: true,
                         ticks: { font: { size: 10 }, callback: v => SYM + (v / 1000).toFixed(0) + 'k' },
-                        grid: { color: 'rgba(0,0,0,0.04)' },
-                        title: { display: true, text: 'Drawdown (' + SYM + '/yr)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
+                        grid: { color: MRL.grid },
+                        title: { display: true, text: 'Drawdown (' + SYM + '/yr)', font: { size: 10 }, color: MRL.chartText },
                     },
                     yTax: {
                         position: 'right', beginAtZero: true,
                         grid: { drawOnChartArea: false },
                         ticks: { font: { size: 10 }, callback: v => SYM + (v / 1000).toFixed(0) + 'k' },
-                        title: { display: true, text: 'Tax (' + SYM + '/yr)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' },
+                        title: { display: true, text: 'Tax (' + SYM + '/yr)', font: { size: 10 }, color: MRL.chartText },
                     }
                 }
             }

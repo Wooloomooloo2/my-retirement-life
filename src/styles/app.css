@@ -76,6 +76,63 @@
         --mrl-event-cost:          #A855F7;
         --mrl-event-receipt:       #14B8A6;
         --mrl-income:              #22C55E;
+
+        /* Chart chrome. Gridlines and axis labels are drawn on the canvas, so
+           they can't inherit `text-base-content` — they need their own tokens or
+           they stay black-on-black in dark mode. */
+        --mrl-grid: rgba(0, 0, 0, 0.04);
+
+        /* Two DIFFERENT things, conflated at first and split back out:
+           `label` is tick + legend text and must hold contrast (this is the
+           Chart.js default #666 preserved); `title` is the decorative axis
+           caption, deliberately faint. Driving both from the faint value made
+           every chart legend fail contrast. */
+        --mrl-chart-label: #666666;
+        --mrl-chart-title: rgba(0, 0, 0, 0.4);
+    }
+
+    /*
+     * Dark mode (ADR-022 commit 5).
+     *
+     * Values from docs/MRL_WEBSITE_BRIEF.md's dark column, so light and dark are
+     * the same brand rather than one being a guess. Series colours are lifted a
+     * step or two: the light ramps are tuned for contrast against white and go
+     * muddy on a dark canvas.
+     */
+    [data-theme='mrl-dark'] {
+        --mrl-cash-1: #60A5FA;
+        --mrl-cash-2: #93C5FD;
+        --mrl-cash-3: #BFDBFE;
+        --mrl-cash-4: #DBEAFE;
+
+        --mrl-invest-1: #34D399;
+        --mrl-invest-2: #6EE7B7;
+        --mrl-invest-3: #A7F3D0;
+        --mrl-invest-4: #D1FAE5;
+        --mrl-invest-5: #2DD4BF;
+        --mrl-invest-6: #5EEAD4;
+
+        --mrl-asset-1: #DCBB55;   /* brief: gold, dark */
+        --mrl-asset-2: #E6CD82;
+        --mrl-asset-3: #F0DFAE;
+        --mrl-asset-4: #F7EDD3;
+
+        --mrl-accent:       #E8A25C;   /* brief: sunset, dark */
+        --mrl-contribution: #39A0AA;   /* brief: teal, dark */
+        --mrl-withdrawal:   #FBBF24;
+        --mrl-tax:          #F87171;   /* brief: negative, dark */
+        --mrl-growth:       #22C55E;   /* brief: positive, dark */
+
+        --mrl-spend-mandatory:     #F87171;
+        --mrl-spend-discretionary: #FBBF24;
+        --mrl-loan:                #60A5FA;
+        --mrl-event-cost:          #C084FC;
+        --mrl-event-receipt:       #2DD4BF;
+        --mrl-income:              #4ADE80;
+
+        --mrl-grid:        rgba(255, 255, 255, 0.08);
+        --mrl-chart-label: #CBD5E1;
+        --mrl-chart-title: rgba(255, 255, 255, 0.45);
     }
 
     /*

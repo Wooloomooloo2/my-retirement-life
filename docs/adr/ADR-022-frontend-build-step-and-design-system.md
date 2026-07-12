@@ -145,6 +145,18 @@ If this commit is easy, the preceding ones were done correctly. If it requires t
 
 **Gate:** all 9 routes legible in both themes; charts, the confidence banner and the unfunded-row `bg-error/10` highlight all still read correctly on a dark background. Also unblocks the dark-mode screenshots already noted in the CLAUDE_CONTEXT backlog.
 
+> **Implementation notes (landed 2026-07-12).** The decoupling held: dark mode is a `[data-theme='mrl-dark']` token block plus a second DaisyUI theme, and **no chart template was edited for the theme itself**. Brand and dark values both come from `docs/MRL_WEBSITE_BRIEF.md`, which already specified a full dark column — so neither theme is a guess.
+>
+> But the commit found two things the earlier ones got wrong, which is exactly what it was sequenced to do:
+> - **Colour that isn't in the palette isn't themeable.** Commit 3's sweep matched quoted hex, so it missed colours written as `rgba()` — a whole second layer, including the entire Projection cashflow series (mandatory/discretionary/loans/life events/income/receipts) and every gridline and axis label. Chart chrome is painted to `<canvas>` and cannot inherit `text-base-content`, so without its own tokens it stays black-on-black in dark mode. Fixed in commits 4–5; the only literals left in JS are neutral `rgba(0,0,0,…)` tooltips.
+> - **A contrast regression, caught by the pixel diff.** `Chart.defaults.color` drives tick *and legend* text (Chart.js default `#666`), but it was pointed at the faint axis-*title* token (`rgba(0,0,0,0.4)` ≈ `#999` on white) — dropping every chart legend to roughly 2.8:1. Two different jobs had been given one token. Split into `--mrl-chart-label` (must hold contrast) and `--mrl-chart-title` (deliberately faint).
+>
+> **Script order in `<head>` is load-bearing** and now carries a comment: the theme is applied by an inline, synchronous, pre-paint script (anything deferred would let light paint first and flip — reintroducing the very flash commit 1 removed), and `mrl-charts.js` must load **after** `app.css`, because it reads the palette via `getComputedStyle` and a script following a stylesheet link waits for it. Loaded earlier, every chart silently gets the fallback colours.
+>
+> **The toggle reloads the page.** CSS re-tints instantly, but charts are painted to canvas and hold the colours they were built with. Rebuilding them in place would need a re-init hook in all five chart templates; a reload is one line and always correct. The cost is losing un-submitted form input — which is why the control is a small header icon, not a button next to Save.
+>
+> **Harness note:** the `/projection` diff is normally ~0.3% (the unseeded Monte Carlo band), but occasionally jumps to ~5% — when the random band shifts the y-axis maximum, the tick-label width changes and the whole plot area moves. Confirmed benign by a control capture of identical code. Any future pixel gate on this page needs that in mind, or it should seed the simulation.
+
 ---
 
 ## Consequences

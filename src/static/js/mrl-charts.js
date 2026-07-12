@@ -88,10 +88,35 @@
 
         alpha: alpha,
 
+        /**
+         * Chart chrome. Gridlines and axis labels are painted on the canvas, so
+         * they cannot inherit `text-base-content` — without these they'd stay
+         * black-on-black in dark mode.
+         */
+        get grid() {
+            return cssVar('--mrl-grid', 'rgba(0,0,0,0.04)');
+        },
+        /** Tick + legend text. Must hold contrast — see the CSS comment. */
+        get chartLabel() {
+            return cssVar('--mrl-chart-label', '#666666');
+        },
+        /** Decorative axis captions, deliberately faint. */
+        get chartText() {
+            return cssVar('--mrl-chart-title', 'rgba(0,0,0,0.4)');
+        },
+
         /** Re-read the palette after a theme change (commit 5 / dark mode). */
         refresh() {
             _palette = null;
             _colors = null;
+            MRL.applyChartDefaults();
+        },
+
+        /** Chart.js's own defaults (tick labels, legend text) follow the theme. */
+        applyChartDefaults() {
+            if (typeof Chart === 'undefined') return;
+            Chart.defaults.color = MRL.chartLabel;
+            Chart.defaults.borderColor = MRL.grid;
         },
 
         /**
@@ -148,4 +173,11 @@
     };
 
     window.MRL = MRL;
+
+    // Synchronous, and it must stay that way: the page templates build their
+    // charts in inline <script> blocks that run BEFORE DOMContentLoaded, and
+    // Chart.defaults has to be set before a chart is constructed. This is safe
+    // because base.html loads this file AFTER app.css — a script following a
+    // stylesheet link waits for it, so the tokens are parsed by now.
+    MRL.applyChartDefaults();
 })(window);

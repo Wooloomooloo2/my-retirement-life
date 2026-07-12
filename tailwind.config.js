@@ -60,7 +60,37 @@ module.exports = {
           'error-content':    '#ffffff',
         },
       },
+      {
+        /*
+         * Dark mode (commit 5) — the brief's dark column. Accents lift a step so
+         * they hold up against a dark canvas; the base ramp is the brief's
+         * slate (#0f172a canvas / #1e293b surface / #334155 border).
+         */
+        'mrl-dark': {
+          primary:            '#39a0aa',
+          'primary-content':  '#04211f',
+          secondary:          '#dcbb55',
+          'secondary-content':'#1a1505',
+          accent:             '#e8a25c',
+          'accent-content':   '#231202',
+          neutral:            '#1e293b',
+          'neutral-content':  '#f1f5f9',
+          'base-100':         '#1e293b',   // cards / surfaces
+          'base-200':         '#0f172a',   // page canvas
+          'base-300':         '#334155',   // borders
+          'base-content':     '#f1f5f9',
+          info:               '#38bdf8',
+          success:            '#22c55e',
+          'success-content':  '#04210f',
+          warning:            '#fbbf24',
+          'warning-content':  '#231a02',
+          error:              '#f87171',
+          'error-content':    '#2a0707',
+        },
+      },
     ],
+    // Used when the user has expressed no preference and the OS reports dark.
+    darkTheme: 'mrl-dark',
     logs: false,
   },
 };

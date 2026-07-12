@@ -132,7 +132,7 @@ const tickCfg = {
     maxTicksLimit: 20,
     callback: (_, idx) => fmtYear(years[idx]),
 };
-const gridCfg = { color: 'rgba(0,0,0,0.04)' };
+const gridCfg = { color: MRL.grid };
 
 // ---------------------------------------------------------------------------
 // Chart 1: Growth vs Drawdown
@@ -233,7 +233,7 @@ new Chart(document.getElementById('gvdChart').getContext('2d'), {
             y: {
                 ticks: { font: { size: 10 }, callback: v => BASE_SYMBOL + (v / 1000).toFixed(0) + 'k' },
                 grid: gridCfg,
-                title: { display: true, text: BASE_SYMBOL + ' per year (bars)', font: { size: 10 }, color: 'rgba(0,0,0,0.4)' }
+                title: { display: true, text: BASE_SYMBOL + ' per year (bars)', font: { size: 10 }, color: MRL.chartText }
             },
             yBalance: {
                 position: 'right',

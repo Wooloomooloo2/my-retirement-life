@@ -41,7 +41,7 @@ ADRs are written at the time a decision is made and are not retrospective docume
 | [ADR-019](ADR-019-emergency-fund.md) | Emergency fund — fill-first on surplus, draw-first on shortfall | 2026-06-03 | Accepted |
 | [ADR-020](ADR-020-import-from-my-financial-life.md) | Import from My Financial Life (MFL) | 2026-06-23 | Accepted |
 | [ADR-021](ADR-021-rental-income-from-property-yield.md) | Rental income as a yield on a linked property's value | 2026-06-28 | Accepted |
-| [ADR-022](ADR-022-frontend-build-step-and-design-system.md) | Frontend build step and design system | 2026-07-12 | Accepted (commit 1 of 5 implemented) |
+| [ADR-022](ADR-022-frontend-build-step-and-design-system.md) | Frontend build step and design system | 2026-07-12 | Implemented |
 
 ---
 
