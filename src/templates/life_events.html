@@ -20,6 +20,13 @@
 </div>
 {% endif %}
 
+{% if error %}
+<div class="alert alert-warning mb-4">
+    <i class="ti ti-alert-triangle"></i>
+    <span>{{ error }}</span>
+</div>
+{% endif %}
+
 <!-- Events timeline table -->
 {% if events %}
 <div class="card bg-base-100 shadow-sm mb-6">
@@ -133,11 +140,11 @@
 
             <div class="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
 
-                <div class="form-control">
+                <div class="form-control" id="name-field">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Event name</span>
                     </label>
-                    <input type="text" name="lifeEventName" required
+                    <input type="text" name="lifeEventName" id="lifeEventName" required
                         value="{{ edit_event.name if edit_event else '' }}"
                         placeholder="e.g. New car, Help child with deposit"
                         class="input input-bordered input-sm w-full" />
@@ -147,16 +154,89 @@
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Type</span>
                     </label>
-                    <select name="lifeEventType" class="select select-bordered select-sm w-full"
-                            onchange="updateAmountSign()">
+                    <select name="lifeEventType" id="lifeEventType"
+                            class="select select-bordered select-sm w-full"
+                            onchange="updateAmountSign(); updateSellAssetMode();">
                         {% for key, label in event_type_options.items() %}
+                        {# "Sell asset" is only offered when there IS an asset to sell —
+                           otherwise the user picks it and hits a dead end. #}
+                        {% if key != asset_sale_type or has_assets %}
                         <option value="{{ key }}"
                             {% if edit_event and edit_event.eventType == key %}selected
                             {% elif not edit_event and key == 'LifeEventType_LargeExpenditure' %}selected{% endif %}>
                             {{ label }}
                         </option>
+                        {% endif %}
                         {% endfor %}
                     </select>
+                    {% if not has_assets %}
+                    <label class="label py-0.5">
+                        <span class="label-text-alt text-base-content/40">
+                            To sell an asset, first add one on the
+                            <a href="/accounts" class="link">Accounts</a> page.
+                        </span>
+                    </label>
+                    {% endif %}
+                </div>
+
+                {# ---- "Sell asset" only (ontology 1.0.11) --------------------
+                   Selling is recorded on the ASSET, not here: the engine reads the
+                   asset's sale year to zero its value from that year on, and derives
+                   the proceeds event from it. This form writes through to the asset,
+                   so there is exactly one record of the sale. Two would double-count
+                   the proceeds. The name and amount fields are hidden in this mode —
+                   both are derived from the asset. #}
+                <div class="form-control col-span-2 hidden" id="sell-asset-fields">
+                    <div class="rounded-lg border border-base-300 bg-base-200/40 p-3">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Asset to sell</span>
+                                </label>
+                                <select name="saleAsset" id="saleAsset"
+                                        class="select select-bordered select-sm w-full"
+                                        onchange="updateSaleAssetHint()">
+                                    <option value="">Choose an asset…</option>
+                                    {% for a in sellable_assets %}
+                                    <option value="{{ a.label }}"
+                                            data-value="{{ a.balance }}"
+                                            data-sale-year="{{ a.saleYear }}">
+                                        {{ a.name }}
+                                        {%- if a.saleYear %} — sale already planned for {{ a.saleYear }}{% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40" id="sale-asset-hint">
+                                        Its value drops to zero from the sale year onward.
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label py-0.5">
+                                    <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
+                                        Sale value <span class="normal-case font-normal text-base-content/40">(optional)</span>
+                                    </span>
+                                </label>
+                                <input type="number" name="saleValue" id="saleValue" step="1" min="0"
+                                       placeholder="Leave blank to use appreciated value"
+                                       class="input input-bordered input-sm w-full" />
+                                <label class="label py-0.5">
+                                    <span class="label-text-alt text-base-content/40">
+                                        Blank = today's value grown at the asset's appreciation rate.
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <p class="text-xs text-base-content/50 mt-1">
+                            <i class="ti ti-info-circle" aria-hidden="true"></i>
+                            This updates the asset's planned sale. It appears below as a managed
+                            <span class="font-medium">Sell asset</span> event — edit it from the
+                            asset itself. Choosing an asset that already has a planned sale will
+                            change that sale, not add a second one.
+                        </p>
+                    </div>
                 </div>
 
                 <div class="form-control">
@@ -174,7 +254,7 @@
                     </label>
                 </div>
 
-                <div class="form-control">
+                <div class="form-control" id="amount-field">
                     <label class="label py-0.5">
                         <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Amount</span>
                     </label>
@@ -222,7 +302,7 @@
                 <div class="grid grid-cols-2 gap-x-4 gap-y-1">
 
                     <!-- Funded by account (for costs / expenditures) -->
-                    <div class="form-control">
+                    <div class="form-control" id="funded-field">
                         <label class="label py-0.5">
                             <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Funded by account</span>
                         </label>
@@ -248,7 +328,7 @@
                     <!-- Received by account (for windfalls / receipts) -->
                     <div class="form-control">
                         <label class="label py-0.5">
-                            <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Received by account</span>
+                            <span id="received-by-label" class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">Received by account</span>
                         </label>
                         <select name="receivedByAccount" id="receivedByAccount"
                                 class="select select-bordered select-sm w-full"
@@ -298,10 +378,55 @@
 // Extend this set if additional receipt types are added later.
 // ---------------------------------------------------------------------------
 const RECEIPT_TYPES = new Set(['LifeEventType_Windfall']);
+const ASSET_SALE_TYPE = '{{ asset_sale_type }}';
 
 function isReceiptType() {
     const sel = document.querySelector('[name=lifeEventType]');
     return sel ? RECEIPT_TYPES.has(sel.value) : false;
+}
+
+// "Sell asset" is a different shape of form: the name and the amount are both
+// DERIVED from the chosen asset ("Sale: <asset>", value compounded to the sale
+// year), so asking for them would invite contradictions. Hide them, drop their
+// `required` (a hidden required field silently blocks submit), and swap the
+// account question from "funded by" to "proceeds into".
+function updateSellAssetMode() {
+    const sel  = document.getElementById('lifeEventType');
+    const sell = document.getElementById('sell-asset-fields');
+    if (!sel || !sell) return;
+    const on = sel.value === ASSET_SALE_TYPE;
+
+    sell.classList.toggle('hidden', !on);
+    document.getElementById('name-field')  ?.classList.toggle('hidden', on);
+    document.getElementById('amount-field')?.classList.toggle('hidden', on);
+    document.getElementById('funded-field')?.classList.toggle('hidden', on);
+
+    const nameInput = document.getElementById('lifeEventName');
+    const amtInput  = document.getElementById('lifeEventAmount');
+    if (nameInput) nameInput.required = !on;
+    if (amtInput)  amtInput.required  = !on;
+    const assetSel = document.getElementById('saleAsset');
+    if (assetSel) assetSel.required = on;
+
+    const recLabel = document.getElementById('received-by-label');
+    if (recLabel) recLabel.textContent = on ? 'Proceeds into' : 'Received by account';
+}
+
+// Warn when the chosen asset ALREADY has a planned sale — this form changes that
+// sale rather than adding a second one, and that should not be a surprise.
+function updateSaleAssetHint() {
+    const sel  = document.getElementById('saleAsset');
+    const hint = document.getElementById('sale-asset-hint');
+    if (!sel || !hint) return;
+    const opt = sel.options[sel.selectedIndex];
+    const existing = opt ? opt.getAttribute('data-sale-year') : '';
+    if (existing) {
+        hint.textContent = `This asset already has a sale planned for ${existing} — saving will change it to the year above.`;
+        hint.className = 'label-text-alt text-warning';
+    } else {
+        hint.textContent = "Its value drops to zero from the sale year onward.";
+        hint.className = 'label-text-alt text-base-content/40';
+    }
 }
 
 // Update the sign badge and hint label whenever the event type changes.
@@ -341,6 +466,8 @@ document.getElementById('life-event-form')?.addEventListener('submit', function(
 // Initialise on page load
 document.addEventListener('DOMContentLoaded', function() {
     updateAmountSign();
+    updateSellAssetMode();
+    updateSaleAssetHint();
 });
 </script>
 

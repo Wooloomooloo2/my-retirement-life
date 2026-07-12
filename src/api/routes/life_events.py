@@ -28,21 +28,38 @@ MRL_EXT  = "https://myretirementlife.app/ontology/ext#"
 
 EVENT_TYPE_LABELS = {
     "LifeEventType_LargeExpenditure":   "Large expenditure",
+    "LifeEventType_BuyAsset":           "Buy asset",
     "LifeEventType_Windfall":           "Windfall (receipt)",
-    "LifeEventType_PropertyTransaction":"Property transaction",
+    "LifeEventType_AssetSale":          "Sell asset",
     "LifeEventType_RelocationAbroad":   "Relocation abroad",
     "LifeEventType_CaringResponsibility":"Caring responsibility",
-    "LifeEventType_AssetSale":          "Asset sale",
+    # Deprecated 1.0.11 — kept only so pre-existing data still renders a label.
+    # Migrated to BuyAsset on load; never offered in the form.
+    "LifeEventType_PropertyTransaction":"Property transaction (deprecated)",
 }
 
-# Subset of EVENT_TYPE_LABELS available in the user's add/edit form.
-# AssetSale events are auto-managed from PhysicalAsset records (Phase 2) and
-# must not be created directly — editing an asset's sale year/value/proceeds
-# is the only way to influence them.
+# The type the deprecated "Property transaction" becomes. It was never in
+# RECEIPT_EVENT_TYPES, so it always stored a POSITIVE amount — it could only ever
+# model a purchase, despite its name suggesting it covered both. Migrating it to
+# BuyAsset preserves the sign and therefore the projection, exactly.
+LEGACY_TYPE_MIGRATION = {
+    "LifeEventType_PropertyTransaction": "LifeEventType_BuyAsset",
+}
+
+# Types offered in the user's add/edit form.
+#
+# "Sell asset" (AssetSale) IS offered now (1.0.11), but it does not create an
+# event directly: the handler writes the sale through to the chosen PhysicalAsset,
+# and the asset's existing auto-managed event is what appears. The asset stays the
+# single source of truth — the engine zeroes it from its sale year, and two
+# independent records of one sale would double-count the proceeds.
 USER_EVENT_TYPE_OPTIONS = {
     k: v for k, v in EVENT_TYPE_LABELS.items()
-    if k != "LifeEventType_AssetSale"
+    if k not in ("LifeEventType_PropertyTransaction",)
 }
+
+# The type whose form writes through to an asset rather than saving an event.
+ASSET_SALE_TYPE = "LifeEventType_AssetSale"
 
 # Event types that represent money flowing IN. The projection engine's
 # convention (set up in projection.py year-loop step 5) is:
@@ -55,6 +72,36 @@ RECEIPT_EVENT_TYPES = {
     "LifeEventType_Windfall",
     "LifeEventType_AssetSale",
 }
+
+
+def migrate_legacy_event_types() -> int:
+    """Rewrite deprecated life-event types in place (ontology 1.0.11).
+
+    PropertyTransaction → BuyAsset. Idempotent, and projection-neutral: the sign
+    convention is unchanged (both are costs), so the migrated event debits exactly
+    what it debited before. Runs on the Life Events page render, matching the
+    ADR-017 legacy-budget-line and ADR-018 drawdownMaxAge precedents.
+    """
+    migrated = 0
+    for old_type, new_type in LEGACY_TYPE_MIGRATION.items():
+        quads = list(store.store.quads_for_pattern(
+            None,
+            og.NamedNode(f"{MRL}lifeEventType"),
+            og.NamedNode(f"{MRL_EXT}{old_type}"),
+            DATA_GRAPH,
+        ))
+        for q in quads:
+            store.update(f"""
+                PREFIX mrl:  <{MRL}>
+                PREFIX mrlx: <{MRL_EXT}>
+                DELETE {{ GRAPH <{DATA_GRAPH.value}> {{
+                    <{q.subject.value}> mrl:lifeEventType mrlx:{old_type} . }} }}
+                INSERT {{ GRAPH <{DATA_GRAPH.value}> {{
+                    <{q.subject.value}> mrl:lifeEventType mrlx:{new_type} . }} }}
+                WHERE {{ }}
+            """)
+            migrated += 1
+    return migrated
 
 
 def _normalise_event_amount(amount: float, event_type: str) -> float:
@@ -275,14 +322,20 @@ def _get_projection_data() -> dict | None:
 
 
 def _page_context(request, events, edit_event=None, **kwargs):
+    from src.api.routes.accounts import get_all_asset_accounts
     proj_data = _get_projection_data()
+    assets = get_all_asset_accounts()
     return {
         "app_name":           settings.app_name,
         "active":             "life-events",
         "events":             events,
-        # Form dropdown only shows user-creatable types; AssetSale is excluded
-        # because it's auto-managed (see Phase 2 / mrl:sourceAsset).
+        # "Sell asset" is offered (1.0.11) but writes through to the asset rather
+        # than creating an event; "Property transaction" is deprecated and hidden.
         "event_type_options": USER_EVENT_TYPE_OPTIONS,
+        "asset_sale_type":    ASSET_SALE_TYPE,
+        # Assets the user can sell, and whether each already has a planned sale.
+        "sellable_assets":    assets,
+        "has_assets":         bool(assets),
         "edit_event":         edit_event,
         "proj_data":          proj_data,
         **kwargs,
@@ -295,6 +348,7 @@ def _page_context(request, events, edit_event=None, **kwargs):
 
 @router.get("/life-events", response_class=HTMLResponse)
 async def life_events_page(request: Request):
+    migrate_legacy_event_types()   # PropertyTransaction -> BuyAsset, idempotent
     events = get_all_events()
     return templates.TemplateResponse(
         request=request,
@@ -306,14 +360,51 @@ async def life_events_page(request: Request):
 @router.post("/life-events", response_class=HTMLResponse)
 async def add_life_event(
     request: Request,
-    lifeEventName:       str   = Form(...),
+    lifeEventName:       str   = Form(""),
     lifeEventYear:       int   = Form(...),
-    lifeEventAmount:     float = Form(...),
+    # Optional: a "Sell asset" derives its amount from the asset, so the form
+    # doesn't ask for one.
+    lifeEventAmount:     float = Form(0.0),
     lifeEventType:       str   = Form("LifeEventType_LargeExpenditure"),
     lifeEventNotes:      str   = Form(""),
     fundedByAccount:     str   = Form(""),
     receivedByAccount:   str   = Form(""),
+    # "Sell asset" only:
+    saleAsset:           str   = Form(""),
+    saleValue:           str   = Form(""),
 ):
+    # "Sell asset" does NOT create a life event. It writes the sale through to the
+    # chosen PhysicalAsset — the engine reads the asset's sale year to zero its
+    # value from that year on, and derives the proceeds event from it. Storing a
+    # second, independent copy here would credit the proceeds twice.
+    if lifeEventType == ASSET_SALE_TYPE:
+        from src.api.routes.accounts import set_asset_sale
+        if not saleAsset:
+            events = get_all_events()
+            return templates.TemplateResponse(
+                request=request, name="life_events.html",
+                context=_page_context(
+                    request, events,
+                    error="Choose which asset you're selling."),
+            )
+        ok = set_asset_sale(
+            asset_label=saleAsset,
+            sale_year=str(lifeEventYear),
+            sale_value=saleValue,
+            proceeds_account=receivedByAccount,
+        )
+        events = get_all_events()
+        if not ok:
+            return templates.TemplateResponse(
+                request=request, name="life_events.html",
+                context=_page_context(
+                    request, events, error="That asset no longer exists."),
+            )
+        return templates.TemplateResponse(
+            request=request, name="life_events.html",
+            context=_page_context(request, events, saved=True),
+        )
+
     existing = get_all_events()
     next_n   = max([int(e["n"]) for e in existing if e["n"].isdigit()], default=0) + 1
     save_event(

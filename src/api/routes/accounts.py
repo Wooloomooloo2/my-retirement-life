@@ -515,6 +515,82 @@ def save_asset(
     )
 
 
+def set_asset_sale(
+    asset_label: str,
+    sale_year: str,
+    sale_value: str = "",
+    proceeds_account: str = "",
+) -> bool:
+    """Set (or clear) an asset's planned sale, and re-sync its managed sale event.
+
+    This is the write-through used by the Life Events "Sell asset" type (ontology
+    1.0.11). Selling is recorded in exactly ONE place — on the asset — because the
+    engine reads the asset's mrl:assetSaleYear to zero its value from that year on,
+    and derives the proceeds event from it. A "Sell asset" life event that stored
+    its own independent copy would double-count: the engine would credit the
+    proceeds twice, once from each record.
+
+    So the Life Events UI is a front door, not a second mechanism. It writes here,
+    and the resulting event is the same auto-managed one the Accounts page produces.
+
+    Clearing `sale_year` cancels the sale: the asset is held indefinitely again and
+    the managed event is deleted. Returns False if the asset doesn't exist.
+    """
+    asset = next((a for a in get_all_asset_accounts() if a["label"] == asset_label), None)
+    if asset is None:
+        return False
+
+    iri = f"{MRL}{asset_label}"
+    # Only the three sale predicates are touched — name, value, currency,
+    # appreciation and notes are left exactly as they are.
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{ <{iri}> mrl:assetSaleYear ?y . }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{ <{iri}> mrl:assetSaleValue ?v . }}
+        }}
+    """)
+    store.update(f"""
+        PREFIX mrl: <{MRL}>
+        DELETE WHERE {{
+            GRAPH <{DATA_GRAPH.value}> {{ <{iri}> mrl:assetProceedsAccount ?a . }}
+        }}
+    """)
+
+    sale_year = (sale_year or "").strip()
+    if sale_year:
+        triples = [f'<{iri}> mrl:assetSaleYear "{int(sale_year)}"^^xsd:integer .']
+        if (sale_value or "").strip():
+            triples.append(
+                f'<{iri}> mrl:assetSaleValue "{float(sale_value)}"^^xsd:decimal .')
+        if (proceeds_account or "").strip():
+            triples.append(
+                f'<{iri}> mrl:assetProceedsAccount mrl:{proceeds_account.strip()} .')
+        store.update(f"""
+            PREFIX mrl: <{MRL}>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            INSERT DATA {{ GRAPH <{DATA_GRAPH.value}> {{ {" ".join(triples)} }} }}
+        """)
+
+    # Re-derive the managed event from the asset's new state (creates, updates, or
+    # deletes it — the same call save_asset() makes).
+    _sync_asset_sale_event(
+        asset_label=asset_label,
+        asset_name=asset["name"],
+        current_value=float(asset["balance"] or 0),
+        sale_year_str=sale_year,
+        sale_value_str=sale_value,
+        proceeds_account=proceeds_account,
+        appreciation_rate_str=asset.get("appreciationRate", ""),
+    )
+    return True
+
+
 def delete_asset(subclass: str, n: int) -> None:
     """Delete an asset and the linked auto-managed sale Life Event (if any)."""
     asset_label = f"{subclass}_{n}"
