@@ -82,7 +82,9 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The app will start and open in your default browser at `http://127.0.0.1:8000`.
+The app will start and open in a native window served from `http://127.0.0.1:8817`.
+If that port is already taken, startup stops with an error naming the culprit —
+set `APP_PORT` in `.env` to pick another.
 
 **Note:** running the app needs no Node.js. The stylesheet is prebuilt and committed.
 

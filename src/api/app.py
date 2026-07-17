@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
-from src.config import settings
+from src.config import APP_ID, settings
 from src.api.routes import (
     profile, accounts, budget, life_events,
     projection, income, settings_route, investments,
@@ -411,7 +411,7 @@ async def dashboard(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "app": settings.app_name}
+    return {"status": "ok", "service": APP_ID, "app": settings.app_name}
 
 
 @app.get("/ontology/status")

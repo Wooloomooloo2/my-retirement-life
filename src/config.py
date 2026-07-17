@@ -37,10 +37,19 @@ def _frozen_base() -> Path | None:
     return None
 
 
+# Stable machine-readable identity for this app, reported by /health and checked
+# by the launcher before it points a window at a server. Deliberately NOT
+# env-overridable: app_name is cosmetic and configurable, so it cannot be used
+# to tell our server apart from another app that happens to hold the port.
+APP_ID = "my-retirement-life"
+
+
 class Settings:
     app_name: str = os.getenv("APP_NAME", "My Retirement Life")
     app_host: str = os.getenv("APP_HOST", "127.0.0.1")
-    app_port: int = int(os.getenv("APP_PORT", "8000"))
+    # Not 8000: that default is shared with several sibling apps on this
+    # machine, and whichever starts second silently loses the bind.
+    app_port: int = int(os.getenv("APP_PORT", "8817"))
     debug: bool = os.getenv("DEBUG", "true").lower() == "true"
 
     @property
