@@ -29,7 +29,7 @@
 **Backlog / still-open:**
 - **`MRL_screenshots/` is now stale** — all 9 captures predate the brand theme, so they show the old DaisyUI indigo. The session-17 harness produces both light and dark across 17 routes, so recapturing is cheap. (Dark-mode screenshots for the website were already wanted.)
 - **Accounts table "Type" column badges overflow their pill** (long labels like "Tax-advantaged account"). Pre-existing in session-16's upstream markup, flagged but not fixed.
-- **`BuyAsset` records the OUTLAY only** — it does not create a `PhysicalAsset` on the purchase year, so a bought asset doesn't hit the balance sheet until added on Accounts. Stated in the ontology; natural follow-on, ties into the planned net-worth/asset work.
+- **`BuyAsset` records the OUTLAY only** — **now scoped as [ADR-023](docs/adr/ADR-023-optional-asset-creation-from-buy-asset-event.md) (Proposed, 2026-07-19; not built).** It creates no `PhysicalAsset`, so a bought asset doesn't hit the balance sheet until added on Accounts — and adding it there makes things **worse**, because `mrl:Account` has no acquisition date and a future `balanceDate` is **silently clamped** (`ye = max(0, current_year - balance_date.year)`, `projection.py:956-965`, assets at `1006`). Net worth is overstated by the asset's full value for every year between now and the purchase. ADR-023 adds `mrl:assetAcquisitionYear` (ontology **1.0.12**, absent = already owned) + an optional "Add as an asset" checkbox on the Buy asset form, export schema **0.3.4**, and rejects future `balanceDate` on the forms. **First engine change since session 15** — parity gate: with no acquisition year set anywhere, output must be byte-identical.
 - Session-9 browser-only UX (drag-reorder `/drawdown-strategy`, withdrawals Total/Per-account toggle, Table CSV download).
 - Optional `.icns`/`.ico` branding.
 - `verify_mfl_mapping.py` + `verify_mfl_diff.py` print a `→` that crashes the default Windows console (swap `→`→`->`, or run with `PYTHONIOENCODING=utf-8`).
@@ -153,6 +153,7 @@ _UI/UX plus one engine-reporting change. No ontology/schema change (still 1.0.9 
 - **Session 9 browser-only UX** (item 60): drag-to-reorder on `/drawdown-strategy`, withdrawals chart Total/Per-account toggle, Table CSV download. (No code outstanding — endpoints/persistence verified; just needs a visual pass in the live app.)
 - Optional branding: `.icns`/`.ico` for Dock/Windows/store; dark-mode + red "spending unfunded" state screenshots for the website.
 - Fix `verify_mfl_mapping.py` + `verify_mfl_diff.py` printing a `→` that crashes the default Windows console (swap `→`→`->`, or they need `PYTHONIOENCODING=utf-8`).
+- **ADR-023 (Proposed) — optional asset creation from a Buy asset event.** See the session-17 backlog above for the full entry. Needs a decision (Proposed → Accepted) before building; audit the live store's 2 property assets + 5 life events for future `balanceDate`s at reload time.
 
 _Cleared this session: item 56 (disappearing-★, all 5 charts), item 54 (routing-vs-drawdown guard), Monte-Carlo-counts-unfunded, and the income/cash-interest MFL import gaps (items 73–74)._
 
