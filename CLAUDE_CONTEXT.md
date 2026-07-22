@@ -2,13 +2,15 @@
 
 > Drop this file into a new conversation to restore full project context.
 > Keep it updated at the end of each session.
-> Last updated: 2026-07-12 (session 17 — **front-end overhaul: ADR-022** (real Tailwind build → 3.3 MB of runtime-compiled CSS becomes ~108 KB static; MRL brand theme; dark mode; shared chart module; `money` filter; tabular figures), budget workflow + notes + rebuilt chart (**ontology 1.0.10**), life events Buy/Sell asset (**ontology 1.0.11**), dashboard "at retirement" duplicate fixed. **All committed + pushed; live store reloaded to 1.0.11.**)
+> Last updated: 2026-07-19 (session 18, on the **Mac** — scoping only: **[ADR-023](docs/adr/ADR-023-optional-asset-creation-from-buy-asset-event.md) Proposed**, optional asset creation from a Buy asset event. No code change. Session terminated unexpectedly; commit `58a4b1c` was recovered and pushed after the fact.)
+>
+> Session 17: 2026-07-12 (session 17 — **front-end overhaul: ADR-022** (real Tailwind build → 3.3 MB of runtime-compiled CSS becomes ~108 KB static; MRL brand theme; dark mode; shared chart module; `money` filter; tabular figures), budget workflow + notes + rebuilt chart (**ontology 1.0.10**), life events Buy/Sell asset (**ontology 1.0.11**), dashboard "at retirement" duplicate fixed. **All committed + pushed; live store reloaded to 1.0.11.**)
 
 ---
 
-## ▶ Next session — resume here (session 17 done 2026-07-12, on Windows)
+## ▶ Next session — resume here (session 18 done 2026-07-19, on the Mac)
 
-**Commit state: everything is committed AND pushed. `main` == `origin/main` == `3504bdf`.**
+**Commit state: everything is committed AND pushed. `main` == `origin/main` == `58a4b1c`.** Session 18 was scoping only — ADR-023 (Proposed). The Mac is now ahead; the Windows box is behind. **`git fetch && git status` BEFORE starting work.**
 
 **⚠ READ THIS FIRST — the session-17 lesson.** This machine's `main` was **4 commits behind `origin/main`** for the whole first half of the session, and nobody noticed. Session 16 was done on the **Mac**, pushed, and this Windows box never pulled. Consequence: ADR-022 was built on a stale base and had to be merged afterwards (`7134b64`), with real conflicts. **`git fetch && git status` BEFORE starting work.** The Mac is now the machine that is behind.
 
